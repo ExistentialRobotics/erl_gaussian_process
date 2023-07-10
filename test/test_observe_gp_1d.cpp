@@ -1,0 +1,198 @@
+#include <iostream>
+
+#include "erl_common/binary_file.hpp"
+#include "erl_common/test_helper.hpp"
+#include "erl_gaussian_process/lidar_gp_1d.hpp"
+#include "obs_gp.h"
+
+using namespace erl::common;
+using namespace erl::gaussian_process;
+
+constexpr double kMaxRange = 30.;
+constexpr double kMinRange = 0.2;
+constexpr double kSensorOffsetX = 0.08;  // sensor x-offset in the robot frame (IMU frame).
+constexpr double kSensorOffsetY = 0.;    // sensor y-offset in the robot frame (IMU frame).
+
+typedef struct TrainDataFrame {
+    Eigen::VectorXd angles;
+    Eigen::VectorXd distances;
+    std::vector<double> pose_matlab;
+    Eigen::RMatrix23d pose_numpy;
+    Eigen::Vector2d position;  // 2D position
+    Eigen::Matrix2d rotation;  // 2D rotation
+
+    Eigen::VectorXd x;  // angle
+    Eigen::VectorXd y;  // distance
+
+    TrainDataFrame(double *pa, double *pr, const double *pose_ptr, int numel) {
+        angles.resize(numel);
+        distances.resize(numel);
+        std::copy(pa, pa + numel, angles.begin());
+        std::copy(pr, pr + numel, distances.begin());
+
+        Eigen::Map<const Eigen::Matrix23d> pose(pose_ptr, 2, 3);
+        position = pose.col(0);
+        rotation = pose.block<2, 2>(0, 1);
+
+        Eigen::Vector2d sensor_offset = rotation * Eigen::Vector2d{kSensorOffsetX, kSensorOffsetY};
+
+        pose_matlab.clear();
+        pose_matlab.insert(pose_matlab.begin(), pose_ptr, pose_ptr + 6);
+        pose_matlab[0] += sensor_offset[0];
+        pose_matlab[1] += sensor_offset[1];
+
+        pose_numpy.topLeftCorner<2, 2>() = rotation;
+        pose_numpy.col(2) = position + sensor_offset;
+
+        int cnt = 0;
+        x.resize(numel);
+        y.resize(numel);
+        for (int i = 0; i < numel; ++i) {
+            if ((distances[i] > kMaxRange) || (distances[i] < kMinRange)) { continue; }
+
+            x[cnt] = angles[i];
+            y[cnt] = distances[i];
+            cnt++;
+        }
+    }
+} TrainDataFrame;
+
+template<typename T>
+inline void
+ReadVar(char *&data_ptr, T &var) {
+    var = reinterpret_cast<T *>(data_ptr)[0];
+    data_ptr += sizeof(T);
+}
+
+template<typename T>
+inline void
+ReadPtr(char *&data_ptr, size_t n, T *&ptr) {
+    ptr = reinterpret_cast<T *>(data_ptr);
+    data_ptr += sizeof(T) * n;
+}
+
+class TrainDataLoader {
+    std::vector<TrainDataFrame> m_data_frames_;
+
+public:
+    explicit TrainDataLoader(const char *path) {
+        auto data = LoadBinaryFile<char>(path);
+
+        char *data_ptr = data.data();
+        auto data_ptr_begin = data_ptr;
+        size_t data_size = data.size();
+        int numel;
+        double *pa, *pr, *pose_ptr;
+        std::size_t pose_size;
+
+        while (data_ptr < data_ptr_begin + data_size) {
+            ReadVar(data_ptr, numel);
+            ReadPtr(data_ptr, numel, pa);
+            ReadPtr(data_ptr, numel, pr);
+            ReadVar(data_ptr, pose_size);
+            ReadPtr(data_ptr, pose_size, pose_ptr);
+            m_data_frames_.emplace_back(pa, pr, pose_ptr, numel);
+        }
+    }
+
+    TrainDataFrame
+    operator[](size_t i) {
+        return m_data_frames_[i];
+    }
+
+    [[nodiscard]] inline size_t
+    Size() const {
+        return m_data_frames_.size();
+    }
+
+    //
+    // auto
+    // begin() {
+    //     return m_data_frames_.begin();
+    // }
+    //
+    // auto
+    // end() {
+    //     return m_data_frames_.end();
+    // }
+};
+
+#define DEFAULT_OBSGP_SCALE_PARAM double(0.5)
+#define DEFAULT_OBSGP_NOISE_PARAM double(0.01)
+#define DEFAULT_OBSGP_OVERLAP_SZ  6
+#define DEFAULT_OBSGP_GROUP_SZ    20
+#define DEFAULT_OBSGP_MARGIN      double(0.0175)
+#define GPISMAP_OBS_VAR_THRE      double(0.1)
+
+#include "erl_gaussian_process/noisy_input_gp.hpp"
+
+int
+main() {
+
+    auto s = std::make_shared<NoisyInputGaussianProcess::Setting>();
+    std::cout << s->AsYamlString() << std::endl;
+
+    const char *path;
+    path = "double/train.dat";
+    auto train_data_loader = TrainDataLoader(path);
+
+    auto setting = std::make_shared<LidarGaussianProcess1D::Setting>();
+    setting->group_size = DEFAULT_OBSGP_GROUP_SZ + DEFAULT_OBSGP_OVERLAP_SZ;
+    setting->overlap_size = DEFAULT_OBSGP_OVERLAP_SZ;
+    setting->boundary_margin = DEFAULT_OBSGP_MARGIN;
+    setting->init_variance = 1.e6;
+    setting->sensor_range_var = DEFAULT_OBSGP_NOISE_PARAM;
+    setting->max_valid_distance_var = GPISMAP_OBS_VAR_THRE;
+    setting->gp->kernel->alpha = 1.;
+    setting->gp->kernel->scale = DEFAULT_OBSGP_SCALE_PARAM;
+    setting->train_buffer->mapping->type = Mapping::Type::kIdentity;
+
+    auto observe_gp = LidarGaussianProcess1D::Create(setting);
+
+    ObsGp1D obs_gp;
+
+    auto df = train_data_loader[0];
+
+    std::cout << PrintInfo("Train:") << std::endl;
+    int n = (int) df.x.size();
+    ReportTime<std::chrono::microseconds>("ObserveGP1D", 10, false, [&]() { observe_gp->Train(df.x, df.y, Eigen::Matrix23d::Zero()); });
+    ReportTime<std::chrono::microseconds>("ObsGp1D", 10, false, [&]() { obs_gp.Train(df.x.data(), df.y.data(), &n); });
+
+    CheckAnswers("mPartitions", observe_gp->m_partitions_, obs_gp.m_range_);
+    std::cout << "mGPs[i]->alpha_vec_:" << std::endl;
+    for (size_t i = 0; i < observe_gp->m_gps_.size(); ++i) {
+        std::stringstream ss;
+        ss << '\t' << std::setw(2) << i;
+        CheckAnswers(ss.str().c_str(), observe_gp->m_gps_[i]->m_vec_alpha_, obs_gp.m_gps_[i]->m_alpha_);
+    }
+
+    std::cout << "mGPs[i]->l_mat_:" << std::endl;
+    for (size_t i = 0; i < observe_gp->m_gps_.size(); ++i) {
+        std::stringstream ss;
+        ss << '\t' << std::setw(2) << i;
+        CheckAnswers(ss.str().c_str(), observe_gp->m_gps_[i]->m_mat_l_, obs_gp.m_gps_[i]->m_l_);
+    }
+
+    std::cout << "mGPs[i]->x_mat_:" << std::endl;
+    for (size_t i = 0; i < observe_gp->m_gps_.size(); ++i) {
+        std::stringstream ss;
+        ss << '\t' << std::setw(2) << i;
+        CheckAnswers(ss.str().c_str(), observe_gp->m_gps_[i]->m_mat_x_train_, obs_gp.m_gps_[i]->m_x_);
+    }
+
+    for (size_t i = 1; i < train_data_loader.Size(); ++i) {
+        df = train_data_loader[i];
+        Eigen::VectorXd ans_f, ans_var, gt_f, gt_var;
+        ans_f.resize(df.x.size());
+        ans_var.resize(df.x.size());
+        gt_f.setConstant(df.x.size(), 0.);
+        gt_var.setConstant(gt_f.size(), 0.);
+        std::cout << PrintInfo("test[", i, "]:") << std::endl;
+        ReportTime<std::chrono::microseconds>("ObserveGP1D", 10, false, [&] { observe_gp->Test(df.x, ans_f, ans_var, true); });
+        ReportTime<std::chrono::microseconds>("ObsGp1D", 10, false, [&]() { obs_gp.Test(df.x.transpose(), gt_f, gt_var); });
+        CheckAnswers("f", ans_f, gt_f);
+        CheckAnswers("var", ans_var, gt_var);
+    }
+
+    return 0;
+}
