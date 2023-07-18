@@ -97,14 +97,14 @@ namespace erl::gaussian_process {
         Reset();
 
         if (!m_train_buffer_.Store(angles, distances, pose)) {
-            ERL_DEBUG("No training data is stored.\n");
+            ERL_DEBUG("No training data is stored.");
             return;
         }  // no training data is stored.
 
         long n = m_train_buffer_.Size();
 
         if (n <= m_setting_->overlap_size) {
-            ERL_DEBUG("LidarGaussianProcess1D: no enough samples to perform partition.\n");
+            ERL_DEBUG("LidarGaussianProcess1D: no enough samples to perform partition.");
             return;
         }
 

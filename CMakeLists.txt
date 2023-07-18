@@ -4,6 +4,7 @@ project(erl_gaussian_process
         LANGUAGES CXX
         VERSION 0.1.0
         DESCRIPTION "erl_gaussian_process is a C++ implementation of Gaussian Process.")
+message(STATUS "Configuring ${PROJECT_NAME} ${PROJECT_VERSION}")
 
 if (NOT COMMAND erl_project_setup)
     find_package(erl_common REQUIRED)
@@ -11,7 +12,7 @@ if (NOT COMMAND erl_project_setup)
 endif ()
 set(${PROJECT_NAME}_CATKIN_COMPONENTS erl_common erl_covariance)
 erl_project_setup()
-erl_setup_ros()
+erl_setup_ros(CATKIN_COMPONENTS ${${PROJECT_NAME}_CATKIN_COMPONENTS})
 erl_catkin_package(
         INCLUDE_DIRS include
         LIBRARIES ${PROJECT_NAME} py${PROJECT_NAME}
@@ -53,7 +54,9 @@ erl_install(
 #######################################################################################################################
 # TEST
 #######################################################################################################################
-erl_add_tests()
+erl_add_tests(
+        LIBRARIES ${PROJECT_NAME}
+)
 
 #######################################################################################################################
 # export variables
