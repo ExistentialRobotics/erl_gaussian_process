@@ -8,7 +8,12 @@ message(STATUS "Configuring ${PROJECT_NAME} ${PROJECT_VERSION}")
 
 if (NOT COMMAND erl_project_setup)
     find_package(erl_common REQUIRED)
-    erl_project_setup()
+endif ()
+if (NOT TARGET erl_covariance)
+    erl_find_package(
+            PACKAGE erl_covariance
+            REQUIRED
+            COMMANDS GENERAL "build erl_covariance")
 endif ()
 set(${PROJECT_NAME}_CATKIN_COMPONENTS erl_common erl_covariance)
 erl_project_setup()
