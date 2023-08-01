@@ -12,6 +12,7 @@ namespace erl::gaussian_process {
     public:
         struct Setting : public NoisyInputGaussianProcess::Setting {
             double log_lambda = 10.0;
+            double edf_threshold = 0.1;
         };
 
     private:
@@ -59,6 +60,7 @@ namespace YAML {
             Node node;
             node["kernel"] = setting.kernel;
             node["log_lambda"] = setting.log_lambda;
+            node["edf_threshold"] = setting.edf_threshold;
             return node;
         }
 
@@ -67,6 +69,7 @@ namespace YAML {
             if (!node.IsMap()) { return false; }
             setting.kernel = node["kernel"].as<decltype(setting.kernel)>();
             setting.log_lambda = node["log_lambda"].as<double>();
+            setting.edf_threshold = node["edf_threshold"].as<double>();
             return true;
         }
     };
@@ -76,6 +79,7 @@ namespace YAML {
         out << YAML::BeginMap;
         out << YAML::Key << "kernel" << YAML::Value << setting.kernel;
         out << YAML::Key << "log_lambda" << YAML::Value << setting.log_lambda;
+        out << YAML::Key << "edf_threshold" << YAML::Value << setting.edf_threshold;
         out << YAML::EndMap;
         return out;
     }

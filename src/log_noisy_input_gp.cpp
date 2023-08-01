@@ -38,22 +38,8 @@ namespace erl::gaussian_process {
         m_vec_grad_flag_ = std::move(vec_grad_flag);
 
         // GPIS
-        // auto ktrain = NoisyInputGaussianProcess::m_kernel_->ComputeKtrainWithGradient(m_mat_x_train_, m_vec_grad_flag_);
         auto ktrain =
             NoisyInputGaussianProcess::m_kernel_->ComputeKtrainWithGradient(m_mat_x_train_, m_vec_grad_flag_, vec_sigma_x, vec_sigma_f, vec_sigma_grad);
-        // for (long i = 0; i < n; ++i) { ktrain(i, i) += vec_sigma_x[i] + vec_sigma_f[i]; }
-        // long grad_cnt = 0;
-        // Eigen::VectorXd sigma_grad = vec_sigma_grad;
-        // for (long i = 0; i < n; ++i) {
-        //     if (m_vec_grad_flag_[i]) {
-        //         sigma_grad[grad_cnt] = vec_sigma_grad[i];
-        //         grad_cnt++;
-        //     }
-        // }
-        // long m = ktrain.cols();
-        // for (long i = 0; i < grad_cnt; ++i) {
-        //     for (long j = n + i; j < m; j += grad_cnt) { ktrain(j, j) += sigma_grad[i]; }
-        // }
 
         m_mat_l_ = ktrain.llt().matrixL();
         m_vec_alpha_ = vec_y;
@@ -87,18 +73,44 @@ namespace erl::gaussian_process {
         if (!m_trained_) { return; }
 
         long dim = mat_x_test.rows();
-        auto n = mat_x_test.cols();
+        long n = mat_x_test.cols();
+
+        double f_threshold = std::exp(-m_setting_->log_lambda * std::abs(m_setting_->edf_threshold));
 
         auto ktest = NoisyInputGaussianProcess::m_kernel_->ComputeKtestWithGradient(m_mat_x_train_, m_vec_grad_flag_, mat_x_test);
-        auto log_ktest = m_kernel_->ComputeKtest(m_mat_x_train_, mat_x_test);
+        // auto log_ktest = m_kernel_->ComputeKtest(m_mat_x_train_, mat_x_test);
+        auto log_ktest = m_kernel_->ComputeKtestWithGradient(m_mat_x_train_, Eigen::VectorXb::Constant(m_mat_x_train_.cols(), false), mat_x_test);
 
         // sdf sign and normal
-        vec_f_out = ktest.transpose() * m_vec_alpha_;
-        vec_f_out.tail(dim * n).reshaped(n, dim).rowwise().normalize();  // gradient norm is always 1. https://en.wikipedia.org/wiki/Eikonal_equation
-        Eigen::VectorXd signs = vec_f_out.head(n).array().unaryExpr([](double val) -> double { return val >= 0. ? 1. : double(-1.); });
+        Eigen::VectorXd f_gpis = ktest.transpose() * m_vec_alpha_;
+        // vec_f_out.tail(dim * n).reshaped(n, dim).rowwise().normalize();  // gradient norm is always 1. https://en.wikipedia.org/wiki/Eikonal_equation
+        Eigen::VectorXd signs = f_gpis.head(n).array().unaryExpr([](double val) -> double { return val >= 0. ? 1. : double(-1.); });
 
         // distance
-        vec_f_out.head(n) = ((log_ktest.transpose() * m_vec_log_alpha_).array().log() / (-m_setting_->log_lambda)) * signs.array();
+        // vec_f_out.head(n) = ((log_ktest.transpose() * m_vec_log_alpha_).array().log() / (-m_setting_->log_lambda)) * signs.array();
+        // sdf = log(f) / -log_lambda, grad_sdf = grad_f / (-f * log_lambda)
+        Eigen::VectorXd f_log_gpis = log_ktest.transpose() * m_vec_log_alpha_;
+        for (long i = 0; i < n; ++i) {
+            long gxi = i + n;
+            long gyi = gxi + n;
+            vec_f_out[i] = std::log(std::abs(f_log_gpis[i])) * signs[i] / -m_setting_->log_lambda;
+
+            double &gx = vec_f_out[gxi];
+            double &gy = vec_f_out[gyi];
+            if (f_log_gpis[i] > f_threshold) {  // close to the surface
+                gx = f_gpis[gxi];
+                gy = f_gpis[gyi];
+            } else {
+                double d = -signs[i] / m_setting_->log_lambda * f_log_gpis[i];
+                gx = f_log_gpis[gxi] * d;
+                gy = f_log_gpis[gyi] * d;
+            }
+            double norm = std::sqrt(gx * gx + gy * gy);
+            if (norm > 1.e-6) {
+                gx /= norm;
+                gy /= norm;
+            }
+        }
 
         // distance variance
         //        m_mat_log_l_.triangularView<Eigen::Lower>().solveInPlace(log_ktest);  // solve Lx = ktest -> x=m_l_.m_inv_() * ktest
