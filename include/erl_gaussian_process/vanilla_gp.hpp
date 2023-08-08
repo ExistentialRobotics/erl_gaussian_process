@@ -92,10 +92,10 @@ namespace YAML {
 
     inline Emitter &
     operator<<(Emitter &out, const erl::gaussian_process::VanillaGaussianProcess::Setting &setting) {
-        out << YAML::BeginMap;
-        out << YAML::Key << "kernel" << YAML::Value << *setting.kernel;
-        out << YAML::Key << "auto_normalize" << YAML::Value << setting.auto_normalize;
-        out << YAML::EndMap;
+        out << BeginMap;
+        out << Key << "kernel" << Value << *setting.kernel;
+        out << Key << "auto_normalize" << Value << setting.auto_normalize;
+        out << EndMap;
         return out;
     }
 }  // namespace YAML

@@ -84,10 +84,10 @@ namespace YAML {
 
     inline Emitter &
     operator<<(Emitter &out, const erl::gaussian_process::Mapping::Setting &setting) {
-        out << YAML::BeginMap;
-        out << YAML::Key << "type" << YAML::Value << erl::gaussian_process::Mapping::GetTypeName(setting.type);
-        out << YAML::Key << "scale" << YAML::Value << setting.scale;
-        out << YAML::EndMap;
+        out << BeginMap;
+        out << Key << "type" << Value << erl::gaussian_process::Mapping::GetTypeName(setting.type);
+        out << Key << "scale" << Value << setting.scale;
+        out << EndMap;
         return out;
     }
 }  // namespace YAML

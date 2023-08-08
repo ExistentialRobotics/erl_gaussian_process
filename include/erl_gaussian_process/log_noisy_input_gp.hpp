@@ -76,11 +76,11 @@ namespace YAML {
 
     inline Emitter &
     operator<<(Emitter &out, const erl::gaussian_process::LogNoisyInputGaussianProcess::Setting &setting) {
-        out << YAML::BeginMap;
-        out << YAML::Key << "kernel" << YAML::Value << setting.kernel;
-        out << YAML::Key << "log_lambda" << YAML::Value << setting.log_lambda;
-        out << YAML::Key << "edf_threshold" << YAML::Value << setting.edf_threshold;
-        out << YAML::EndMap;
+        out << BeginMap;
+        out << Key << "kernel" << Value << setting.kernel;
+        out << Key << "log_lambda" << Value << setting.log_lambda;
+        out << Key << "edf_threshold" << Value << setting.edf_threshold;
+        out << EndMap;
         return out;
     }
 }  // namespace YAML
