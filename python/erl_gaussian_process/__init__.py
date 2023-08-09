@@ -1,9 +1,8 @@
 # import pybind dependencies
-import erl_common
-import erl_covariance
+from erl_common.yaml import YamlableBase
 
 # import package modules
-from .pyerl_gaussian_process import *
+from erl_gaussian_process.pyerl_gaussian_process import *
 
 __all__ = [
     "VanillaGaussianProcess",
