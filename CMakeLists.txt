@@ -9,19 +9,14 @@ message(STATUS "Configuring ${PROJECT_NAME} ${PROJECT_VERSION}")
 if (NOT COMMAND erl_project_setup)
     find_package(erl_common REQUIRED)
 endif ()
-if (NOT TARGET erl_covariance)
-    erl_find_package(
-            PACKAGE erl_covariance
-            REQUIRED
-            COMMANDS GENERAL "build erl_covariance")
-endif ()
-set(${PROJECT_NAME}_CATKIN_COMPONENTS erl_common erl_covariance)
-erl_project_setup()
+erl_project_setup(
+        ERL_PACKAGES erl_common erl_covariance
+)
 erl_setup_ros(CATKIN_COMPONENTS ${${PROJECT_NAME}_CATKIN_COMPONENTS})
 erl_catkin_package(
         INCLUDE_DIRS include
         LIBRARIES ${PROJECT_NAME} py${PROJECT_NAME}
-        CATKIN_DEPENDS ${${PROJECT_NAME}_CATKIN_COMPONENTS}
+        CATKIN_DEPENDS ${${PROJECT_NAME}_CATKIN_DEPENDS}
         DEPENDS ${${PROJECT_NAME}_DEPENDS})
 
 #######################################################################################################################
@@ -39,7 +34,7 @@ target_include_directories(${PROJECT_NAME}
         $<BUILD_INTERFACE:${${PROJECT_NAME}_INCLUDE_DIR}>
         $<INSTALL_INTERFACE:${${PROJECT_NAME}_INSTALL_INCLUDE_DIR}>)
 target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC ${catkin_INCLUDE_DIRS})
-target_link_libraries(${PROJECT_NAME} PUBLIC erl_common erl_covariance ${catkin_LIBRARIES})
+target_link_libraries(${PROJECT_NAME} PUBLIC ${${PROJECT_NAME}_ERL_PACKAGES} ${catkin_LIBRARIES})
 
 ###################
 # Python bindings #
@@ -47,7 +42,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC erl_common erl_covariance ${catkin_
 erl_add_python_package(
         PYTHON_PKG_DIR ${${PROJECT_NAME}_PYTHON_DIR}/${PROJECT_NAME}
         PYBIND_MODULE_NAME py${PROJECT_NAME}
-        DEPENDS_PYTHON_PKGS erl_common erl_covariance)
+        DEPENDS_PYTHON_PKGS ${${PROJECT_NAME}_ERL_PACKAGES})
 
 #######################################################################################################################
 # INSTALL
