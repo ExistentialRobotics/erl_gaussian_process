@@ -130,7 +130,7 @@ int
 main() {
 
     auto s = std::make_shared<NoisyInputGaussianProcess::Setting>();
-    std::cout << s->AsYamlString() << std::endl;
+    std::cout << *s << std::endl;
 
     const char *path;
     path = "double/train.dat";
