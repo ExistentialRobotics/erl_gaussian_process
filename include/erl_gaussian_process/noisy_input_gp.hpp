@@ -12,42 +12,44 @@ namespace erl::gaussian_process {
 
     public:
         struct Setting : public common::Yamlable<Setting> {
-            std::shared_ptr<Covariance::Setting> kernel = []() -> std::shared_ptr<Covariance::Setting> {
-                auto setting = std::make_shared<Covariance::Setting>();
-                setting->type = Covariance::Type::kMatern32;
+            std::shared_ptr<covariance::Covariance::Setting> kernel = []() -> std::shared_ptr<covariance::Covariance::Setting> {
+                auto setting = std::make_shared<covariance::Covariance::Setting>();
+                setting->type = covariance::Covariance::Type::kMatern32;
+                setting->x_dim = 2;
                 setting->alpha = 1.;
                 setting->scale = 1.2;
                 return setting;
             }();
+            long max_num_samples = 256;
         };
 
-#if defined(BUILD_TEST)
-    public:
-        Eigen::VectorXd m_vec_y_;
-        Eigen::MatrixXd m_mat_k_train_;
-        Eigen::VectorXd m_vec_sigma_x_;
-        Eigen::VectorXd m_vec_sigma_grad_;
-#else
     protected:
-#endif
-        Eigen::MatrixXd m_mat_x_train_;
-        Eigen::VectorXb m_vec_grad_flag_;
-        Eigen::MatrixXd m_mat_l_;
-        Eigen::VectorXd m_vec_alpha_;
-        bool m_trained_ = false;
-        double m_three_over_scale_square_ = 0.;  // for computing normal variance
-        std::shared_ptr<Setting> m_setting_;
-        std::shared_ptr<Covariance> m_kernel_;
+        long m_x_dim_ = 0;                                            // dimension of x
+        long m_num_train_samples_ = 0;                                // number of training samples
+        long m_num_train_samples_with_grad_ = 0;                      // number of training samples with gradient
+        bool m_trained_ = false;                                      // true if the GP is trained
+        double m_three_over_scale_square_ = 0.;                       // for computing normal variance
+        std::shared_ptr<Setting> m_setting_ = nullptr;                // setting
+        std::shared_ptr<covariance::Covariance> m_kernel_ = nullptr;  // kernel
+        Eigen::MatrixXd m_mat_x_train_ = {};                          // x1, ..., xn
+        Eigen::MatrixXd m_mat_k_train_ = {};                          // Ktrain, avoid reallocation
+        Eigen::MatrixXd m_mat_l_ = {};                                // lower triangular matrix of the Cholesky decomposition of Ktrain
+        Eigen::VectorXb m_vec_grad_flag_ = {};                        // true if the corresponding training sample has gradient
+        Eigen::VectorXd m_vec_alpha_ = {};                            // h(x1)..h(xn), dh(x1)/dx1_1 .. dh(xn)/dxn_1 .. dh(x1)/dx1_dim .. dh(xn)/dxn_dim
+        Eigen::VectorXd m_vec_var_x_ = {};                            // variance of x1 ... xn
+        Eigen::VectorXd m_vec_var_h_ = {};                            // variance of h(x1)..h(xn)
+        Eigen::VectorXd m_vec_var_grad_ = {};                         // variance of dh(x1)/dx1_1 .. dh(xn)/dxn_1 .. dh(x1)/dx1_dim .. dh(xn)/dxn_dim
 
     public:
-        static std::shared_ptr<NoisyInputGaussianProcess>
-        Create();
-        static std::shared_ptr<NoisyInputGaussianProcess>
-        Create(std::shared_ptr<Setting> setting);
+        NoisyInputGaussianProcess()
+            : m_setting_(std::make_shared<Setting>()) {}
 
-        [[maybe_unused]] [[nodiscard]] inline bool
-        IsTrained() const {
-            return m_trained_;
+        explicit NoisyInputGaussianProcess(std::shared_ptr<Setting> setting)
+            : m_setting_(std::move(setting)) {
+            ERL_ASSERTM(m_setting_ != nullptr, "setting should not be nullptr.");
+            ERL_ASSERTM(m_setting_->kernel != nullptr, "setting->kernel should not be nullptr.");
+            m_trained_ = !(m_setting_->max_num_samples > 0 && m_setting_->kernel->x_dim > 0);  // if memory is allocated, the model is ready to be trained
+            if (!m_trained_) { ERL_ASSERTM(AllocateMemory(m_setting_->max_num_samples, m_setting_->kernel->x_dim), "Failed to allocate memory."); }
         }
 
         [[nodiscard]] std::shared_ptr<Setting>
@@ -55,52 +57,127 @@ namespace erl::gaussian_process {
             return m_setting_;
         }
 
+        [[maybe_unused]] [[nodiscard]] inline bool
+        IsTrained() const {
+            return m_trained_;
+        }
+
         inline virtual void
-        Reset() {
+        Reset(long max_num_samples, long x_dim) {
+            ERL_ASSERTM(x_dim > 0, "x_dim should be > 0.");
+            if (m_setting_->max_num_samples > 0 && m_setting_->kernel->x_dim > 0) {  // memory already allocated
+                ERL_ASSERTM(m_setting_->max_num_samples >= max_num_samples, "max_num_samples should be <= %ld.", m_setting_->max_num_samples);
+            } else {
+                if (m_setting_->kernel->x_dim > 0) { ERL_ASSERTM(m_setting_->kernel->x_dim == x_dim, "x_dim should be %ld.", m_setting_->kernel->x_dim); }
+                ERL_ASSERTM(AllocateMemory(max_num_samples, x_dim), "Failed to allocate memory.");
+            }
             m_trained_ = false;
-            m_kernel_ = nullptr;
+            std::shared_ptr<covariance::Covariance::Setting> kernel_setting = std::make_shared<covariance::Covariance::Setting>(*m_setting_->kernel);
+            kernel_setting->x_dim = x_dim;  // x_dim is determined now, so we can set it now to improve performance
+            m_kernel_ = covariance::Covariance::Create(kernel_setting);
+            m_three_over_scale_square_ = 3. * m_setting_->kernel->alpha / (m_setting_->kernel->scale * m_setting_->kernel->scale);
+            m_num_train_samples_ = 0;
+            m_num_train_samples_with_grad_ = 0;
+            m_x_dim_ = x_dim;
         }
 
-        [[maybe_unused]] [[nodiscard]] inline long
-        GetNumSamples() const {
-            return m_mat_x_train_.cols();
+        [[nodiscard]] inline long
+        GetNumTrainSamples() const {
+            return m_num_train_samples_;
+        }
+
+        [[nodiscard]] inline long
+        GetNumTrainSamplesWithGrad() const {
+            return m_num_train_samples_with_grad_;
+        }
+
+        [[nodiscard]] inline Eigen::MatrixXd &
+        GetTrainInputSamplesBuffer() {
+            return m_mat_x_train_;
+        }
+
+        [[nodiscard]] inline Eigen::VectorXb &
+        GetTrainGradientFlagsBuffer() {
+            return m_vec_grad_flag_;
+        }
+
+        [[nodiscard]] inline Eigen::VectorXd &
+        GetTrainOutputSamplesBuffer() {
+            return m_vec_alpha_;
+        }
+
+        [[nodiscard]] inline Eigen::VectorXd &
+        GetTrainInputSamplesVarianceBuffer() {
+            return m_vec_var_x_;
+        }
+
+        [[nodiscard]] inline Eigen::VectorXd &
+        GetTrainOutputValueSamplesVarianceBuffer() {
+            return m_vec_var_h_;
+        }
+
+        [[nodiscard]] inline Eigen::VectorXd &
+        GetTrainOutputGradientSamplesVarianceBuffer() {
+            return m_vec_var_grad_;
+        }
+
+        [[nodiscard]] inline Eigen::MatrixXd
+        GetKtrain() {
+            return m_mat_k_train_;
+        }
+
+        [[nodiscard]] inline Eigen::MatrixXd
+        GetCholeskyDecomposition() {
+            return m_mat_l_;
         }
 
         virtual void
-        Train(
-            Eigen::MatrixXd mat_x_train,
-            Eigen::VectorXb vec_grad_flag,
-            const Eigen::Ref<const Eigen::VectorXd> &vec_y,
-            const Eigen::Ref<const Eigen::VectorXd> &vec_sigma_x,
-            const Eigen::Ref<const Eigen::VectorXd> &vec_sigma_f,
-            const Eigen::Ref<const Eigen::VectorXd> &vec_sigma_grad);
+        Train(long num_train_samples, long num_train_samples_with_grad);
 
         virtual void
-        Test(const Eigen::Ref<const Eigen::MatrixXd> &mat_x_test, Eigen::Ref<Eigen::VectorXd> vec_f_out, Eigen::Ref<Eigen::VectorXd> vec_var_out) const;
+        Test(
+            const Eigen::Ref<const Eigen::MatrixXd> &mat_x_test,
+            Eigen::Ref<Eigen::MatrixXd> mat_f_out,
+            Eigen::Ref<Eigen::MatrixXd> mat_var_out,
+            Eigen::Ref<Eigen::MatrixXd> mat_cov_out) const;
 
         virtual ~NoisyInputGaussianProcess() = default;
 
     protected:
-        NoisyInputGaussianProcess();
-        explicit NoisyInputGaussianProcess(std::shared_ptr<Setting> setting);
+        inline bool
+        AllocateMemory(long max_num_samples, long x_dim) {
+            if (m_setting_->max_num_samples > 0 && max_num_samples > m_setting_->max_num_samples) { return false; }
+            if (m_setting_->kernel->x_dim > 0 && x_dim != m_setting_->kernel->x_dim) { return false; }
+            std::pair<long, long> size = covariance::Covariance::GetMinimumKtrainSize(max_num_samples, max_num_samples, x_dim);
+            if (m_mat_k_train_.rows() < size.first || m_mat_k_train_.cols() < size.second) { m_mat_k_train_.resize(size.first, size.second); }
+            if (m_mat_x_train_.rows() < x_dim || m_mat_x_train_.cols() < max_num_samples) { m_mat_x_train_.resize(x_dim, max_num_samples); }
+            if (m_mat_l_.rows() < size.first || m_mat_l_.cols() < size.second) { m_mat_l_.resize(size.first, size.second); }
+            if (m_vec_alpha_.size() < max_num_samples * (x_dim + 1)) { m_vec_alpha_.resize(max_num_samples * (x_dim + 1)); }
+            if (m_vec_grad_flag_.size() < max_num_samples) { m_vec_grad_flag_.resize(max_num_samples); }
+            if (m_vec_var_x_.size() < max_num_samples) { m_vec_var_x_.resize(max_num_samples); }
+            if (m_vec_var_h_.size() < max_num_samples) { m_vec_var_h_.resize(max_num_samples); }
+            if (m_vec_var_grad_.size() < max_num_samples) { m_vec_var_grad_.resize(max_num_samples); }
+            return true;
+        }
     };
 }  // namespace erl::gaussian_process
 
 namespace YAML {
-
     template<>
     struct convert<erl::gaussian_process::NoisyInputGaussianProcess::Setting> {
         inline static Node
         encode(const erl::gaussian_process::NoisyInputGaussianProcess::Setting &setting) {
             Node node;
             node["kernel"] = *setting.kernel;
+            node["max_num_samples"] = setting.max_num_samples;
             return node;
         }
 
         inline static bool
         decode(const Node &node, erl::gaussian_process::NoisyInputGaussianProcess::Setting &setting) {
             if (!node.IsMap()) { return false; }
-            *setting.kernel = node["kernel"].as<erl::gaussian_process::Covariance::Setting>();
+            setting.kernel = node["kernel"].as<std::shared_ptr<erl::covariance::Covariance::Setting>>();
+            setting.max_num_samples = node["max_num_samples"].as<long>();
             return true;
         }
     };
@@ -108,7 +185,8 @@ namespace YAML {
     inline Emitter &
     operator<<(Emitter &out, const erl::gaussian_process::NoisyInputGaussianProcess::Setting &setting) {
         out << BeginMap;
-        out << Key << "kernel" << Value << *setting.kernel;
+        out << Key << "kernel" << Value << setting.kernel;
+        out << Key << "max_num_samples" << Value << setting.max_num_samples;
         out << EndMap;
         return out;
     }

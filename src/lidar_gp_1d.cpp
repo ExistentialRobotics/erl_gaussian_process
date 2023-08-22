@@ -85,7 +85,6 @@ namespace erl::gaussian_process {
     void
     LidarGaussianProcess1D::Reset() {
         m_trained_ = false;
-        m_gps_.clear();
         m_partitions_.clear();
     }
 
@@ -94,23 +93,25 @@ namespace erl::gaussian_process {
         const Eigen::Ref<const Eigen::VectorXd> &angles,
         const Eigen::Ref<const Eigen::VectorXd> &distances,
         const Eigen::Ref<const Eigen::Matrix23d> &pose) {
+
         Reset();
 
         if (!m_train_buffer_.Store(angles, distances, pose)) {
             ERL_DEBUG("No training data is stored.");
             return;
-        }  // no training data is stored.
+        }
 
         long n = m_train_buffer_.Size();
-
         if (n <= m_setting_->overlap_size) {
             ERL_DEBUG("LidarGaussianProcess1D: no enough samples to perform partition.");
             return;
         }
 
         auto num_groups = std::max(1l, n / (m_setting_->group_size - m_setting_->overlap_size)) + 1;
-
-        m_gps_.reserve(num_groups);
+        m_setting_->gp->max_num_samples = m_setting_->group_size;  // adjust the max_num_samples
+        m_setting_->gp->kernel->x_dim = 1;                         // adjust the x_dim
+        m_gps_.resize(num_groups);
+        // m_gps_.reserve(num_groups);
         m_partitions_.reserve(num_groups + 1);
         m_partitions_.push_back(m_train_buffer_.vec_angles[0]);
         long half_overlap_size = m_setting_->overlap_size / 2;
@@ -120,32 +121,44 @@ namespace erl::gaussian_process {
             long index_right = index_left + m_setting_->group_size;                     // upper bound, not included
 
             m_partitions_.push_back(m_train_buffer_.vec_angles(index_right - half_overlap_size));
-            auto std_gp = std::make_shared<VanillaGaussianProcess>(m_setting_->gp);
-            m_gps_.push_back(std_gp);
-            std_gp->Train(
-                m_train_buffer_.vec_angles.segment(index_left, index_right - index_left).transpose(),
-                m_train_buffer_.vec_mapped_distances.segment(index_left, index_right - index_left),
-                Eigen::VectorXd::Constant(index_right - index_left, m_setting_->sensor_range_var));
+            std::shared_ptr<VanillaGaussianProcess> &gp = m_gps_[i];
+            if (gp == nullptr) { gp = std::make_shared<VanillaGaussianProcess>(m_setting_->gp); }
+            gp->Reset(m_setting_->group_size, 1);
+            // buffer size fits the data exactly
+            gp->GetTrainInputSamplesBuffer() = m_train_buffer_.vec_angles.segment(index_left, index_right - index_left).transpose();
+            gp->GetTrainOutputSamplesBuffer() = m_train_buffer_.vec_mapped_distances.segment(index_left, index_right - index_left);
+            gp->GetTrainOutputSamplesVarianceBuffer().setConstant(m_setting_->sensor_range_var);
+            gp->Train(m_setting_->group_size);
         }
 
         // the last two groups
         long index_left = (num_groups - 2) * (m_setting_->group_size - m_setting_->overlap_size);
         long index_right = index_left + (n - index_left + m_setting_->overlap_size) / 2;
         m_partitions_.push_back(m_train_buffer_.vec_angles(index_right - half_overlap_size));
-        m_gps_.push_back(std::make_shared<VanillaGaussianProcess>(m_setting_->gp));
-        m_gps_.back()->Train(
-            m_train_buffer_.vec_angles.segment(index_left, index_right - index_left).transpose(),
-            m_train_buffer_.vec_mapped_distances.segment(index_left, index_right - index_left),
-            Eigen::VectorXd::Constant(index_right - index_left, m_setting_->sensor_range_var));
+        {
+            std::shared_ptr<VanillaGaussianProcess> &gp = m_gps_[num_groups - 2];
+            if (gp == nullptr) { gp = std::make_shared<VanillaGaussianProcess>(m_setting_->gp); }
+            long num_samples = index_right - index_left;
+            gp->Reset(num_samples, 1);
+            gp->GetTrainInputSamplesBuffer().leftCols(num_samples) = m_train_buffer_.vec_angles.segment(index_left, num_samples).transpose();
+            gp->GetTrainOutputSamplesBuffer().head(num_samples) = m_train_buffer_.vec_mapped_distances.segment(index_left, num_samples);
+            gp->GetTrainOutputSamplesVarianceBuffer().head(num_samples).setConstant(m_setting_->sensor_range_var);
+            gp->Train(num_samples);
+        }
 
         index_left = index_left + (n - index_left - m_setting_->overlap_size) / 2;
         index_right = n;
         m_partitions_.push_back(m_train_buffer_.vec_angles(n - 1));
-        m_gps_.push_back(std::make_shared<VanillaGaussianProcess>(m_setting_->gp));
-        m_gps_.back()->Train(
-            m_train_buffer_.vec_angles.segment(index_left, index_right - index_left).transpose(),
-            m_train_buffer_.vec_mapped_distances.segment(index_left, index_right - index_left),
-            Eigen::VectorXd::Constant(index_right - index_left, m_setting_->sensor_range_var));
+        {
+            std::shared_ptr<VanillaGaussianProcess> &gp = m_gps_[num_groups - 1];
+            if (gp == nullptr) { gp = std::make_shared<VanillaGaussianProcess>(m_setting_->gp); }
+            long num_samples = index_right - index_left;
+            gp->Reset(num_samples, 1);
+            gp->GetTrainInputSamplesBuffer().leftCols(num_samples) = m_train_buffer_.vec_angles.segment(index_left, num_samples).transpose();
+            gp->GetTrainOutputSamplesBuffer().head(num_samples) = m_train_buffer_.vec_mapped_distances.segment(index_left, num_samples);
+            gp->GetTrainOutputSamplesVarianceBuffer().head(num_samples).setConstant(m_setting_->sensor_range_var);
+            gp->Train(num_samples);
+        }
 
         m_trained_ = true;
     }
@@ -155,11 +168,10 @@ namespace erl::gaussian_process {
         const {
 
         if (!m_trained_) { return; }
-#ifndef NDEBUG
-        const auto &kN = angles.size();
-#endif
-        ERL_DEBUG_ASSERT(fs.size() == kN, "f should be a %ld-dim vector instead of %ld.", kN, fs.size());
-        ERL_DEBUG_ASSERT(vars.size() == kN, "var should be a %ld-dim vector instead of %ld.", kN, vars.size());
+        long n = angles.size();
+        ERL_ASSERTM(fs.size() >= n, "fs size = %ld, it should be >= %ld.", fs.size(), n);
+        ERL_ASSERTM(vars.size() >= n, "vars size = %ld, it should be >= %ld.", vars.size(), n);
+
         fs.setZero();
         vars.setConstant(m_setting_->init_variance);
 
@@ -167,21 +179,18 @@ namespace erl::gaussian_process {
         double boundary_max = m_partitions_.back() - m_setting_->boundary_margin;
         for (int i = 0; i < angles.size(); ++i) {
             if ((angles[i] < boundary_min) || (angles[i] > boundary_max)) { continue; }
-
             for (size_t j = 0; j < m_gps_.size(); ++j) {
-                if ((angles[i] >= m_partitions_[j]) && (angles[i] <= m_partitions_[j + 1])) {
-                    if (m_gps_[j]->IsTrained()) {
-                        Eigen::Scalard f, var;
-                        m_gps_[j]->Test(angles.segment<1>(i), f, var);
-                        if (un_map) {
-                            fs[i] = m_train_buffer_.mapping->m_inv_(f[0]);
-                        } else {
-                            fs[i] = f[0];
-                        }
-                        vars[i] = var[0];
-                        break;
-                    }
+                if (angles[i] < m_partitions_[j] || angles[i] > m_partitions_[j + 1]) { continue; }
+                if (!m_gps_[j]->IsTrained()) { continue; }
+                Eigen::Scalard f, var;
+                m_gps_[j]->Test(angles.segment<1>(i), f, var);
+                if (un_map) {
+                    fs[i] = m_train_buffer_.mapping->m_inv_(f[0]);
+                } else {
+                    fs[i] = f[0];
                 }
+                vars[i] = var[0];
+                break;
             }
         }
     }
@@ -195,11 +204,9 @@ namespace erl::gaussian_process {
         double &occ) const {
 
         Test(angle, f, var, false);
-        if (var[0] > m_setting_->max_valid_distance_var) {
-            return false;  // fail to estimate the mapped r f
-        }
+        if (var[0] > m_setting_->max_valid_distance_var) { return false; }  // fail to estimate the mapped r f
         // when the r is larger, 1/r results in smaller different, we need a larger m_scale_.
-        auto a = r * m_setting_->occ_test_temperature;
+        double a = r * m_setting_->occ_test_temperature;
         occ = 2. / (1. + std::exp(a * (f[0] - m_train_buffer_.mapping->m_map_(r)))) - 1.;
         f[0] = m_train_buffer_.mapping->m_inv_(f[0]);
         return true;

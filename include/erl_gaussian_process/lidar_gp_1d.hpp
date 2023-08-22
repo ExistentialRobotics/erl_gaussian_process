@@ -111,11 +111,7 @@ namespace erl::gaussian_process {
             std::shared_ptr<VanillaGaussianProcess::Setting> gp = std::make_shared<VanillaGaussianProcess::Setting>();  // parameters of local GP regression
         };
 
-#if defined(BUILD_TEST)
-    public:
-#else
-    private:
-#endif
+    protected:
         bool m_trained_ = false;
         std::shared_ptr<Setting> m_setting_;
 
@@ -138,6 +134,16 @@ namespace erl::gaussian_process {
         [[nodiscard]] inline std::shared_ptr<Setting>
         GetSetting() const {
             return m_setting_;
+        }
+
+        [[nodiscard]] inline std::vector<std::shared_ptr<VanillaGaussianProcess>>
+        GetGps() const {
+            return m_gps_;
+        }
+
+        [[nodiscard]] inline std::vector<double>
+        GetPartitions() const {
+            return m_partitions_;
         }
 
         [[nodiscard]] inline Eigen::Vector2d
@@ -262,7 +268,8 @@ namespace YAML {
         }
     };
 
-    inline Emitter & operator<<(Emitter& out, const erl::gaussian_process::LidarGaussianProcess1D::Setting &setting) {
+    inline Emitter &
+    operator<<(Emitter &out, const erl::gaussian_process::LidarGaussianProcess1D::Setting &setting) {
         out << BeginMap;
         out << Key << "group_size" << Value << setting.group_size;
         out << Key << "overlap_size" << Value << setting.overlap_size;

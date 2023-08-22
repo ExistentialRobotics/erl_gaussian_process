@@ -1,9 +1,12 @@
+#include <gtest/gtest.h>
 #include <iostream>
-
+#include <filesystem>
 #include "erl_common/binary_file.hpp"
 #include "erl_common/test_helper.hpp"
 #include "erl_gaussian_process/lidar_gp_1d.hpp"
-#include "obs_gp.h"
+#include "../obs_gp.h"
+#include "../obs_gp.cpp"
+#include "../cov_fnc.cpp"
 
 using namespace erl::common;
 using namespace erl::gaussian_process;
@@ -30,7 +33,11 @@ typedef struct TrainDataFrame {
         std::copy(pa, pa + numel, angles.begin());
         std::copy(pr, pr + numel, distances.begin());
 
-        Eigen::Map<const Eigen::Matrix23d> pose(pose_ptr, 2, 3);
+        Eigen::Matrix23d pose;
+        // clang-format off
+        pose << pose_ptr[0], pose_ptr[2], pose_ptr[4],
+                pose_ptr[1], pose_ptr[3], pose_ptr[5];
+        // clang-format on
         position = pose.col(0);
         rotation = pose.block<2, 2>(0, 1);
 
@@ -104,17 +111,6 @@ public:
     Size() const {
         return m_data_frames_.size();
     }
-
-    //
-    // auto
-    // begin() {
-    //     return m_data_frames_.begin();
-    // }
-    //
-    // auto
-    // end() {
-    //     return m_data_frames_.end();
-    // }
 };
 
 #define DEFAULT_OBSGP_SCALE_PARAM double(0.5)
@@ -124,17 +120,11 @@ public:
 #define DEFAULT_OBSGP_MARGIN      double(0.0175)
 #define GPISMAP_OBS_VAR_THRE      double(0.1)
 
-#include "erl_gaussian_process/noisy_input_gp.hpp"
-
-int
-main() {
-
-    auto s = std::make_shared<NoisyInputGaussianProcess::Setting>();
-    std::cout << *s << std::endl;
-
-    const char *path;
-    path = "double/train.dat";
-    auto train_data_loader = TrainDataLoader(path);
+TEST(ERL_GAUSSIAN_PROCESS, LidarGaussianProcess1D) {
+    std::filesystem::path path = __FILE__;
+    path = path.parent_path().parent_path();
+    path /= "double/train.dat";
+    auto train_data_loader = TrainDataLoader(path.string().c_str());
 
     auto setting = std::make_shared<LidarGaussianProcess1D::Setting>();
     setting->group_size = DEFAULT_OBSGP_GROUP_SZ + DEFAULT_OBSGP_OVERLAP_SZ;
@@ -146,38 +136,43 @@ main() {
     setting->gp->kernel->alpha = 1.;
     setting->gp->kernel->scale = DEFAULT_OBSGP_SCALE_PARAM;
     setting->train_buffer->mapping->type = Mapping::Type::kIdentity;
+    std::cout << *setting << std::endl;
 
-    auto observe_gp = LidarGaussianProcess1D::Create(setting);
-
+    auto lidar_gp = LidarGaussianProcess1D::Create(setting);
     ObsGp1D obs_gp;
 
     auto df = train_data_loader[0];
 
     std::cout << PrintInfo("Train:") << std::endl;
     int n = (int) df.x.size();
-    ReportTime<std::chrono::microseconds>("ObserveGP1D", 10, false, [&]() { observe_gp->Train(df.x, df.y, Eigen::Matrix23d::Zero()); });
+    ReportTime<std::chrono::microseconds>("LidarGaussianProcess1D", 10, false, [&]() { lidar_gp->Train(df.x, df.y, Eigen::Matrix23d::Zero()); });
     ReportTime<std::chrono::microseconds>("ObsGp1D", 10, false, [&]() { obs_gp.Train(df.x.data(), df.y.data(), &n); });
 
-    CheckAnswers("mPartitions", observe_gp->m_partitions_, obs_gp.m_range_);
-    std::cout << "mGPs[i]->alpha_vec_:" << std::endl;
-    for (size_t i = 0; i < observe_gp->m_gps_.size(); ++i) {
+    ASSERT_STD_VECTOR_EQUAL("m_partitions_", lidar_gp->GetPartitions(), obs_gp.m_range_);
+    
+    auto gps = lidar_gp->GetGps();
+    for (size_t i = 0; i < gps.size(); ++i) {
         std::stringstream ss;
-        ss << '\t' << std::setw(2) << i;
-        CheckAnswers(ss.str().c_str(), observe_gp->m_gps_[i]->m_vec_alpha_, obs_gp.m_gps_[i]->m_alpha_);
+        ss << "m_gps_[" << i << "]->m_x_:";
+        Eigen::MatrixXd mat_x_gt = obs_gp.m_gps_[i]->m_x_;
+        Eigen::MatrixXd mat_x_ans = gps[i]->GetTrainInputSamplesBuffer().topLeftCorner(mat_x_gt.rows(), mat_x_gt.cols());
+        ASSERT_EIGEN_MATRIX_EQUAL(ss.str().c_str(), mat_x_ans, mat_x_gt);
     }
 
-    std::cout << "mGPs[i]->l_mat_:" << std::endl;
-    for (size_t i = 0; i < observe_gp->m_gps_.size(); ++i) {
+    for (size_t i = 0; i < gps.size(); ++i) {
         std::stringstream ss;
-        ss << '\t' << std::setw(2) << i;
-        CheckAnswers(ss.str().c_str(), observe_gp->m_gps_[i]->m_mat_l_, obs_gp.m_gps_[i]->m_l_);
+        ss << "m_gps_[" << i << "]->m_l_:";
+        Eigen::MatrixXd mat_l_gt = obs_gp.m_gps_[i]->m_l_;
+        Eigen::MatrixXd mat_l_ans = gps[i]->GetCholeskyDecomposition().topLeftCorner(mat_l_gt.rows(), mat_l_gt.cols());
+        ASSERT_EIGEN_MATRIX_EQUAL(ss.str(), mat_l_ans, mat_l_gt);
     }
 
-    std::cout << "mGPs[i]->x_mat_:" << std::endl;
-    for (size_t i = 0; i < observe_gp->m_gps_.size(); ++i) {
+    for (size_t i = 0; i < gps.size(); ++i) {
         std::stringstream ss;
-        ss << '\t' << std::setw(2) << i;
-        CheckAnswers(ss.str().c_str(), observe_gp->m_gps_[i]->m_mat_x_train_, obs_gp.m_gps_[i]->m_x_);
+        ss << "m_gps_[" << i << "]->m_alpha_:";
+        Eigen::VectorXd alpha_gt = obs_gp.m_gps_[i]->m_alpha_;
+        Eigen::VectorXd alpha_ans = gps[i]->GetTrainOutputSamplesBuffer().head(alpha_gt.size());
+        ASSERT_EIGEN_VECTOR_EQUAL(ss.str(), alpha_ans, alpha_gt);
     }
 
     for (size_t i = 1; i < train_data_loader.Size(); ++i) {
@@ -188,11 +183,14 @@ main() {
         gt_f.setConstant(df.x.size(), 0.);
         gt_var.setConstant(gt_f.size(), 0.);
         std::cout << PrintInfo("test[", i, "]:") << std::endl;
-        ReportTime<std::chrono::microseconds>("ObserveGP1D", 10, false, [&] { observe_gp->Test(df.x, ans_f, ans_var, true); });
+        ReportTime<std::chrono::microseconds>("LidarGaussianProcess1D", 10, false, [&] { lidar_gp->Test(df.x, ans_f, ans_var, true); });
         ReportTime<std::chrono::microseconds>("ObsGp1D", 10, false, [&]() { obs_gp.Test(df.x.transpose(), gt_f, gt_var); });
-        CheckAnswers("f", ans_f, gt_f);
-        CheckAnswers("var", ans_var, gt_var);
+#ifdef NDEBUG
+        ASSERT_EIGEN_VECTOR_NEAR("f", ans_f, gt_f, 1e-15);
+        ASSERT_EIGEN_VECTOR_NEAR("var", ans_var, gt_var, 1e-15);
+#else
+        ASSERT_EIGEN_VECTOR_EQUAL("f", ans_f, gt_f);
+        ASSERT_EIGEN_VECTOR_EQUAL("var", ans_var, gt_var);
+#endif
     }
-
-    return 0;
 }

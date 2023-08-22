@@ -14,7 +14,7 @@ __all__ = [
     "Mapping",
     "LidarGaussianProcess1D",
     "NoisyInputGaussianProcess",
-    "LogNoisyInputGaussianProcess",
+    "LogSdfGaussianProcess",
 ]
 
 class VanillaGaussianProcess:
@@ -155,16 +155,16 @@ class NoisyInputGaussianProcess:
         self: NoisyInputGaussianProcess, mat_x_test: npt.NDArray[np.float64]
     ) -> Tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]: ...
 
-class LogNoisyInputGaussianProcess(NoisyInputGaussianProcess):
+class LogSdfGaussianProcess(NoisyInputGaussianProcess):
     class Setting(NoisyInputGaussianProcess.Setting):
         log_lambda: float
 
-        def __init__(self: LogNoisyInputGaussianProcess.Setting): ...
+        def __init__(self: LogSdfGaussianProcess.Setting): ...
 
-    def __init__(self: LogNoisyInputGaussianProcess, setting: Setting): ...
-    def reset(self: LogNoisyInputGaussianProcess) -> None: ...
+    def __init__(self: LogSdfGaussianProcess, setting: Setting): ...
+    def reset(self: LogSdfGaussianProcess) -> None: ...
     def train(
-        self: LogNoisyInputGaussianProcess,
+        self: LogSdfGaussianProcess,
         mat_x_train: npt.NDArray[np.float64],
         vec_grad_flag: npt.NDArray[np.bool_],
         vec_y: npt.NDArray[np.float64],
@@ -173,5 +173,5 @@ class LogNoisyInputGaussianProcess(NoisyInputGaussianProcess):
         vec_sigma_grad: npt.NDArray[np.float64],
     ) -> None: ...
     def test(
-        self: LogNoisyInputGaussianProcess, mat_x_test: npt.NDArray[np.float64]
+        self: LogSdfGaussianProcess, mat_x_test: npt.NDArray[np.float64]
     ) -> Tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]: ...

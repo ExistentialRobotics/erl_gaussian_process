@@ -1,8 +1,8 @@
 #include "erl_common/pybind11.hpp"
 #include "erl_gaussian_process/lidar_gp_1d.hpp"
-#include "erl_gaussian_process/log_noisy_input_gp.hpp"
 #include "erl_gaussian_process/mapping.hpp"
 #include "erl_gaussian_process/vanilla_gp.hpp"
+#include "erl_gaussian_process/noisy_input_gp.hpp"
 
 using namespace erl::common;
 using namespace erl::gaussian_process;
@@ -20,7 +20,23 @@ BindVanillaGaussianProcess(py::module &m) {
         .def_property_readonly("is_trained", &VanillaGaussianProcess::IsTrained)
         .def_property_readonly("setting", &VanillaGaussianProcess::GetSetting)
         .def("reset", &VanillaGaussianProcess::Reset)
-        .def("train", &VanillaGaussianProcess::Train, py::arg("mat_x_train"), py::arg("vec_y"), py::arg("vec_sigma_y"))
+        .def(
+            "train",
+            [](VanillaGaussianProcess &self,
+               const Eigen::Ref<const Eigen::MatrixXd> &mat_x_train,
+               const Eigen::Ref<const Eigen::VectorXd> &vec_y,
+               const Eigen::Ref<const Eigen::VectorXd> &vec_var_y) {
+                long dim = mat_x_train.rows();
+                long n = mat_x_train.cols();
+                self.Reset(n, dim);
+                self.GetTrainInputSamplesBuffer().topLeftCorner(dim, n) = mat_x_train;
+                self.GetTrainOutputSamplesBuffer().head(n) = vec_y;
+                self.GetTrainOutputSamplesVarianceBuffer().head(n) = vec_var_y;
+                self.Train(n);
+            },
+            py::arg("mat_x_train"),
+            py::arg("vec_y"),
+            py::arg("vec_var_y"))
         .def(
             "test",
             [](const VanillaGaussianProcess &gp, const Eigen::Ref<const Eigen::MatrixXd> &mat_x_test) {
@@ -144,65 +160,48 @@ BindNoisyInputGaussianProcess(py::module &m) {
         .def(py::init<>())
         .def_readwrite("kernel", &T::Setting::kernel);
 
-    py_noisy_input_gp.def(py::init(py::overload_cast<>(&T::Create)))
-        .def(py::init(py::overload_cast<std::shared_ptr<T::Setting>>(&T::Create)), py::arg("setting").none(false))
+    py_noisy_input_gp.def(py::init<>([]() { return std::make_shared<T>(); }))
+        .def(py::init<>([](std::shared_ptr<T::Setting> setting) { return std::make_shared<T>(std::move(setting)); }), py::arg("setting").none(false))
         .def_property_readonly("is_trained", &T::IsTrained)
         .def_property_readonly("setting", &T::GetSetting)
         .def("reset", &T::Reset)
         .def(
             "train",
-            &T::Train,
-            py::arg("mat_x_train"),
-            py::arg("vec_grad_flag"),
-            py::arg("vec_y"),
-            py::arg("vec_sigma_x"),
-            py::arg("vec_sigma_y"),
-            py::arg("vec_sigma_grad"))
-        .def(
-            "test",
-            [](const T &gp, const Eigen::Ref<const Eigen::MatrixXd> &mat_x_test) {
-                Eigen::VectorXd vec_f_out, vec_var_out;
-                vec_f_out.resize(mat_x_test.cols());
-                vec_var_out.resize(mat_x_test.cols());
-                gp.Test(mat_x_test, vec_f_out, vec_var_out);
-                return py::make_tuple(vec_f_out, vec_var_out);
+            [](T &self,
+               const Eigen::Ref<const Eigen::MatrixXd> &mat_x_train,
+               const Eigen::Ref<const Eigen::VectorXb> &vec_grad_flag,
+               const Eigen::Ref<const Eigen::VectorXd> &vec_y,
+               const Eigen::Ref<const Eigen::VectorXd> &vec_var_x,
+               const Eigen::Ref<const Eigen::VectorXd> &vec_var_y,
+               const Eigen::Ref<const Eigen::VectorXd> &vec_var_grad) {
+                long num_train_samples = mat_x_train.cols();
+                long x_dim = mat_x_train.rows();
+                self.Reset(num_train_samples, x_dim);
+                self.GetTrainInputSamplesBuffer().topLeftCorner(x_dim, num_train_samples) = mat_x_train;
+                self.GetTrainGradientFlagsBuffer().head(num_train_samples) = vec_grad_flag;
+                self.GetTrainOutputValueSamplesVarianceBuffer().head(vec_y.size()) = vec_y;
+                self.GetTrainInputSamplesVarianceBuffer().head(num_train_samples) = vec_var_x;
+                self.GetTrainOutputValueSamplesVarianceBuffer().head(num_train_samples) = vec_var_y;
+                self.GetTrainOutputGradientSamplesVarianceBuffer().head(num_train_samples) = vec_var_grad;
+                self.Train(num_train_samples, vec_grad_flag.head(num_train_samples).cast<long>().sum());
             },
-            py::arg("mat_x_test"));
-}
-
-void
-BindLogNoisyInputGaussianProcess(py::module &m) {
-
-    using ParentT = NoisyInputGaussianProcess;
-    using T = LogNoisyInputGaussianProcess;
-
-    auto py_log_noisy_input_gp = py::class_<T, ParentT, std::shared_ptr<T>>(m, ERL_AS_STRING(LogNoisyInputGaussianProcess));
-
-    py::class_<T::Setting, ParentT::Setting, std::shared_ptr<T::Setting>>(py_log_noisy_input_gp, "Setting")
-        .def(py::init<>())
-        .def_readwrite("log_lambda", &T::Setting::log_lambda);
-
-    py_log_noisy_input_gp.def(py::init(py::overload_cast<>(&T::Create)))
-        .def(py::init(py::overload_cast<std::shared_ptr<T::Setting>>(&T::Create)), py::arg("setting").none(false))
-        .def_property_readonly("setting", &T::GetSetting)
-        .def("reset", &T::Reset)
-        .def(
-            "train",
-            &T::Train,
             py::arg("mat_x_train"),
             py::arg("vec_grad_flag"),
             py::arg("vec_y"),
-            py::arg("vec_sigma_x"),
-            py::arg("vec_sigma_y"),
-            py::arg("vec_sigma_grad"))
+            py::arg("vec_var_x"),
+            py::arg("vec_var_y"),
+            py::arg("vec_var_grad"))
         .def(
             "test",
-            [](const T &gp, const Eigen::Ref<const Eigen::MatrixXd> &mat_x_test) {
-                Eigen::VectorXd vec_f_out, vec_var_out;
-                vec_f_out.resize(mat_x_test.cols());
-                vec_var_out.resize(mat_x_test.cols());
-                gp.Test(mat_x_test, vec_f_out, vec_var_out);
-                return py::make_tuple(vec_f_out, vec_var_out);
+            [](const T &self, const Eigen::Ref<const Eigen::MatrixXd> &mat_x_test) {
+                Eigen::MatrixXd mat_f_out, mat_var_out, mat_cov_out;
+                long dim = mat_x_test.rows();
+                long n = mat_x_test.cols();
+                mat_f_out.resize(dim + 1, n);
+                mat_var_out.resize(dim + 1, n);
+                mat_cov_out.resize(dim * (dim + 1) / 2, n);
+                self.Test(mat_x_test, mat_f_out, mat_var_out, mat_cov_out);
+                return py::make_tuple(mat_f_out, mat_var_out, mat_cov_out);
             },
             py::arg("mat_x_test"));
 }
@@ -214,5 +213,4 @@ PYBIND11_MODULE(PYBIND_MODULE_NAME, m) {
     BindMapping(m);
     BindLidarGaussianProcess1D(m);
     BindNoisyInputGaussianProcess(m);
-    BindLogNoisyInputGaussianProcess(m);
 }
