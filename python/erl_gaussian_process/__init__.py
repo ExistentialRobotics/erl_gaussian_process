@@ -9,5 +9,4 @@ __all__ = [
     "Mapping",
     "LidarGaussianProcess1D",
     "NoisyInputGaussianProcess",
-    "LogSdfGaussianProcess",
 ]
