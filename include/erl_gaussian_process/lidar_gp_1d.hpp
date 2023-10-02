@@ -146,6 +146,11 @@ namespace erl::gaussian_process {
             return m_partitions_;
         }
 
+        [[nodiscard]] inline TrainBuffer &
+        GetTrainBuffer() {
+            return m_train_buffer_;
+        }
+
         [[nodiscard]] inline Eigen::Vector2d
         GlobalToLocalSo2(const Eigen::Ref<const Eigen::Vector2d> &vec_global) const {
             return m_train_buffer_.GlobalToLocalSo2(vec_global);
