@@ -64,6 +64,7 @@ namespace erl::gaussian_process {
 
         inline virtual void
         Reset(long max_num_samples, long x_dim) {
+            ERL_ASSERTM(max_num_samples > 0, "max_num_samples should be > 0.");
             ERL_ASSERTM(x_dim > 0, "x_dim should be > 0.");
             if (m_setting_->max_num_samples > 0 && m_setting_->kernel->x_dim > 0) {  // memory already allocated
                 ERL_ASSERTM(m_setting_->max_num_samples >= max_num_samples, "max_num_samples should be <= %ld.", m_setting_->max_num_samples);
@@ -146,6 +147,7 @@ namespace erl::gaussian_process {
     protected:
         inline bool
         AllocateMemory(long max_num_samples, long x_dim) {
+            if (max_num_samples <= 0 || x_dim <= 0) { return false; }  // invalid input
             if (m_setting_->max_num_samples > 0 && max_num_samples > m_setting_->max_num_samples) { return false; }
             if (m_setting_->kernel->x_dim > 0 && x_dim != m_setting_->kernel->x_dim) { return false; }
             std::pair<long, long> size = covariance::Covariance::GetMinimumKtrainSize(max_num_samples, max_num_samples, x_dim);

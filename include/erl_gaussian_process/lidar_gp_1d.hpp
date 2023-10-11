@@ -171,11 +171,6 @@ namespace erl::gaussian_process {
             return m_train_buffer_.LocalToGlobalSe2(vec_local);
         }
 
-        [[nodiscard]] const TrainBuffer &
-        GetTrainBuffer() const {
-            return m_train_buffer_;
-        }
-
         void
         Reset();
 
