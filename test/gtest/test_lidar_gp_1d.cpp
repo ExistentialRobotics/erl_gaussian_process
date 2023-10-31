@@ -132,7 +132,7 @@ TEST(ERL_GAUSSIAN_PROCESS, LidarGaussianProcess1D) {
     setting->boundary_margin = DEFAULT_OBSGP_MARGIN;
     setting->init_variance = 1.e6;
     setting->sensor_range_var = DEFAULT_OBSGP_NOISE_PARAM;
-    setting->max_valid_distance_var = GPISMAP_OBS_VAR_THRE;
+    setting->max_valid_range_var = GPISMAP_OBS_VAR_THRE;
     setting->gp->kernel->alpha = 1.;
     setting->gp->kernel->scale = DEFAULT_OBSGP_SCALE_PARAM;
     setting->train_buffer->mapping->type = Mapping::Type::kIdentity;

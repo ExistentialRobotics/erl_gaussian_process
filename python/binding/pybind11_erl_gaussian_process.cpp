@@ -113,7 +113,7 @@ BindLidarGaussianProcess1D(py::module &m) {
         .def_readwrite("boundary_margin", &T::Setting::boundary_margin)
         .def_readwrite("init_variance", &T::Setting::init_variance)
         .def_readwrite("sensor_range_var", &T::Setting::sensor_range_var)
-        .def_readwrite("max_valid_distance_var", &T::Setting::max_valid_distance_var)
+        .def_readwrite("max_valid_range_var", &T::Setting::max_valid_range_var)
         .def_readwrite("occ_test_temperature", &T::Setting::occ_test_temperature)
         .def_readwrite("train_buffer", &T::Setting::train_buffer)
         .def_readwrite("gp", &T::Setting::gp);

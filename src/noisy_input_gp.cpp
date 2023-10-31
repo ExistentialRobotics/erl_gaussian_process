@@ -3,7 +3,7 @@
 namespace erl::gaussian_process {
 
     void
-    NoisyInputGaussianProcess::Train(long num_train_samples, long num_train_samples_with_grad) {
+    NoisyInputGaussianProcess::Train(long num_train_samples) {
 
         if (m_trained_) {
             ERL_WARN("The model has been trained. Please reset the model before training.");
@@ -11,19 +11,12 @@ namespace erl::gaussian_process {
         }
 
         m_num_train_samples_ = num_train_samples;
-        m_num_train_samples_with_grad_ = num_train_samples_with_grad;
         if (m_num_train_samples_ <= 0) {
             ERL_WARN("num_train_samples = %ld, it should be > 0.", m_num_train_samples_);
             return;
         }
-        if (m_num_train_samples_with_grad_ < 0) {
-            ERL_WARN("num_train_samples_with_grad = %ld, it should be >= 0.", m_num_train_samples_with_grad_);
-            return;
-        }
-        if (m_num_train_samples_with_grad_ > m_num_train_samples_) {
-            ERL_WARN("num_train_samples_with_grad = %ld, it should be <= num_train_samples = %ld.", m_num_train_samples_with_grad_, m_num_train_samples_);
-            return;
-        }
+
+        InitializeVectorAlpha();  // initialize m_vec_alpha_
 
         // Compute kernel matrix
         std::pair<long, long> output_size = m_kernel_->ComputeKtrainWithGradient(

@@ -199,16 +199,16 @@ namespace erl::gaussian_process {
     LidarGaussianProcess1D::ComputeOcc(
         const Eigen::Ref<const Eigen::Scalard> &angle,
         double r,
-        Eigen::Ref<Eigen::Scalard> f,
-        Eigen::Ref<Eigen::Scalard> var,
+        Eigen::Ref<Eigen::Scalard> range_pred,
+        Eigen::Ref<Eigen::Scalard> range_pred_var,
         double &occ) const {
 
-        Test(angle, f, var, false);
-        if (var[0] > m_setting_->max_valid_distance_var) { return false; }  // fail to estimate the mapped r f
+        Test(angle, range_pred, range_pred_var, false);
+        if (range_pred_var[0] > m_setting_->max_valid_range_var) { return false; }  // fail to estimate the mapped r f
         // when the r is larger, 1/r results in smaller different, we need a larger m_scale_.
         double a = r * m_setting_->occ_test_temperature;
-        occ = 2. / (1. + std::exp(a * (f[0] - m_train_buffer_.mapping->m_map_(r)))) - 1.;
-        f[0] = m_train_buffer_.mapping->m_inv_(f[0]);
+        occ = 2. / (1. + std::exp(a * (range_pred[0] - m_train_buffer_.mapping->m_map_(r)))) - 1.;
+        range_pred[0] = m_train_buffer_.mapping->m_inv_(range_pred[0]);
         return true;
     }
 

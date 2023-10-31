@@ -20,7 +20,7 @@ namespace erl::gaussian_process {
                 setting->scale = 1.2;
                 return setting;
             }();
-            long max_num_samples = 256;
+            long max_num_samples = -1;  // maximum number of training samples, -1 means no limit
         };
 
     protected:
@@ -32,6 +32,8 @@ namespace erl::gaussian_process {
         std::shared_ptr<Setting> m_setting_ = nullptr;                // setting
         std::shared_ptr<covariance::Covariance> m_kernel_ = nullptr;  // kernel
         Eigen::MatrixXd m_mat_x_train_ = {};                          // x1, ..., xn
+        Eigen::VectorXd m_vec_y_train_ = {};                          // h(x1), ..., h(xn)
+        Eigen::MatrixXd m_mat_grad_train_ = {};                       // dh(x_j)/dx_ij for index (i, j)
         Eigen::MatrixXd m_mat_k_train_ = {};                          // Ktrain, avoid reallocation
         Eigen::MatrixXd m_mat_l_ = {};                                // lower triangular matrix of the Cholesky decomposition of Ktrain
         Eigen::VectorXb m_vec_grad_flag_ = {};                        // true if the corresponding training sample has gradient
@@ -97,14 +99,19 @@ namespace erl::gaussian_process {
             return m_mat_x_train_;
         }
 
+        [[nodiscard]] inline Eigen::VectorXd &
+        GetTrainOutputSamplesBuffer() {
+            return m_vec_y_train_;
+        }
+
+        [[nodiscard]] inline Eigen::MatrixXd &
+        GetTrainOutputGradientSamplesBuffer() {
+            return m_mat_grad_train_;
+        }
+
         [[nodiscard]] inline Eigen::VectorXb &
         GetTrainGradientFlagsBuffer() {
             return m_vec_grad_flag_;
-        }
-
-        [[nodiscard]] inline Eigen::VectorXd &
-        GetTrainOutputSamplesBuffer() {
-            return m_vec_alpha_;
         }
 
         [[nodiscard]] inline Eigen::VectorXd &
@@ -127,13 +134,18 @@ namespace erl::gaussian_process {
             return m_mat_k_train_;
         }
 
+        [[nodiscard]] inline Eigen::VectorXd
+        GetAlpha() {
+            return m_vec_alpha_;
+        }
+
         [[nodiscard]] inline Eigen::MatrixXd
         GetCholeskyDecomposition() {
             return m_mat_l_;
         }
 
         virtual void
-        Train(long num_train_samples, long num_train_samples_with_grad);
+        Train(long num_train_samples);
 
         virtual void
         Test(
@@ -153,6 +165,8 @@ namespace erl::gaussian_process {
             std::pair<long, long> size = covariance::Covariance::GetMinimumKtrainSize(max_num_samples, max_num_samples, x_dim);
             if (m_mat_k_train_.rows() < size.first || m_mat_k_train_.cols() < size.second) { m_mat_k_train_.resize(size.first, size.second); }
             if (m_mat_x_train_.rows() < x_dim || m_mat_x_train_.cols() < max_num_samples) { m_mat_x_train_.resize(x_dim, max_num_samples); }
+            if (m_vec_y_train_.size() < max_num_samples) { m_vec_y_train_.resize(max_num_samples); }
+            if (m_mat_grad_train_.rows() < x_dim || m_mat_grad_train_.cols() < max_num_samples) { m_mat_grad_train_.resize(x_dim, max_num_samples); }
             if (m_mat_l_.rows() < size.first || m_mat_l_.cols() < size.second) { m_mat_l_.resize(size.first, size.second); }
             if (m_vec_alpha_.size() < max_num_samples * (x_dim + 1)) { m_vec_alpha_.resize(max_num_samples * (x_dim + 1)); }
             if (m_vec_grad_flag_.size() < max_num_samples) { m_vec_grad_flag_.resize(max_num_samples); }
@@ -160,6 +174,24 @@ namespace erl::gaussian_process {
             if (m_vec_var_h_.size() < max_num_samples) { m_vec_var_h_.resize(max_num_samples); }
             if (m_vec_var_grad_.size() < max_num_samples) { m_vec_var_grad_.resize(max_num_samples); }
             return true;
+        }
+
+        inline void
+        InitializeVectorAlpha() {
+            ERL_DEBUG_ASSERT(
+                m_vec_alpha_.size() >= m_num_train_samples_ * (m_x_dim_ + 1),
+                "m_vec_alpha_ should have size >= %ld.",
+                m_num_train_samples_ * (m_x_dim_ + 1));
+
+            m_num_train_samples_with_grad_ = 0;
+            for (long i = 0; i < m_num_train_samples_; ++i) {
+                m_vec_alpha_[i] = m_vec_y_train_[i];  // h(x_i)
+                if (m_vec_grad_flag_[i]) { ++m_num_train_samples_with_grad_; }
+            }
+            for (long i = 0, j = m_num_train_samples_; i < m_num_train_samples_; ++i) {
+                if (!m_vec_grad_flag_[i]) { continue; }
+                for (long k = 0, l = j++; k < m_x_dim_; ++k, l += m_num_train_samples_with_grad_) { m_vec_alpha_[l] = m_mat_grad_train_(k, i); }
+            }
         }
     };
 }  // namespace erl::gaussian_process

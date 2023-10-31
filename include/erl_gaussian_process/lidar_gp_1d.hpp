@@ -105,7 +105,7 @@ namespace erl::gaussian_process {
             double init_variance = 1e6;  // large value to initialize variance result in case of computation failure.
             double sensor_range_var = 0.01;
             // if the distance variance is greater than this threshold, this prediction is invalid and should be discarded.
-            double max_valid_distance_var = 0.1;
+            double max_valid_range_var = 0.1;
             double occ_test_temperature = 30;  // OCC Test is a tanh function, this controls the slope around 0.
             std::shared_ptr<TrainBuffer::Setting> train_buffer = std::make_shared<TrainBuffer::Setting>();
             std::shared_ptr<VanillaGaussianProcess::Setting> gp = std::make_shared<VanillaGaussianProcess::Setting>();  // parameters of local GP regression
@@ -187,8 +187,8 @@ namespace erl::gaussian_process {
         ComputeOcc(
             const Eigen::Ref<const Eigen::Scalard> &angle,
             double r,
-            Eigen::Ref<Eigen::Scalard> f,
-            Eigen::Ref<Eigen::Scalard> var,
+            Eigen::Ref<Eigen::Scalard> range_pred,
+            Eigen::Ref<Eigen::Scalard> range_pred_var,
             double &occ) const;  // return false if failed to compute occ
 
     private:
@@ -245,7 +245,7 @@ namespace YAML {
             node["boundary_margin"] = setting.boundary_margin;
             node["init_variance"] = setting.init_variance;
             node["sensor_range_var"] = setting.sensor_range_var;
-            node["max_valid_distance_var"] = setting.max_valid_distance_var;
+            node["max_valid_range_var"] = setting.max_valid_range_var;
             node["occ_test_temperature"] = setting.occ_test_temperature;
             node["train_buffer"] = *setting.train_buffer;
             node["gp"] = *setting.gp;
@@ -260,7 +260,7 @@ namespace YAML {
             setting.boundary_margin = node["boundary_margin"].as<double>();
             setting.init_variance = node["init_variance"].as<double>();
             setting.sensor_range_var = node["sensor_range_var"].as<double>();
-            setting.max_valid_distance_var = node["max_valid_distance_var"].as<double>();
+            setting.max_valid_range_var = node["max_valid_range_var"].as<double>();
             setting.occ_test_temperature = node["occ_test_temperature"].as<double>();
             *setting.train_buffer = node["train_buffer"].as<erl::gaussian_process::LidarGaussianProcess1D::TrainBuffer::Setting>();
             *setting.gp = node["gp"].as<erl::gaussian_process::VanillaGaussianProcess::Setting>();
@@ -276,7 +276,7 @@ namespace YAML {
         out << Key << "boundary_margin" << Value << setting.boundary_margin;
         out << Key << "init_variance" << Value << setting.init_variance;
         out << Key << "sensor_range_var" << Value << setting.sensor_range_var;
-        out << Key << "max_valid_distance_var" << Value << setting.max_valid_distance_var;
+        out << Key << "max_valid_range_var" << Value << setting.max_valid_range_var;
         out << Key << "occ_test_temperature" << Value << setting.occ_test_temperature;
         out << Key << "train_buffer" << Value << *setting.train_buffer;
         out << Key << "gp" << Value << *setting.gp;

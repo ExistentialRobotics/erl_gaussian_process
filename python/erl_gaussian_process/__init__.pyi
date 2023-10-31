@@ -91,7 +91,7 @@ class LidarGaussianProcess1D:
         boundary_margin: float
         init_variance: float
         sensor_range_var: float
-        max_valid_distance_var: float
+        max_valid_range_var: float
         occ_test_temperature: float
         train_buffer: LidarGaussianProcess1D.TrainBuffer.Setting
         gp: VanillaGaussianProcess.Setting
