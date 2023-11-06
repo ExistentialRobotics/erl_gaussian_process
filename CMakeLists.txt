@@ -13,7 +13,7 @@ erl_project_setup(
         ${PROJECT_NAME}
         ERL_PACKAGES erl_common erl_covariance
 )
-erl_setup_ros(CATKIN_COMPONENTS ${${PROJECT_NAME}_CATKIN_COMPONENTS})
+erl_setup_ros()
 erl_catkin_package(
         INCLUDE_DIRS include
         LIBRARIES ${PROJECT_NAME} py${PROJECT_NAME}

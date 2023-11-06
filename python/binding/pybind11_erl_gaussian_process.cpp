@@ -183,7 +183,7 @@ BindNoisyInputGaussianProcess(py::module &m) {
                 self.GetTrainInputSamplesVarianceBuffer().head(num_train_samples) = vec_var_x;
                 self.GetTrainOutputValueSamplesVarianceBuffer().head(num_train_samples) = vec_var_y;
                 self.GetTrainOutputGradientSamplesVarianceBuffer().head(num_train_samples) = vec_var_grad;
-                self.Train(num_train_samples, vec_grad_flag.head(num_train_samples).cast<long>().sum());
+                self.Train(num_train_samples);
             },
             py::arg("mat_x_train"),
             py::arg("vec_grad_flag"),
