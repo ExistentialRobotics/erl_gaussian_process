@@ -223,18 +223,6 @@ namespace YAML {
         }
     };
 
-    inline Emitter &
-    operator<<(Emitter &out, const erl::gaussian_process::LidarGaussianProcess1D::TrainBuffer::Setting &setting) {
-        out << BeginMap;
-        out << Key << "valid_range_min" << Value << setting.valid_range_min;
-        out << Key << "valid_range_max" << Value << setting.valid_range_max;
-        out << Key << "valid_angle_min" << Value << setting.valid_angle_min;
-        out << Key << "valid_angle_max" << Value << setting.valid_angle_max;
-        out << Key << "mapping" << Value << *setting.mapping;
-        out << EndMap;
-        return out;
-    }
-
     template<>
     struct convert<erl::gaussian_process::LidarGaussianProcess1D::Setting> {
         static Node
@@ -268,19 +256,19 @@ namespace YAML {
         }
     };
 
-    inline Emitter &
-    operator<<(Emitter &out, const erl::gaussian_process::LidarGaussianProcess1D::Setting &setting) {
-        out << BeginMap;
-        out << Key << "group_size" << Value << setting.group_size;
-        out << Key << "overlap_size" << Value << setting.overlap_size;
-        out << Key << "boundary_margin" << Value << setting.boundary_margin;
-        out << Key << "init_variance" << Value << setting.init_variance;
-        out << Key << "sensor_range_var" << Value << setting.sensor_range_var;
-        out << Key << "max_valid_range_var" << Value << setting.max_valid_range_var;
-        out << Key << "occ_test_temperature" << Value << setting.occ_test_temperature;
-        out << Key << "train_buffer" << Value << *setting.train_buffer;
-        out << Key << "gp" << Value << *setting.gp;
-        out << EndMap;
-        return out;
-    }
+//    inline Emitter &
+//    operator<<(Emitter &out, const erl::gaussian_process::LidarGaussianProcess1D::Setting &setting) {
+//        out << BeginMap;
+//        out << Key << "group_size" << Value << setting.group_size;
+//        out << Key << "overlap_size" << Value << setting.overlap_size;
+//        out << Key << "boundary_margin" << Value << setting.boundary_margin;
+//        out << Key << "init_variance" << Value << setting.init_variance;
+//        out << Key << "sensor_range_var" << Value << setting.sensor_range_var;
+//        out << Key << "max_valid_range_var" << Value << setting.max_valid_range_var;
+//        out << Key << "occ_test_temperature" << Value << setting.occ_test_temperature;
+//        out << Key << "train_buffer" << Value << *setting.train_buffer;
+//        out << Key << "gp" << Value << *setting.gp;
+//        out << EndMap;
+//        return out;
+//    }
 }  // namespace YAML

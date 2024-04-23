@@ -215,13 +215,4 @@ namespace YAML {
             return true;
         }
     };
-
-    inline Emitter &
-    operator<<(Emitter &out, const erl::gaussian_process::NoisyInputGaussianProcess::Setting &setting) {
-        out << BeginMap;
-        out << Key << "kernel" << Value << setting.kernel;
-        out << Key << "max_num_samples" << Value << setting.max_num_samples;
-        out << EndMap;
-        return out;
-    }
 }  // namespace YAML
