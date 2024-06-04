@@ -1,24 +1,22 @@
 #pragma once
 
-#include <memory>
-
-#include "erl_common/eigen.hpp"
-#include "erl_common/string_utils.hpp"
-#include "erl_common/yaml.hpp"
 #include "mapping.hpp"
 #include "vanilla_gp.hpp"
 
-namespace erl::gaussian_process {
+#include "erl_common/eigen.hpp"
+#include "erl_common/yaml.hpp"
 
-    using namespace common;
+#include <memory>
+
+namespace erl::gaussian_process {
 
     class LidarGaussianProcess1D {
 
     public:
         struct TrainBuffer {
-            struct Setting : public Yamlable<Setting> {
+            struct Setting : public common::Yamlable<Setting> {
                 double valid_range_min = 0.2;
-                double valid_range_max = 30;
+                double valid_range_max = 30.0;
                 double valid_angle_min = -135. / 180. * M_PI;
                 double valid_angle_max = 135. / 180. * M_PI;
                 std::shared_ptr<Mapping::Setting> mapping = []() {
@@ -53,7 +51,7 @@ namespace erl::gaussian_process {
             explicit TrainBuffer(std::shared_ptr<Setting> setting)
                 : setting(std::move(setting)) {}
 
-            [[nodiscard]] inline ssize_t
+            [[nodiscard]] ssize_t
             Size() const {
                 return vec_angles.size();
             }
@@ -71,24 +69,24 @@ namespace erl::gaussian_process {
                 const Eigen::Ref<const Eigen::VectorXd> &vec_new_distances,
                 const Eigen::Ref<const Eigen::Matrix23d> &mat_new_pose);
 
-            [[nodiscard]] inline Eigen::Vector2d
+            [[nodiscard]] Eigen::Vector2d
             GlobalToLocalSo2(const Eigen::Ref<const Eigen::Vector2d> &vec_global) const {
                 return {rotation(0, 0) * vec_global.x() + rotation(1, 0) * vec_global.y(), rotation(0, 1) * vec_global.x() + rotation(1, 1) * vec_global.y()};
             }
 
-            [[nodiscard]] inline Eigen::Vector2d
+            [[nodiscard]] Eigen::Vector2d
             LocalToGlobalSo2(const Eigen::Ref<const Eigen::Vector2d> &vec_local) const {
                 return {rotation(0, 0) * vec_local.x() + rotation(0, 1) * vec_local.y(), rotation(1, 0) * vec_local.x() + rotation(1, 1) * vec_local.y()};
             }
 
-            [[nodiscard]] inline Eigen::Vector2d
+            [[nodiscard]] Eigen::Vector2d
             GlobalToLocalSe2(const Eigen::Ref<const Eigen::Vector2d> &vec_global) const {
                 return {
                     rotation(0, 0) * (vec_global.x() - position.x()) + rotation(1, 0) * (vec_global.y() - position.y()),
                     rotation(0, 1) * (vec_global.x() - position.x()) + rotation(1, 1) * (vec_global.y() - position.y())};
             }
 
-            [[nodiscard]] inline Eigen::Vector2d
+            [[nodiscard]] Eigen::Vector2d
             LocalToGlobalSe2(const Eigen::Ref<const Eigen::Vector2d> &vec_local) const {
                 return {
                     rotation(0, 0) * vec_local.x() + rotation(0, 1) * vec_local.y() + position.x(),
@@ -96,7 +94,7 @@ namespace erl::gaussian_process {
             }
         };
 
-        struct Setting : public Yamlable<Setting> {
+        struct Setting : public common::Yamlable<Setting> {
 
             int group_size = 26;   // number of points in each group, including the overlap ones.
             int overlap_size = 6;  // number of points in the overlap region.
@@ -126,47 +124,47 @@ namespace erl::gaussian_process {
         static std::shared_ptr<LidarGaussianProcess1D>
         Create(std::shared_ptr<Setting> setting);
 
-        [[nodiscard]] inline bool
+        [[nodiscard]] bool
         IsTrained() const {
             return m_trained_;
         }
 
-        [[nodiscard]] inline std::shared_ptr<Setting>
+        [[nodiscard]] std::shared_ptr<Setting>
         GetSetting() const {
             return m_setting_;
         }
 
-        [[nodiscard]] inline std::vector<std::shared_ptr<VanillaGaussianProcess>>
+        [[nodiscard]] std::vector<std::shared_ptr<VanillaGaussianProcess>>
         GetGps() const {
             return m_gps_;
         }
 
-        [[nodiscard]] inline std::vector<double>
+        [[nodiscard]] std::vector<double>
         GetPartitions() const {
             return m_partitions_;
         }
 
-        [[nodiscard]] inline TrainBuffer &
+        [[nodiscard]] TrainBuffer &
         GetTrainBuffer() {
             return m_train_buffer_;
         }
 
-        [[nodiscard]] inline Eigen::Vector2d
+        [[nodiscard]] Eigen::Vector2d
         GlobalToLocalSo2(const Eigen::Ref<const Eigen::Vector2d> &vec_global) const {
             return m_train_buffer_.GlobalToLocalSo2(vec_global);
         }
 
-        [[nodiscard]] inline Eigen::Vector2d
+        [[nodiscard]] Eigen::Vector2d
         LocalToGlobalSo2(const Eigen::Ref<const Eigen::Vector2d> &vec_local) const {
             return m_train_buffer_.LocalToGlobalSo2(vec_local);
         }
 
-        [[nodiscard]] inline Eigen::Vector2d
+        [[nodiscard]] Eigen::Vector2d
         GlobalToLocalSe2(const Eigen::Ref<const Eigen::Vector2d> &vec_global) const {
             return m_train_buffer_.GlobalToLocalSe2(vec_global);
         }
 
-        [[nodiscard]] inline Eigen::Vector2d
+        [[nodiscard]] Eigen::Vector2d
         LocalToGlobalSe2(const Eigen::Ref<const Eigen::Vector2d> &vec_local) const {
             return m_train_buffer_.LocalToGlobalSe2(vec_local);
         }
@@ -196,79 +194,60 @@ namespace erl::gaussian_process {
     };
 }  // namespace erl::gaussian_process
 
-namespace YAML {
+template<>
+struct YAML::convert<erl::gaussian_process::LidarGaussianProcess1D::TrainBuffer::Setting> {
+    static Node
+    encode(const erl::gaussian_process::LidarGaussianProcess1D::TrainBuffer::Setting &setting) {
+        Node node;
+        node["valid_range_min"] = setting.valid_range_min;
+        node["valid_range_max"] = setting.valid_range_max;
+        node["valid_angle_min"] = setting.valid_angle_min;
+        node["valid_angle_max"] = setting.valid_angle_max;
+        node["mapping"] = *setting.mapping;
+        return node;
+    }
 
-    template<>
-    struct convert<erl::gaussian_process::LidarGaussianProcess1D::TrainBuffer::Setting> {
-        inline static Node
-        encode(const erl::gaussian_process::LidarGaussianProcess1D::TrainBuffer::Setting &setting) {
-            Node node;
-            node["valid_range_min"] = setting.valid_range_min;
-            node["valid_range_max"] = setting.valid_range_max;
-            node["valid_angle_min"] = setting.valid_angle_min;
-            node["valid_angle_max"] = setting.valid_angle_max;
-            node["mapping"] = *setting.mapping;
-            return node;
-        }
+    static bool
+    decode(const Node &node, erl::gaussian_process::LidarGaussianProcess1D::TrainBuffer::Setting &setting) {
+        if (!node.IsMap()) { return false; }
+        setting.valid_range_min = node["valid_range_min"].as<double>();
+        setting.valid_range_max = node["valid_range_max"].as<double>();
+        setting.valid_angle_min = node["valid_angle_min"].as<double>();
+        setting.valid_angle_max = node["valid_angle_max"].as<double>();
+        *setting.mapping = node["mapping"].as<erl::gaussian_process::Mapping::Setting>();
+        return true;
+    }
+};
 
-        inline static bool
-        decode(const Node &node, erl::gaussian_process::LidarGaussianProcess1D::TrainBuffer::Setting &setting) {
-            if (!node.IsMap()) { return false; }
-            setting.valid_range_min = node["valid_range_min"].as<double>();
-            setting.valid_range_max = node["valid_range_max"].as<double>();
-            setting.valid_angle_min = node["valid_angle_min"].as<double>();
-            setting.valid_angle_max = node["valid_angle_max"].as<double>();
-            *setting.mapping = node["mapping"].as<erl::gaussian_process::Mapping::Setting>();
-            return true;
-        }
-    };
+template<>
+struct YAML::convert<erl::gaussian_process::LidarGaussianProcess1D::Setting> {
+    static Node
+    encode(const erl::gaussian_process::LidarGaussianProcess1D::Setting &setting) {
+        Node node;
+        node["group_size"] = setting.group_size;
+        node["overlap_size"] = setting.overlap_size;
+        node["boundary_margin"] = setting.boundary_margin;
+        node["init_variance"] = setting.init_variance;
+        node["sensor_range_var"] = setting.sensor_range_var;
+        node["max_valid_range_var"] = setting.max_valid_range_var;
+        node["occ_test_temperature"] = setting.occ_test_temperature;
+        node["train_buffer"] = *setting.train_buffer;
+        node["gp"] = *setting.gp;
+        return node;
+    }
 
-    template<>
-    struct convert<erl::gaussian_process::LidarGaussianProcess1D::Setting> {
-        static Node
-        encode(const erl::gaussian_process::LidarGaussianProcess1D::Setting &setting) {
-            Node node;
-            node["group_size"] = setting.group_size;
-            node["overlap_size"] = setting.overlap_size;
-            node["boundary_margin"] = setting.boundary_margin;
-            node["init_variance"] = setting.init_variance;
-            node["sensor_range_var"] = setting.sensor_range_var;
-            node["max_valid_range_var"] = setting.max_valid_range_var;
-            node["occ_test_temperature"] = setting.occ_test_temperature;
-            node["train_buffer"] = *setting.train_buffer;
-            node["gp"] = *setting.gp;
-            return node;
-        }
-
-        static bool
-        decode(const Node &node, erl::gaussian_process::LidarGaussianProcess1D::Setting &setting) {
-            if (!node.IsMap()) { return false; }
-            setting.group_size = node["group_size"].as<int>();
-            setting.overlap_size = node["overlap_size"].as<int>();
-            setting.boundary_margin = node["boundary_margin"].as<double>();
-            setting.init_variance = node["init_variance"].as<double>();
-            setting.sensor_range_var = node["sensor_range_var"].as<double>();
-            setting.max_valid_range_var = node["max_valid_range_var"].as<double>();
-            setting.occ_test_temperature = node["occ_test_temperature"].as<double>();
-            *setting.train_buffer = node["train_buffer"].as<erl::gaussian_process::LidarGaussianProcess1D::TrainBuffer::Setting>();
-            *setting.gp = node["gp"].as<erl::gaussian_process::VanillaGaussianProcess::Setting>();
-            return true;
-        }
-    };
-
-//    inline Emitter &
-//    operator<<(Emitter &out, const erl::gaussian_process::LidarGaussianProcess1D::Setting &setting) {
-//        out << BeginMap;
-//        out << Key << "group_size" << Value << setting.group_size;
-//        out << Key << "overlap_size" << Value << setting.overlap_size;
-//        out << Key << "boundary_margin" << Value << setting.boundary_margin;
-//        out << Key << "init_variance" << Value << setting.init_variance;
-//        out << Key << "sensor_range_var" << Value << setting.sensor_range_var;
-//        out << Key << "max_valid_range_var" << Value << setting.max_valid_range_var;
-//        out << Key << "occ_test_temperature" << Value << setting.occ_test_temperature;
-//        out << Key << "train_buffer" << Value << *setting.train_buffer;
-//        out << Key << "gp" << Value << *setting.gp;
-//        out << EndMap;
-//        return out;
-//    }
-}  // namespace YAML
+    static bool
+    decode(const Node &node, erl::gaussian_process::LidarGaussianProcess1D::Setting &setting) {
+        if (!node.IsMap()) { return false; }
+        setting.group_size = node["group_size"].as<int>();
+        setting.overlap_size = node["overlap_size"].as<int>();
+        setting.boundary_margin = node["boundary_margin"].as<double>();
+        setting.init_variance = node["init_variance"].as<double>();
+        setting.sensor_range_var = node["sensor_range_var"].as<double>();
+        setting.max_valid_range_var = node["max_valid_range_var"].as<double>();
+        setting.occ_test_temperature = node["occ_test_temperature"].as<double>();
+        *setting.train_buffer = node["train_buffer"].as<erl::gaussian_process::LidarGaussianProcess1D::TrainBuffer::Setting>();
+        *setting.gp = node["gp"].as<erl::gaussian_process::VanillaGaussianProcess::Setting>();
+        return true;
+    }
+};

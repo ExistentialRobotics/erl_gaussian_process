@@ -1,10 +1,9 @@
 #pragma once
 
+#include "erl_common/yaml.hpp"
+
 #include <functional>
 #include <memory>
-
-#include "erl_common/string_utils.hpp"
-#include "erl_common/yaml.hpp"
 
 namespace erl::gaussian_process {
 
@@ -18,21 +17,21 @@ namespace erl::gaussian_process {
             double scale = 1.0;
         };
 
-        static inline const char *
+        static const char *
         GetTypeName(const Type &type) {
             static const char *names[] = {"kIdentity", "kInverse", "kInverseSqrt", "kExp", "kLog", "kTanh", "kSigmoid", "kUnknown"};
             return names[static_cast<int>(type)];
         }
 
-        static inline Type
+        static Type
         GetTypeFromName(const std::string &type_name) {
-            if (type_name == ERL_AS_STRING(kIdentity)) { return Type::kIdentity; }
-            if (type_name == ERL_AS_STRING(kInverse)) { return Type::kInverse; }
-            if (type_name == ERL_AS_STRING(kInverseSqrt)) { return Type::kInverseSqrt; }
-            if (type_name == ERL_AS_STRING(kExp)) { return Type::kExp; }
-            if (type_name == ERL_AS_STRING(kLog)) { return Type::kLog; }
-            if (type_name == ERL_AS_STRING(kTanh)) { return Type::kTanh; }
-            if (type_name == ERL_AS_STRING(kSigmoid)) { return Type::kSigmoid; }
+            if (type_name == "kIdentity") { return Type::kIdentity; }
+            if (type_name == "kInverse") { return Type::kInverse; }
+            if (type_name == "kInverseSqrt") { return Type::kInverseSqrt; }
+            if (type_name == "kExp") { return Type::kExp; }
+            if (type_name == "kLog") { return Type::kLog; }
+            if (type_name == "kTanh") { return Type::kTanh; }
+            if (type_name == "kSigmoid") { return Type::kSigmoid; }
             return Type::kUnknown;
         }
 
@@ -40,8 +39,8 @@ namespace erl::gaussian_process {
         std::shared_ptr<Setting> m_setting_;
 
     public:
-        std::function<double(double)> m_map_;
-        std::function<double(double)> m_inv_;
+        std::function<double(double)> map;
+        std::function<double(double)> inv;
 
         static std::shared_ptr<Mapping>
         Create();
@@ -49,7 +48,7 @@ namespace erl::gaussian_process {
         static std::shared_ptr<Mapping>
         Create(std::shared_ptr<Setting> setting);
 
-        [[nodiscard]] std::shared_ptr<Mapping::Setting>
+        [[nodiscard]] std::shared_ptr<Setting>
         GetSetting() const {
             return m_setting_;
         }
@@ -61,24 +60,21 @@ namespace erl::gaussian_process {
     };
 }  // namespace erl::gaussian_process
 
-namespace YAML {
+template<>
+struct YAML::convert<erl::gaussian_process::Mapping::Setting> {
+    static Node
+    encode(const erl::gaussian_process::Mapping::Setting &setting) {
+        Node node;
+        node["type"] = erl::gaussian_process::Mapping::GetTypeName(setting.type);
+        node["scale"] = setting.scale;
+        return node;
+    }
 
-    template<>
-    struct convert<erl::gaussian_process::Mapping::Setting> {
-        inline static Node
-        encode(const erl::gaussian_process::Mapping::Setting &setting) {
-            Node node;
-            node["type"] = erl::gaussian_process::Mapping::GetTypeName(setting.type);
-            node["scale"] = setting.scale;
-            return node;
-        }
-
-        inline static bool
-        decode(const Node &node, erl::gaussian_process::Mapping::Setting &setting) {
-            if (!node.IsMap()) { return false; }
-            setting.type = erl::gaussian_process::Mapping::GetTypeFromName(node["type"].as<std::string>());
-            setting.scale = node["scale"].as<double>();
-            return true;
-        }
-    };
-}  // namespace YAML
+    static bool
+    decode(const Node &node, erl::gaussian_process::Mapping::Setting &setting) {
+        if (!node.IsMap()) { return false; }
+        setting.type = erl::gaussian_process::Mapping::GetTypeFromName(node["type"].as<std::string>());
+        setting.scale = node["scale"].as<double>();
+        return true;
+    }
+};  // namespace YAML

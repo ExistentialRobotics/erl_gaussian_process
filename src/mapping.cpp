@@ -20,45 +20,41 @@ namespace erl::gaussian_process {
         : m_setting_(std::move(setting)) {
         switch (m_setting_->type) {
             case Type::kIdentity: {
-                m_map_ = [](double x) { return x; };
-                m_inv_ = m_map_;
+                map = [](const double x) { return x; };
+                inv = map;
                 break;
             }
             case Type::kInverse: {
-                m_map_ = [](double x) { return 1. / x; };
-                m_inv_ = m_map_;
+                map = [](const double x) { return 1. / x; };
+                inv = map;
                 break;
             }
             case Type::kInverseSqrt: {
-                m_map_ = [](double x) { return 1. / std::sqrt(x); };
-                m_inv_ = [](double y) { return 1. / (y * y); };
+                map = [](const double x) { return 1. / std::sqrt(x); };
+                inv = [](const double y) { return 1. / (y * y); };
                 break;
             }
             case Type::kExp: {
-                m_map_ = [&](double x) { return std::exp(-m_setting_->scale * x); };
-                m_inv_ = [&](double y) { return -std::log(y) / m_setting_->scale; };
+                map = [&](const double x) { return std::exp(-m_setting_->scale * x); };
+                inv = [&](const double y) { return -std::log(y) / m_setting_->scale; };
                 break;
             }
             case Type::kLog: {
-                m_map_ = [&](double x) { return std::log(m_setting_->scale * x); };
-                m_inv_ = [&](double y) { return std::exp(y) / m_setting_->scale; };
+                map = [&](const double x) { return std::log(m_setting_->scale * x); };
+                inv = [&](const double y) { return std::exp(y) / m_setting_->scale; };
                 break;
             }
             case Type::kTanh: {
-                m_map_ = [&](double x) { return std::tanh(m_setting_->scale * x); };
-                m_inv_ = [&](double y) { return std::atanh(y) / m_setting_->scale; };
+                map = [&](const double x) { return std::tanh(m_setting_->scale * x); };
+                inv = [&](const double y) { return std::atanh(y) / m_setting_->scale; };
                 break;
             }
             case Type::kSigmoid: {
-                m_map_ = [&](double x) { return 1. / (1. + std::exp(-m_setting_->scale * x)); };
-                m_inv_ = [&](double y) {
-                    if (y >= 1.) {
-                        return std::numeric_limits<double>::infinity() / m_setting_->scale;
-                    } else if (y <= 0.) {
-                        return -std::numeric_limits<double>::infinity() / m_setting_->scale;
-                    } else {
-                        return std::log(y / (1. - y)) / m_setting_->scale;
-                    }
+                map = [&](const double x) { return 1. / (1. + std::exp(-m_setting_->scale * x)); };
+                inv = [&](const double y) {
+                    if (y >= 1.) { return std::numeric_limits<double>::infinity() / m_setting_->scale; }
+                    if (y <= 0.) { return -std::numeric_limits<double>::infinity() / m_setting_->scale; }
+                    return std::log(y / (1. - y)) / m_setting_->scale;
                 };
                 break;
             }

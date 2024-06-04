@@ -1,14 +1,14 @@
 #include "erl_common/pybind11.hpp"
 #include "erl_gaussian_process/lidar_gp_1d.hpp"
 #include "erl_gaussian_process/mapping.hpp"
-#include "erl_gaussian_process/vanilla_gp.hpp"
 #include "erl_gaussian_process/noisy_input_gp.hpp"
+#include "erl_gaussian_process/vanilla_gp.hpp"
 
 using namespace erl::common;
 using namespace erl::gaussian_process;
 
 void
-BindVanillaGaussianProcess(py::module &m) {
+BindVanillaGaussianProcess(const py::module &m) {
     auto py_vanilla_gp = py::class_<VanillaGaussianProcess>(m, "VanillaGaussianProcess");
 
     py::class_<VanillaGaussianProcess::Setting, YamlableBase, std::shared_ptr<VanillaGaussianProcess::Setting>>(py_vanilla_gp, "Setting")
@@ -26,8 +26,8 @@ BindVanillaGaussianProcess(py::module &m) {
                const Eigen::Ref<const Eigen::MatrixXd> &mat_x_train,
                const Eigen::Ref<const Eigen::VectorXd> &vec_y,
                const Eigen::Ref<const Eigen::VectorXd> &vec_var_y) {
-                long dim = mat_x_train.rows();
-                long n = mat_x_train.cols();
+                const long dim = mat_x_train.rows();
+                const long n = mat_x_train.cols();
                 self.Reset(n, dim);
                 self.GetTrainInputSamplesBuffer().topLeftCorner(dim, n) = mat_x_train;
                 self.GetTrainOutputSamplesBuffer().head(n) = vec_y;
@@ -50,8 +50,8 @@ BindVanillaGaussianProcess(py::module &m) {
 }
 
 void
-BindMapping(py::module &m) {
-    auto py_mapping = py::class_<Mapping, std::shared_ptr<Mapping>>(m, ERL_AS_STRING(Mapping));
+BindMapping(const py::module &m) {
+    auto py_mapping = py::class_<Mapping, std::shared_ptr<Mapping>>(m, "Mapping");
 
     py::enum_<Mapping::Type>(py_mapping, "Type", py::arithmetic(), "Type of mapping.")
         .value(Mapping::GetTypeName(Mapping::Type::kIdentity), Mapping::Type::kIdentity)
@@ -67,19 +67,19 @@ BindMapping(py::module &m) {
         .def_readwrite("type", &Mapping::Setting::type)
         .def_readwrite("scale", &Mapping::Setting::scale);
 
-    py_mapping.def(py::init(py::overload_cast<>(&Mapping::Create)))
-        .def(py::init(py::overload_cast<std::shared_ptr<Mapping::Setting>>(&Mapping::Create)), py::arg("setting"))
+    py_mapping.def(py::init([] { return Mapping::Create(); }))
+        .def(py::init([](std::shared_ptr<Mapping::Setting> setting) { return Mapping::Create(std::move(setting)); }), py::arg("setting"))
         .def_property_readonly("setting", &Mapping::GetSetting)
-        .def_property_readonly("map", [](const std::shared_ptr<Mapping> &mapping) { return mapping->m_map_; })
-        .def_property_readonly("inv", [](const std::shared_ptr<Mapping> &mapping) { return mapping->m_inv_; });
+        .def_property_readonly("map", [](const std::shared_ptr<Mapping> &mapping) { return mapping->map; })
+        .def_property_readonly("inv", [](const std::shared_ptr<Mapping> &mapping) { return mapping->inv; });
 }
 
 void
-BindLidarGaussianProcess1D(py::module &m) {
+BindLidarGaussianProcess1D(const py::module &m) {
 
     using T = LidarGaussianProcess1D;
 
-    auto py_lidar_gp = py::class_<T, std::shared_ptr<T>>(m, ERL_AS_STRING(LidarGaussianProcess1D));
+    auto py_lidar_gp = py::class_<T, std::shared_ptr<T>>(m, "LidarGaussianProcess1D");
 
     // TrainBuffer
     auto py_train_buffer = py::class_<T::TrainBuffer>(py_lidar_gp, "TrainBuffer");
@@ -130,7 +130,7 @@ BindLidarGaussianProcess1D(py::module &m) {
         .def("train", &T::Train, py::arg("angles"), py::arg("distances"), py::arg("pose"))
         .def(
             "test",
-            [](const T &gp, const Eigen::Ref<const Eigen::VectorXd> &thetas, bool un_map) {
+            [](const T &gp, const Eigen::Ref<const Eigen::VectorXd> &thetas, const bool &un_map) {
                 Eigen::VectorXd fs(thetas.size()), vars(thetas.size());
                 gp.Test(thetas, fs, vars, un_map);
                 return py::make_tuple(fs, vars);
@@ -139,7 +139,7 @@ BindLidarGaussianProcess1D(py::module &m) {
             py::arg("un_map") = true)
         .def(
             "compute_occ",
-            [](const T &gp, double angle, double r) {
+            [](const T &gp, const double &angle, const double &r) {
                 double occ;
                 Eigen::Scalard scalar_angle, f, var;
                 scalar_angle << angle;
@@ -151,16 +151,16 @@ BindLidarGaussianProcess1D(py::module &m) {
 }
 
 void
-BindNoisyInputGaussianProcess(py::module &m) {
+BindNoisyInputGaussianProcess(const py::module &m) {
     using T = NoisyInputGaussianProcess;
 
-    auto py_noisy_input_gp = py::class_<T, std::shared_ptr<T>>(m, ERL_AS_STRING(NoisyInputGaussianProcess));
+    auto py_noisy_input_gp = py::class_<T, std::shared_ptr<T>>(m, "NoisyInputGaussianProcess");
 
     py::class_<T::Setting, YamlableBase, std::shared_ptr<T::Setting>>(py_noisy_input_gp, "Setting")
         .def(py::init<>())
         .def_readwrite("kernel", &T::Setting::kernel);
 
-    py_noisy_input_gp.def(py::init<>([]() { return std::make_shared<T>(); }))
+    py_noisy_input_gp.def(py::init<>([] { return std::make_shared<T>(); }))
         .def(py::init<>([](std::shared_ptr<T::Setting> setting) { return std::make_shared<T>(std::move(setting)); }), py::arg("setting").none(false))
         .def_property_readonly("is_trained", &T::IsTrained)
         .def_property_readonly("setting", &T::GetSetting)
@@ -174,8 +174,8 @@ BindNoisyInputGaussianProcess(py::module &m) {
                const Eigen::Ref<const Eigen::VectorXd> &vec_var_x,
                const Eigen::Ref<const Eigen::VectorXd> &vec_var_y,
                const Eigen::Ref<const Eigen::VectorXd> &vec_var_grad) {
-                long num_train_samples = mat_x_train.cols();
-                long x_dim = mat_x_train.rows();
+                const long num_train_samples = mat_x_train.cols();
+                const long x_dim = mat_x_train.rows();
                 self.Reset(num_train_samples, x_dim);
                 self.GetTrainInputSamplesBuffer().topLeftCorner(x_dim, num_train_samples) = mat_x_train;
                 self.GetTrainGradientFlagsBuffer().head(num_train_samples) = vec_grad_flag;
@@ -195,8 +195,8 @@ BindNoisyInputGaussianProcess(py::module &m) {
             "test",
             [](const T &self, const Eigen::Ref<const Eigen::MatrixXd> &mat_x_test) {
                 Eigen::MatrixXd mat_f_out, mat_var_out, mat_cov_out;
-                long dim = mat_x_test.rows();
-                long n = mat_x_test.cols();
+                const long &dim = mat_x_test.rows();
+                const long &n = mat_x_test.cols();
                 mat_f_out.resize(dim + 1, n);
                 mat_var_out.resize(dim + 1, n);
                 mat_cov_out.resize(dim * (dim + 1) / 2, n);

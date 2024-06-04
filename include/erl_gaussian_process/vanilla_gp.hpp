@@ -1,13 +1,10 @@
 #pragma once
 
-#include <functional>
-#include <memory>
-
 #include "erl_covariance/covariance.hpp"
 
+#include <memory>
+
 namespace erl::gaussian_process {
-    // using namespace common;
-    // using namespace covariance;
 
     /**
      * VanillaGaussianProcess implements the standard Gaussian Process
@@ -17,9 +14,9 @@ namespace erl::gaussian_process {
     public:
         // structure for holding the parameters
         struct Setting : public common::Yamlable<Setting> {
+            std::string kernel_type = "OrnsteinUhlenbeck2D";
             std::shared_ptr<covariance::Covariance::Setting> kernel = []() -> std::shared_ptr<covariance::Covariance::Setting> {
                 auto setting = std::make_shared<covariance::Covariance::Setting>();
-                setting->type = covariance::Covariance::Type::kOrnsteinUhlenbeck;
                 setting->x_dim = 2;
                 setting->alpha = 1.;
                 setting->scale = 0.5;
@@ -61,7 +58,7 @@ namespace erl::gaussian_process {
             return m_setting_;
         }
 
-        [[nodiscard]] inline bool
+        [[nodiscard]] bool
         IsTrained() const {
             return m_trained_;
         }
@@ -74,32 +71,32 @@ namespace erl::gaussian_process {
         void
         Reset(long max_num_samples, long x_dim);
 
-        [[nodiscard]] inline long
+        [[nodiscard]] long
         GetNumTrainSamples() const {
             return m_num_train_samples_;
         }
 
-        [[nodiscard]] inline Eigen::MatrixXd &
+        [[nodiscard]] Eigen::MatrixXd &
         GetTrainInputSamplesBuffer() {
             return m_mat_x_train_;
         }
 
-        [[nodiscard]] inline Eigen::VectorXd &
+        [[nodiscard]] Eigen::VectorXd &
         GetTrainOutputSamplesBuffer() {
             return m_vec_alpha_;
         }
 
-        [[nodiscard]] inline Eigen::VectorXd &
+        [[nodiscard]] Eigen::VectorXd &
         GetTrainOutputSamplesVarianceBuffer() {
             return m_vec_var_h_;
         }
 
-        [[nodiscard]] inline Eigen::MatrixXd
+        [[nodiscard]] Eigen::MatrixXd
         GetKtrain() const {
             return m_mat_k_train_;
         }
 
-        [[nodiscard]] inline Eigen::MatrixXd
+        [[nodiscard]] Eigen::MatrixXd
         GetCholeskyDecomposition() const {
             return m_mat_l_;
         }
@@ -111,14 +108,14 @@ namespace erl::gaussian_process {
         Test(const Eigen::Ref<const Eigen::MatrixXd> &mat_x_test, Eigen::Ref<Eigen::VectorXd> vec_f_out, Eigen::Ref<Eigen::VectorXd> vec_var_out) const;
 
     protected:
-        inline bool
-        AllocateMemory(long max_num_samples, long x_dim) {
+        bool
+        AllocateMemory(const long max_num_samples, const long x_dim) {
             if (m_setting_->max_num_samples > 0 && max_num_samples > m_setting_->max_num_samples) { return false; }
             if (m_setting_->kernel->x_dim > 0 && x_dim != m_setting_->kernel->x_dim) { return false; }
-            std::pair<long, long> size = covariance::Covariance::GetMinimumKtrainSize(max_num_samples, 0, 0);
-            if (m_mat_k_train_.rows() < size.first || m_mat_k_train_.cols() < size.second) { m_mat_k_train_.resize(size.first, size.second); }
+            const auto [rows, cols] = covariance::Covariance::GetMinimumKtrainSize(max_num_samples, 0, 0);
+            if (m_mat_k_train_.rows() < rows || m_mat_k_train_.cols() < cols) { m_mat_k_train_.resize(rows, cols); }
             if (m_mat_x_train_.rows() < x_dim || m_mat_x_train_.cols() < max_num_samples) { m_mat_x_train_.resize(x_dim, max_num_samples); }
-            if (m_mat_l_.rows() < size.first || m_mat_l_.cols() < size.second) { m_mat_l_.resize(size.first, size.second); }
+            if (m_mat_l_.rows() < rows || m_mat_l_.cols() < cols) { m_mat_l_.resize(rows, cols); }
             if (m_vec_alpha_.size() < max_num_samples) { m_vec_alpha_.resize(max_num_samples); }
             if (m_vec_var_h_.size() < max_num_samples) { m_vec_var_h_.resize(max_num_samples); }
             return true;
@@ -126,23 +123,23 @@ namespace erl::gaussian_process {
     };
 }  // namespace erl::gaussian_process
 
-namespace YAML {
-    template<>
-    struct convert<erl::gaussian_process::VanillaGaussianProcess::Setting> {
-        inline static Node
-        encode(const erl::gaussian_process::VanillaGaussianProcess::Setting &setting) {
-            Node node;
-            node["kernel"] = *setting.kernel;
-            node["auto_normalize"] = setting.auto_normalize;
-            return node;
-        }
+template<>
+struct YAML::convert<erl::gaussian_process::VanillaGaussianProcess::Setting> {
+    static Node
+    encode(const erl::gaussian_process::VanillaGaussianProcess::Setting &setting) {
+        Node node;
+        node["kernel_type"] = setting.kernel_type;
+        node["kernel"] = *setting.kernel;
+        node["auto_normalize"] = setting.auto_normalize;
+        return node;
+    }
 
-        inline static bool
-        decode(const Node &node, erl::gaussian_process::VanillaGaussianProcess::Setting &setting) {
-            if (!node.IsMap()) { return false; }
-            *setting.kernel = node["kernel"].as<erl::covariance::Covariance::Setting>();
-            setting.auto_normalize = node["auto_normalize"].as<bool>();
-            return true;
-        }
-    };
-}  // namespace YAML
+    static bool
+    decode(const Node &node, erl::gaussian_process::VanillaGaussianProcess::Setting &setting) {
+        if (!node.IsMap()) { return false; }
+        setting.kernel_type = node["kernel_type"].as<std::string>();
+        setting.kernel = node["kernel"].as<std::shared_ptr<erl::covariance::Covariance::Setting>>();
+        setting.auto_normalize = node["auto_normalize"].as<bool>();
+        return true;
+    }
+};  // namespace YAML

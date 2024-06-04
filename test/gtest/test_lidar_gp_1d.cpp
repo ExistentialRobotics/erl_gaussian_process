@@ -1,12 +1,15 @@
-#include <gtest/gtest.h>
-#include <iostream>
-#include <filesystem>
+#include "../cov_fnc.cpp"
+#include "../obs_gp.cpp"
+#include "../obs_gp.h"
+
 #include "erl_common/binary_file.hpp"
 #include "erl_common/test_helper.hpp"
 #include "erl_gaussian_process/lidar_gp_1d.hpp"
-#include "../obs_gp.h"
-#include "../obs_gp.cpp"
-#include "../cov_fnc.cpp"
+
+#include <gtest/gtest.h>
+
+#include <filesystem>
+#include <iostream>
 
 using namespace erl::common;
 using namespace erl::gaussian_process;
@@ -16,7 +19,7 @@ constexpr double kMinRange = 0.2;
 constexpr double kSensorOffsetX = 0.08;  // sensor x-offset in the robot frame (IMU frame).
 constexpr double kSensorOffsetY = 0.;    // sensor y-offset in the robot frame (IMU frame).
 
-typedef struct TrainDataFrame {
+using TrainDataFrame = struct TrainDataFrame {
     Eigen::VectorXd angles;
     Eigen::VectorXd distances;
     std::vector<double> pose_matlab;
@@ -27,11 +30,11 @@ typedef struct TrainDataFrame {
     Eigen::VectorXd x;  // angle
     Eigen::VectorXd y;  // distance
 
-    TrainDataFrame(double *pa, double *pr, const double *pose_ptr, int numel) {
+    TrainDataFrame(double *pa, double *pr, const double *pose_ptr, const int numel) {
         angles.resize(numel);
         distances.resize(numel);
-        std::copy(pa, pa + numel, angles.begin());
-        std::copy(pr, pr + numel, distances.begin());
+        std::copy_n(pa, numel, angles.begin());
+        std::copy_n(pr, numel, distances.begin());
 
         Eigen::Matrix23d pose;
         // clang-format off
@@ -62,18 +65,18 @@ typedef struct TrainDataFrame {
             cnt++;
         }
     }
-} TrainDataFrame;
+};
 
 template<typename T>
-inline void
+void
 ReadVar(char *&data_ptr, T &var) {
     var = reinterpret_cast<T *>(data_ptr)[0];
     data_ptr += sizeof(T);
 }
 
 template<typename T>
-inline void
-ReadPtr(char *&data_ptr, size_t n, T *&ptr) {
+void
+ReadPtr(char *&data_ptr, const size_t n, T *&ptr) {
     ptr = reinterpret_cast<T *>(data_ptr);
     data_ptr += sizeof(T) * n;
 }
@@ -86,8 +89,8 @@ public:
         auto data = LoadBinaryFile<char>(path);
 
         char *data_ptr = data.data();
-        auto data_ptr_begin = data_ptr;
-        size_t data_size = data.size();
+        const auto data_ptr_begin = data_ptr;
+        const size_t data_size = data.size();
         int numel;
         double *pa, *pr, *pose_ptr;
         std::size_t pose_size;
@@ -103,11 +106,11 @@ public:
     }
 
     TrainDataFrame
-    operator[](size_t i) {
+    operator[](const size_t i) {
         return m_data_frames_[i];
     }
 
-    [[nodiscard]] inline size_t
+    [[nodiscard]] size_t
     Size() const {
         return m_data_frames_.size();
     }
@@ -143,13 +146,13 @@ TEST(ERL_GAUSSIAN_PROCESS, LidarGaussianProcess1D) {
 
     auto df = train_data_loader[0];
 
-    std::cout << PrintInfo("Train:") << std::endl;
-    int n = (int) df.x.size();
-    ReportTime<std::chrono::microseconds>("LidarGaussianProcess1D", 10, false, [&]() { lidar_gp->Train(df.x, df.y, Eigen::Matrix23d::Zero()); });
-    ReportTime<std::chrono::microseconds>("ObsGp1D", 10, false, [&]() { obs_gp.Train(df.x.data(), df.y.data(), &n); });
+    Logging::Info("Train:");
+    auto n = static_cast<int>(df.x.size());
+    ReportTime<std::chrono::microseconds>("LidarGaussianProcess1D", 10, false, [&] { lidar_gp->Train(df.x, df.y, Eigen::Matrix23d::Zero()); });
+    ReportTime<std::chrono::microseconds>("ObsGp1D", 10, false, [&] { obs_gp.Train(df.x.data(), df.y.data(), &n); });
 
     ASSERT_STD_VECTOR_EQUAL("m_partitions_", lidar_gp->GetPartitions(), obs_gp.m_range_);
-    
+
     auto gps = lidar_gp->GetGps();
     for (size_t i = 0; i < gps.size(); ++i) {
         std::stringstream ss;
@@ -182,9 +185,9 @@ TEST(ERL_GAUSSIAN_PROCESS, LidarGaussianProcess1D) {
         ans_var.resize(df.x.size());
         gt_f.setConstant(df.x.size(), 0.);
         gt_var.setConstant(gt_f.size(), 0.);
-        std::cout << PrintInfo("test[", i, "]:") << std::endl;
+        Logging::Info("test[", i, "]:");
         ReportTime<std::chrono::microseconds>("LidarGaussianProcess1D", 10, false, [&] { lidar_gp->Test(df.x, ans_f, ans_var, true); });
-        ReportTime<std::chrono::microseconds>("ObsGp1D", 10, false, [&]() { obs_gp.Test(df.x.transpose(), gt_f, gt_var); });
+        ReportTime<std::chrono::microseconds>("ObsGp1D", 10, false, [&] { obs_gp.Test(df.x.transpose(), gt_f, gt_var); });
 #ifdef NDEBUG
         ASSERT_EIGEN_VECTOR_NEAR("f", ans_f, gt_f, 1e-15);
         ASSERT_EIGEN_VECTOR_NEAR("var", ans_var, gt_var, 1e-15);

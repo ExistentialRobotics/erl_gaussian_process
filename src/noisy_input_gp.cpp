@@ -3,7 +3,7 @@
 namespace erl::gaussian_process {
 
     void
-    NoisyInputGaussianProcess::Train(long num_train_samples) {
+    NoisyInputGaussianProcess::Train(const long num_train_samples) {
 
         if (m_trained_) {
             ERL_WARN("The model has been trained. Please reset the model before training.");
@@ -12,23 +12,23 @@ namespace erl::gaussian_process {
 
         m_num_train_samples_ = num_train_samples;
         if (m_num_train_samples_ <= 0) {
-            ERL_WARN("num_train_samples = %ld, it should be > 0.", m_num_train_samples_);
+            ERL_WARN("num_train_samples = {}, it should be > 0.", m_num_train_samples_);
             return;
         }
 
         InitializeVectorAlpha();  // initialize m_vec_alpha_
 
         // Compute kernel matrix
-        std::pair<long, long> output_size = m_kernel_->ComputeKtrainWithGradient(
-            m_mat_k_train_,                                                                     // buffer of mat_ktrain
-            m_mat_x_train_.topLeftCorner(m_x_dim_, m_num_train_samples_),                       // mat_x_train
-            m_vec_grad_flag_.head(m_num_train_samples_),                                        // vec_grad_flag
-            m_vec_var_x_.head(m_num_train_samples_),                                            // vec_var_x
-            m_vec_var_h_.head(m_num_train_samples_),                                            // vec_var_h
-            m_vec_var_grad_.head(m_num_train_samples_));                                        // vec_var_grad
-        auto mat_ktrain = m_mat_k_train_.topLeftCorner(output_size.first, output_size.second);  // square matrix
-        auto mat_l = m_mat_l_.topLeftCorner(output_size.first, output_size.second);             // square matrix, lower triangular
-        auto vec_alpha = m_vec_alpha_.head(output_size.first);                                  // h and gradient of h
+        const auto [rows, cols] = m_kernel_->ComputeKtrainWithGradient(
+            m_mat_k_train_,                                                // buffer of mat_ktrain
+            m_mat_x_train_.topLeftCorner(m_x_dim_, m_num_train_samples_),  // mat_x_train
+            m_vec_grad_flag_.head(m_num_train_samples_),                   // vec_grad_flag
+            m_vec_var_x_.head(m_num_train_samples_),                       // vec_var_x
+            m_vec_var_h_.head(m_num_train_samples_),                       // vec_var_h
+            m_vec_var_grad_.head(m_num_train_samples_));                   // vec_var_grad
+        const auto mat_ktrain = m_mat_k_train_.topLeftCorner(rows, cols);  // square matrix
+        auto &&mat_l = m_mat_l_.topLeftCorner(rows, cols);                 // square matrix, lower triangular
+        const auto vec_alpha = m_vec_alpha_.head(rows);                    // h and gradient of h
         mat_l = mat_ktrain.llt().matrixL();
         mat_l.triangularView<Eigen::Lower>().solveInPlace(vec_alpha);
         mat_l.transpose().triangularView<Eigen::Upper>().solveInPlace(vec_alpha);
@@ -52,25 +52,25 @@ namespace erl::gaussian_process {
         if (n == 0) { return; }
 
         // compute mean and gradient of the test queries
-        ERL_ASSERTM(mat_f_out.rows() >= dim + 1, "mat_f_out.rows() = %ld, it should be >= Dim + 1 = %ld.", mat_f_out.rows(), dim + 1);
-        ERL_ASSERTM(mat_f_out.cols() >= n, "mat_f_out.cols() = %ld, not enough for %ld test queries.", mat_f_out.cols(), n);
+        ERL_ASSERTM(mat_f_out.rows() >= dim + 1, "mat_f_out.rows() = {}, it should be >= Dim + 1 = {}.", mat_f_out.rows(), dim + 1);
+        ERL_ASSERTM(mat_f_out.cols() >= n, "mat_f_out.cols() = {}, not enough for {} test queries.", mat_f_out.cols(), n);
 
-        std::pair<long, long> ktest_size = covariance::Covariance::GetMinimumKtestSize(m_num_train_samples_, m_num_train_samples_with_grad_, dim, n);
-        Eigen::MatrixXd ktest(ktest_size.first, ktest_size.second);  // (dim of train samples, dim of test queries)
+        const auto [ktest_rows, ktest_cols] = covariance::Covariance::GetMinimumKtestSize(m_num_train_samples_, m_num_train_samples_with_grad_, dim, n);
+        Eigen::MatrixXd ktest(ktest_rows, ktest_cols);  // (dim of train samples, dim of test queries)
         auto mat_x_train = m_mat_x_train_.topLeftCorner(m_x_dim_, m_num_train_samples_);
         auto vec_grad_flag = m_vec_grad_flag_.head(m_num_train_samples_);
-        std::pair<long, long> output_size = m_kernel_->ComputeKtestWithGradient(ktest, mat_x_train, vec_grad_flag, mat_x_test);
+        const auto [output_rows, output_cols] = m_kernel_->ComputeKtestWithGradient(ktest, mat_x_train, vec_grad_flag, mat_x_test);
         ERL_DEBUG_ASSERT(
-            (output_size.first == ktest_size.first) && (output_size.second == ktest_size.second),
-            "output_size = (%ld, %ld), it should be (%ld, %ld).",
-            output_size.first,
-            output_size.second,
-            ktest_size.first,
-            ktest_size.second);
+            output_rows == ktest_rows && output_cols == ktest_cols,
+            "output_size = ({}, {}), it should be ({}, {}).",
+            output_rows,
+            output_cols,
+            ktest_rows,
+            ktest_cols);
 
         // compute value prediction
         /// ktest.T * m_vec_alpha_ = [h(x1),...,h(xn),dh(x1)/dx_1,...,dh(xn)/dx_1,...,dh(x1)/dx_dim,...,dh(xn)/dx_dim]
-        auto vec_alpha = m_vec_alpha_.head(output_size.first);
+        auto vec_alpha = m_vec_alpha_.head(output_rows);
         for (long i = 0; i < n; ++i) {
             mat_f_out(0, i) = ktest.col(i).dot(vec_alpha);                                                            // h(x)
             for (long j = 1, jj = i + n; j <= dim; ++j, jj += n) { mat_f_out(j, i) = ktest.col(jj).dot(vec_alpha); }  // dh(x)/dx_j
@@ -78,9 +78,9 @@ namespace erl::gaussian_process {
         if (mat_var_out.size() == 0) { return; }  // only compute mean
 
         // compute (co)variance of the test queries
-        m_mat_l_.topLeftCorner(output_size.first, output_size.first).triangularView<Eigen::Lower>().solveInPlace(ktest);
-        ERL_ASSERTM(mat_var_out.rows() >= dim + 1, "mat_var_out.rows() = %ld, it should be >= %ld for variance.", mat_var_out.rows(), dim + 1);
-        ERL_ASSERTM(mat_var_out.cols() >= n, "mat_var_out.cols() = %ld, not enough for %ld test queries.", mat_var_out.cols(), n);
+        m_mat_l_.topLeftCorner(output_rows, output_rows).triangularView<Eigen::Lower>().solveInPlace(ktest);
+        ERL_ASSERTM(mat_var_out.rows() >= dim + 1, "mat_var_out.rows() = {}, it should be >= {} for variance.", mat_var_out.rows(), dim + 1);
+        ERL_ASSERTM(mat_var_out.cols() >= n, "mat_var_out.cols() = {}, not enough for {} test queries.", mat_var_out.cols(), n);
         if (mat_cov_out.size() == 0) {  // compute variance only
             // column-wise square sum of ktest = var([h(x1),...,h(xn),dh(x1)/dx_1,...,dh(xn)/dx_1,...,dh(x1)/dx_dim,...,dh(xn)/dx_dim])
             for (long i = 0; i < n; ++i) {
@@ -91,8 +91,8 @@ namespace erl::gaussian_process {
             }
         } else {  // compute covariance
             long min_n_rows = (dim + 1) * dim / 2;
-            ERL_ASSERTM(mat_cov_out.rows() >= min_n_rows, "mat_cov_out.rows() = %ld, it should be >= %ld for covariance.", mat_cov_out.rows(), min_n_rows);
-            ERL_ASSERTM(mat_cov_out.cols() >= n, "mat_cov_out.cols() = %ld, not enough for %ld test queries.", mat_cov_out.cols(), n);
+            ERL_ASSERTM(mat_cov_out.rows() >= min_n_rows, "mat_cov_out.rows() = {}, it should be >= {} for covariance.", mat_cov_out.rows(), min_n_rows);
+            ERL_ASSERTM(mat_cov_out.cols() >= n, "mat_cov_out.cols() = {}, not enough for {} test queries.", mat_cov_out.cols(), n);
             // each column of mat_cov_out is the lower triangular part of the covariance matrix of the corresponding test query
             for (long i = 0; i < n; ++i) {
                 mat_var_out(0, i) = m_setting_->kernel->alpha - ktest.col(i).squaredNorm();  // var(h(x))
