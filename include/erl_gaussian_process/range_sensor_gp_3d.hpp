@@ -116,10 +116,19 @@ namespace erl::gaussian_process {
 
         [[nodiscard]] bool
         Test(
+            const std::vector<Eigen::Vector3d> &directions_world,
+            Eigen::Ref<Eigen::VectorXd> vec_ranges,
+            Eigen::Ref<Eigen::VectorXd> vec_ranges_var,
+            bool un_map,
+            bool parallel) const;
+
+        [[nodiscard]] bool
+        Test(
             const Eigen::Ref<const Eigen::Matrix2Xd> &frame_coords,
             Eigen::Ref<Eigen::VectorXd> vec_ranges,
             Eigen::Ref<Eigen::VectorXd> vec_ranges_var,
-            bool un_map = true) const;
+            bool un_map,
+            bool parallel) const;
 
         bool
         ComputeOcc(const Eigen::Vector2d &frame_coords, double r, Eigen::Ref<Eigen::Scalard> range_pred, Eigen::Ref<Eigen::Scalard> range_pred_var, double &occ)
@@ -128,35 +137,6 @@ namespace erl::gaussian_process {
 }  // namespace erl::gaussian_process
 
 // ReSharper disable CppInconsistentNaming
-// template<>
-// struct YAML::convert<erl::gaussian_process::RangeSensorGaussianProcess3D::TrainBuffer::Setting> {
-//     static Node
-//     encode(const erl::gaussian_process::RangeSensorGaussianProcess3D::TrainBuffer::Setting &rhs) {
-//         Node node;
-//         node["valid_range_min"] = rhs.valid_range_min;
-//         node["valid_range_max"] = rhs.valid_range_max;
-//         node["valid_azimuth_min"] = rhs.valid_azimuth_min;
-//         node["valid_azimuth_max"] = rhs.valid_azimuth_max;
-//         node["valid_elevation_min"] = rhs.valid_elevation_min;
-//         node["valid_elevation_max"] = rhs.valid_elevation_max;
-//         node["mapping"] = *rhs.mapping;
-//         return node;
-//     }
-
-// static bool
-// decode(const Node &node, erl::gaussian_process::RangeSensorGaussianProcess3D::TrainBuffer::Setting &rhs) {
-//     if (!node.IsMap()) { return false; }
-//     rhs.valid_range_min = node["valid_range_min"].as<double>();
-//     rhs.valid_range_max = node["valid_range_max"].as<double>();
-//     rhs.valid_azimuth_min = node["valid_azimuth_min"].as<double>();
-//     rhs.valid_azimuth_max = node["valid_azimuth_max"].as<double>();
-//     rhs.valid_elevation_min = node["valid_elevation_min"].as<double>();
-//     rhs.valid_elevation_max = node["valid_elevation_max"].as<double>();
-//     rhs.mapping = node["mapping"].as<std::shared_ptr<erl::gaussian_process::Mapping::Setting>>();
-//     return true;
-// }
-// };
-
 template<>
 struct YAML::convert<erl::gaussian_process::RangeSensorGaussianProcess3D::Setting> {
     static Node

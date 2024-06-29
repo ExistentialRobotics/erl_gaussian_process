@@ -42,15 +42,21 @@ namespace erl::gaussian_process {
         m_row_partitions_.emplace_back(
             num_rows - row_gs2 - row_half_overlap,
             num_rows,
-            frame_coords(num_rows - row_gs2, 0)[0],
+            frame_coords(num_rows - 1 - row_gs2, 0)[0],
             frame_coords(num_rows - 1 - m_setting_->row_margin, 0)[0]);
 
 #ifndef NDEBUG
         std::vector<long> row_partition_sizes;
+        std::vector<double> row_partition_left_coords;
+        std::vector<double> row_partition_right_coords;
         for (const auto &[row_index_left, row_index_right, row_coord_left, row_coord_right]: m_row_partitions_) {
             row_partition_sizes.push_back(row_index_right - row_index_left);
+            row_partition_left_coords.push_back(row_coord_left);
+            row_partition_right_coords.push_back(row_coord_right);
         }
         ERL_DEBUG("Row partition sizes: {}", row_partition_sizes);
+        ERL_DEBUG("Row partition left coords: {}", row_partition_left_coords);
+        ERL_DEBUG("Row partition right coords: {}", row_partition_right_coords);
 #endif
 
         m_col_partitions_.reserve(num_col_groups);
@@ -68,15 +74,21 @@ namespace erl::gaussian_process {
         m_col_partitions_.emplace_back(
             num_cols - col_gs2 - col_half_overlap,
             num_cols,
-            frame_coords(0, num_cols - col_gs2)[1],
+            frame_coords(0, num_cols - 1 - col_gs2)[1],
             frame_coords(0, num_cols - 1 - m_setting_->col_margin)[1]);
 
 #ifndef NDEBUG
         std::vector<long> col_partition_sizes;
+        std::vector<double> col_partition_left_coords;
+        std::vector<double> col_partition_right_coords;
         for (const auto &[col_index_left, col_index_right, col_coord_left, col_coord_right]: m_col_partitions_) {
             col_partition_sizes.push_back(col_index_right - col_index_left);
+            col_partition_left_coords.push_back(col_coord_left);
+            col_partition_right_coords.push_back(col_coord_right);
         }
         ERL_DEBUG("Col partition sizes: {}", col_partition_sizes);
+        ERL_DEBUG("Col partition left coords: {}", col_partition_left_coords);
+        ERL_DEBUG("Col partition right coords: {}", col_partition_right_coords);
 #endif
     }
 
@@ -122,7 +134,7 @@ namespace erl::gaussian_process {
                 for (long c = col_index_left; c < col_index_right; ++c) {
                     for (long r = row_index_left; r < row_index_right; ++r) {
                         if (!mask_hit(r, c)) { continue; }
-                        train_input_samples.leftCols(cnt) << frame_coords(r, c);
+                        train_input_samples.col(cnt) << frame_coords(r, c);
                         train_output_samples[cnt] = m_mapped_distances_(r, c);
                         train_output_samples_variance[cnt] = m_setting_->sensor_range_var;
                         ++cnt;
@@ -141,19 +153,39 @@ namespace erl::gaussian_process {
 
     bool
     RangeSensorGaussianProcess3D::Test(
+        const std::vector<Eigen::Vector3d> &directions_world,
+        Eigen::Ref<Eigen::VectorXd> vec_ranges,
+        Eigen::Ref<Eigen::VectorXd> vec_ranges_var,
+        const bool un_map,
+        const bool parallel) const {
+
+        if (!m_trained_) { return false; }
+        if (directions_world.empty()) { return false; }
+
+        Eigen::Matrix2Xd frame_coords(2, directions_world.size());
+        for (long i = 0; i < static_cast<long>(directions_world.size()); ++i) {
+            frame_coords.col(i) = m_range_sensor_frame_->ComputeFrameCoords(GlobalToLocalSo3(directions_world[i]));
+        }
+        return Test(frame_coords, std::move(vec_ranges), std::move(vec_ranges_var), un_map, parallel);
+    }
+
+    bool
+    RangeSensorGaussianProcess3D::Test(
         const Eigen::Ref<const Eigen::Matrix2Xd> &frame_coords,
         Eigen::Ref<Eigen::VectorXd> vec_ranges,
         Eigen::Ref<Eigen::VectorXd> vec_ranges_var,
-        const bool un_map) const {
+        const bool un_map,
+        const bool parallel) const {
 
         if (!m_trained_) { return false; }
-        long n = frame_coords.cols();
+        const long n = frame_coords.cols();
         ERL_DEBUG_ASSERT(vec_ranges.size() >= n, "vec_ranges size = {}, it should be >= {}.", vec_ranges.size(), n);
         ERL_DEBUG_ASSERT(vec_ranges_var.size() >= n, "vec_ranges_var size = {}, it should be >= {}.", vec_ranges_var.size(), n);
 
         vec_ranges.setZero();
         vec_ranges_var.setConstant(m_setting_->init_variance);
 
+#pragma omp parallel for if (parallel) default(none) shared(n, frame_coords, vec_ranges, vec_ranges_var, un_map)
         for (long i = 0; i < n; ++i) {
             // search for the partition
             // row
@@ -195,7 +227,7 @@ namespace erl::gaussian_process {
         Eigen::Ref<Eigen::Scalard> range_pred_var,
         double &occ) const {
 
-        if (!Test(frame_coords, range_pred, range_pred_var, false)) { return false; }
+        if (!Test(frame_coords, range_pred, range_pred_var, false, false)) { return false; }
         if (range_pred_var[0] > m_setting_->max_valid_range_var) { return false; }
         const double a = r * m_setting_->occ_test_temperature;
         occ = 2.0 / (1.0 + std::exp(a * (range_pred[0] - m_mapping_->map(r)))) - 1.0;
