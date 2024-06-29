@@ -12,24 +12,23 @@ namespace erl::gaussian_process {
             ERL_ASSERTM(AllocateMemory(max_num_samples, x_dim), "Failed to allocate memory.");
         }
         m_trained_ = false;
-        m_kernel_ = covariance::Covariance::CreateCovariance(m_setting_->kernel_type);
-        m_kernel_->GetSetting()->x_dim = x_dim;
+        m_kernel_ = covariance::Covariance::CreateCovariance(m_setting_->kernel_type, m_setting_->kernel);
         m_num_train_samples_ = 0;
         m_x_dim_ = x_dim;
     }
 
-    void
+    bool
     VanillaGaussianProcess::Train(const long num_train_samples) {
 
         if (m_trained_) {
             ERL_WARN("The model has been trained. Please reset the model before training.");
-            return;
+            return false;
         }
 
         m_num_train_samples_ = num_train_samples;
         if (m_num_train_samples_ <= 0) {
             ERL_WARN("num_train_samples = {}, it should be > 0.", m_num_train_samples_);
-            return;
+            return false;
         }
 
         // Compute kernel matrix
@@ -49,18 +48,19 @@ namespace erl::gaussian_process {
         mat_l.transpose().triangularView<Eigen::Upper>().solveInPlace(vec_alpha);  // A.m_inv_() @ vec_alpha
 
         m_trained_ = true;
+        return true;
     }
 
-    void
+    bool
     VanillaGaussianProcess::Test(
         const Eigen::Ref<const Eigen::MatrixXd> &mat_x_test,
         Eigen::Ref<Eigen::VectorXd> vec_f_out,
         Eigen::Ref<Eigen::VectorXd> vec_var_out) const {
 
-        if (!m_trained_ || m_num_train_samples_ <= 0) { return; }
+        if (!m_trained_ || m_num_train_samples_ <= 0) { return false; }
 
         long n = mat_x_test.cols();
-        if (n == 0) { return; }
+        if (n == 0) { return false; }
         ERL_ASSERTM(mat_x_test.rows() == m_x_dim_, "mat_x_test.rows() = {}, it should be {}.", mat_x_test.rows(), m_x_dim_);
         ERL_ASSERTM(vec_f_out.size() >= n, "vec_f_out size = {}, it should be >= {}.", vec_f_out.size(), n);
         const auto [ktest_rows, ktest_cols] = covariance::Covariance::GetMinimumKtestSize(m_num_train_samples_, 0, 0, n);
@@ -82,12 +82,13 @@ namespace erl::gaussian_process {
         } else {
             for (long i = 0; i < output_cols; ++i) { vec_f_out[i] = ktest.col(i).dot(vec_alpha); }
         }
-        if (vec_var_out.size() == 0) { return; }  // only compute mean
+        if (vec_var_out.size() == 0) { return true; }  // only compute mean
 
         // variance of vec_f_out = ktest(xt, xt) - ktest(xt, X) @ (ktest(X, X) + sigma * I).m_inv_() @ ktest(X, xt)
         //                       = ktest(xt, xt) - ktest(xt, X) @ (m_l_ @ m_l_.T).m_inv_() @ ktest(X, xt)
         ERL_ASSERTM(vec_var_out.size() >= n, "vec_var_out size = {}, it should be >= {}.", vec_var_out.size(), n);
         m_mat_l_.topLeftCorner(output_rows, output_rows).triangularView<Eigen::Lower>().solveInPlace(ktest);
         for (long i = 0; i < ktest_cols; ++i) { vec_var_out[i] = m_setting_->kernel->alpha - ktest.col(i).squaredNorm(); }
+        return true;
     }
 }  // namespace erl::gaussian_process

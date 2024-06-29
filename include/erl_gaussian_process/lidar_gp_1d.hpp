@@ -27,23 +27,23 @@ namespace erl::gaussian_process {
                 }();
             };
 
-            std::shared_ptr<Setting> setting;
-            std::shared_ptr<Mapping> mapping;
+            std::shared_ptr<Setting> setting = nullptr;
+            std::shared_ptr<Mapping> mapping = nullptr;
 
             // data
-            Eigen::VectorXd vec_angles_original;
-            Eigen::VectorXd vec_ranges_original;
-            Eigen::VectorXb vec_mask_hit;
-            Eigen::VectorXd vec_angles;
-            Eigen::VectorXd vec_ranges;
-            Eigen::VectorXd vec_mapped_distances;
-            Eigen::Matrix2Xd mat_direction_local;
-            Eigen::Matrix2Xd mat_xy_local;
-            Eigen::Matrix2Xd mat_direction_global;
-            Eigen::Matrix2Xd mat_xy_global;
+            Eigen::VectorXd vec_angles_original = {};
+            Eigen::VectorXd vec_ranges_original = {};
+            Eigen::VectorXb vec_mask_hit = {};
+            Eigen::VectorXd vec_angles = {};
+            Eigen::VectorXd vec_ranges = {};
+            Eigen::VectorXd vec_mapped_distances = {};
+            Eigen::Matrix2Xd mat_direction_local = {};
+            Eigen::Matrix2Xd mat_xy_local = {};
+            Eigen::Matrix2Xd mat_direction_global = {};
+            Eigen::Matrix2Xd mat_xy_global = {};
             double max_distance = 0.;
-            Eigen::Vector2d position;
-            Eigen::Matrix2d rotation;
+            Eigen::Vector2d position = Eigen::Vector2d::Zero();
+            Eigen::Matrix2d rotation = Eigen::Matrix2d::Identity();
 
             TrainBuffer()
                 : TrainBuffer(std::make_shared<Setting>()) {}
@@ -51,7 +51,7 @@ namespace erl::gaussian_process {
             explicit TrainBuffer(std::shared_ptr<Setting> setting)
                 : setting(std::move(setting)) {}
 
-            [[nodiscard]] ssize_t
+            [[nodiscard]] long
             Size() const {
                 return vec_angles.size();
             }
@@ -70,59 +70,47 @@ namespace erl::gaussian_process {
                 const Eigen::Ref<const Eigen::Matrix23d> &mat_new_pose);
 
             [[nodiscard]] Eigen::Vector2d
-            GlobalToLocalSo2(const Eigen::Ref<const Eigen::Vector2d> &vec_global) const {
-                return {rotation(0, 0) * vec_global.x() + rotation(1, 0) * vec_global.y(), rotation(0, 1) * vec_global.x() + rotation(1, 1) * vec_global.y()};
+            GlobalToLocalSo2(const Eigen::Vector2d &vec_global) const {
+                return rotation.transpose() * vec_global;
             }
 
             [[nodiscard]] Eigen::Vector2d
-            LocalToGlobalSo2(const Eigen::Ref<const Eigen::Vector2d> &vec_local) const {
-                return {rotation(0, 0) * vec_local.x() + rotation(0, 1) * vec_local.y(), rotation(1, 0) * vec_local.x() + rotation(1, 1) * vec_local.y()};
+            LocalToGlobalSo2(const Eigen::Vector2d &vec_local) const {
+                return rotation * vec_local;
             }
 
             [[nodiscard]] Eigen::Vector2d
-            GlobalToLocalSe2(const Eigen::Ref<const Eigen::Vector2d> &vec_global) const {
-                return {
-                    rotation(0, 0) * (vec_global.x() - position.x()) + rotation(1, 0) * (vec_global.y() - position.y()),
-                    rotation(0, 1) * (vec_global.x() - position.x()) + rotation(1, 1) * (vec_global.y() - position.y())};
+            GlobalToLocalSe2(const Eigen::Vector2d &vec_global) const {
+                return rotation.transpose() * (vec_global - position);
             }
 
             [[nodiscard]] Eigen::Vector2d
-            LocalToGlobalSe2(const Eigen::Ref<const Eigen::Vector2d> &vec_local) const {
-                return {
-                    rotation(0, 0) * vec_local.x() + rotation(0, 1) * vec_local.y() + position.x(),
-                    rotation(1, 0) * vec_local.x() + rotation(1, 1) * vec_local.y() + position.y()};
+            LocalToGlobalSe2(const Eigen::Vector2d &vec_local) const {
+                return rotation * vec_local + position;
             }
         };
 
         struct Setting : public common::Yamlable<Setting> {
-
-            int group_size = 26;   // number of points in each group, including the overlap ones.
-            int overlap_size = 6;  // number of points in the overlap region.
-            // points closed to margin will not be used for test because it is difficult to estimate gradient for them.
-            double boundary_margin = 0.0175;
-            double init_variance = 1e6;  // large value to initialize variance result in case of computation failure.
-            double sensor_range_var = 0.01;
-            // if the distance variance is greater than this threshold, this prediction is invalid and should be discarded.
-            double max_valid_range_var = 0.1;
+            int group_size = 26;               // number of points in each group, including the overlap ones.
+            int overlap_size = 6;              // number of points in the overlap region.
+            double boundary_margin = 0.0175;   // points closed to margin will not be used for test because it is difficult to estimate gradient for them.
+            double init_variance = 1e6;        // large value to initialize variance result in case of computation failure.
+            double sensor_range_var = 0.01;    // variance of the sensor range measurement.
+            double max_valid_range_var = 0.1;  // if the distance variance is greater than this threshold, this prediction is invalid and should be discarded.
             double occ_test_temperature = 30;  // OCC Test is a tanh function, this controls the slope around 0.
-            std::shared_ptr<TrainBuffer::Setting> train_buffer = std::make_shared<TrainBuffer::Setting>();
+            std::shared_ptr<TrainBuffer::Setting> train_buffer = std::make_shared<TrainBuffer::Setting>();              // parameters of train buffer
             std::shared_ptr<VanillaGaussianProcess::Setting> gp = std::make_shared<VanillaGaussianProcess::Setting>();  // parameters of local GP regression
         };
 
     protected:
         bool m_trained_ = false;
-        std::shared_ptr<Setting> m_setting_;
-
-        // m_trained_ GPs and their partitions
+        std::shared_ptr<Setting> m_setting_ = nullptr;
         std::vector<std::shared_ptr<VanillaGaussianProcess>> m_gps_;
         std::vector<double> m_partitions_;
-
-        // stored training data
         TrainBuffer m_train_buffer_;
 
     public:
-        static std::shared_ptr<LidarGaussianProcess1D>
-        Create(std::shared_ptr<Setting> setting);
+        explicit LidarGaussianProcess1D(std::shared_ptr<Setting> setting);
 
         [[nodiscard]] bool
         IsTrained() const {
@@ -134,12 +122,12 @@ namespace erl::gaussian_process {
             return m_setting_;
         }
 
-        [[nodiscard]] std::vector<std::shared_ptr<VanillaGaussianProcess>>
+        [[nodiscard]] const std::vector<std::shared_ptr<VanillaGaussianProcess>> &
         GetGps() const {
             return m_gps_;
         }
 
-        [[nodiscard]] std::vector<double>
+        [[nodiscard]] const std::vector<double> &
         GetPartitions() const {
             return m_partitions_;
         }
@@ -150,22 +138,22 @@ namespace erl::gaussian_process {
         }
 
         [[nodiscard]] Eigen::Vector2d
-        GlobalToLocalSo2(const Eigen::Ref<const Eigen::Vector2d> &vec_global) const {
+        GlobalToLocalSo2(const Eigen::Vector2d &vec_global) const {
             return m_train_buffer_.GlobalToLocalSo2(vec_global);
         }
 
         [[nodiscard]] Eigen::Vector2d
-        LocalToGlobalSo2(const Eigen::Ref<const Eigen::Vector2d> &vec_local) const {
+        LocalToGlobalSo2(const Eigen::Vector2d &vec_local) const {
             return m_train_buffer_.LocalToGlobalSo2(vec_local);
         }
 
         [[nodiscard]] Eigen::Vector2d
-        GlobalToLocalSe2(const Eigen::Ref<const Eigen::Vector2d> &vec_global) const {
+        GlobalToLocalSe2(const Eigen::Vector2d &vec_global) const {
             return m_train_buffer_.GlobalToLocalSe2(vec_global);
         }
 
         [[nodiscard]] Eigen::Vector2d
-        LocalToGlobalSe2(const Eigen::Ref<const Eigen::Vector2d> &vec_local) const {
+        LocalToGlobalSe2(const Eigen::Vector2d &vec_local) const {
             return m_train_buffer_.LocalToGlobalSe2(vec_local);
         }
 
@@ -188,12 +176,10 @@ namespace erl::gaussian_process {
             Eigen::Ref<Eigen::Scalard> range_pred,
             Eigen::Ref<Eigen::Scalard> range_pred_var,
             double &occ) const;  // return false if failed to compute occ
-
-    private:
-        explicit LidarGaussianProcess1D(std::shared_ptr<Setting> setting);
     };
 }  // namespace erl::gaussian_process
 
+// ReSharper disable CppInconsistentNaming
 template<>
 struct YAML::convert<erl::gaussian_process::LidarGaussianProcess1D::TrainBuffer::Setting> {
     static Node
@@ -203,7 +189,7 @@ struct YAML::convert<erl::gaussian_process::LidarGaussianProcess1D::TrainBuffer:
         node["valid_range_max"] = setting.valid_range_max;
         node["valid_angle_min"] = setting.valid_angle_min;
         node["valid_angle_max"] = setting.valid_angle_max;
-        node["mapping"] = *setting.mapping;
+        node["mapping"] = setting.mapping;
         return node;
     }
 
@@ -214,7 +200,7 @@ struct YAML::convert<erl::gaussian_process::LidarGaussianProcess1D::TrainBuffer:
         setting.valid_range_max = node["valid_range_max"].as<double>();
         setting.valid_angle_min = node["valid_angle_min"].as<double>();
         setting.valid_angle_max = node["valid_angle_max"].as<double>();
-        *setting.mapping = node["mapping"].as<erl::gaussian_process::Mapping::Setting>();
+        setting.mapping = node["mapping"].as<std::shared_ptr<erl::gaussian_process::Mapping::Setting>>();
         return true;
     }
 };
@@ -231,8 +217,8 @@ struct YAML::convert<erl::gaussian_process::LidarGaussianProcess1D::Setting> {
         node["sensor_range_var"] = setting.sensor_range_var;
         node["max_valid_range_var"] = setting.max_valid_range_var;
         node["occ_test_temperature"] = setting.occ_test_temperature;
-        node["train_buffer"] = *setting.train_buffer;
-        node["gp"] = *setting.gp;
+        node["train_buffer"] = setting.train_buffer;
+        node["gp"] = setting.gp;
         return node;
     }
 
@@ -246,8 +232,10 @@ struct YAML::convert<erl::gaussian_process::LidarGaussianProcess1D::Setting> {
         setting.sensor_range_var = node["sensor_range_var"].as<double>();
         setting.max_valid_range_var = node["max_valid_range_var"].as<double>();
         setting.occ_test_temperature = node["occ_test_temperature"].as<double>();
-        *setting.train_buffer = node["train_buffer"].as<erl::gaussian_process::LidarGaussianProcess1D::TrainBuffer::Setting>();
-        *setting.gp = node["gp"].as<erl::gaussian_process::VanillaGaussianProcess::Setting>();
+        setting.train_buffer = node["train_buffer"].as<std::shared_ptr<erl::gaussian_process::LidarGaussianProcess1D::TrainBuffer::Setting>>();
+        setting.gp = node["gp"].as<std::shared_ptr<erl::gaussian_process::VanillaGaussianProcess::Setting>>();
         return true;
     }
 };
+
+// ReSharper restore CppInconsistentNaming

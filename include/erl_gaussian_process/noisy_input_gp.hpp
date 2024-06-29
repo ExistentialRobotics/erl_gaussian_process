@@ -75,8 +75,7 @@ namespace erl::gaussian_process {
                 ERL_ASSERTM(AllocateMemory(max_num_samples, x_dim), "Failed to allocate memory.");
             }
             m_trained_ = false;
-            m_kernel_ = covariance::Covariance::CreateCovariance(m_setting_->kernel_type);
-            m_kernel_->GetSetting()->x_dim = x_dim;
+            m_kernel_ = covariance::Covariance::CreateCovariance(m_setting_->kernel_type, m_setting_->kernel);
             m_three_over_scale_square_ = 3. * m_setting_->kernel->alpha / (m_setting_->kernel->scale * m_setting_->kernel->scale);
             m_num_train_samples_ = 0;
             m_num_train_samples_with_grad_ = 0;

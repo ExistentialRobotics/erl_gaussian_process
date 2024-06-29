@@ -6,12 +6,13 @@ project(erl_gaussian_process
         DESCRIPTION "erl_gaussian_process is a C++ implementation of Gaussian Process.")
 message(STATUS "Configuring ${PROJECT_NAME} ${PROJECT_VERSION}")
 
-if (NOT COMMAND erl_project_setup)
-    find_package(erl_common REQUIRED)
-endif ()
+if(NOT COMMAND erl_project_setup)
+        find_package(erl_common REQUIRED)
+endif()
+
 erl_project_setup(
         ${PROJECT_NAME}
-        ERL_PACKAGES erl_common erl_covariance
+        ERL_PACKAGES erl_common erl_covariance erl_geometry
 )
 erl_setup_ros()
 erl_catkin_package(
@@ -20,13 +21,13 @@ erl_catkin_package(
         CATKIN_DEPENDS ${${PROJECT_NAME}_CATKIN_DEPENDS}
         DEPENDS ${${PROJECT_NAME}_DEPENDS})
 
-#######################################################################################################################
+# ######################################################################################################################
 # BUILD
-#######################################################################################################################
+# ######################################################################################################################
 
-########################
+# #######################
 # define the libraries #
-########################
+# #######################
 file(GLOB_RECURSE SRC_FILES src/*.cpp)
 add_library(${PROJECT_NAME} SHARED ${SRC_FILES})
 add_library(${PROJECT_NAME}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
@@ -35,35 +36,36 @@ target_include_directories(${PROJECT_NAME}
         $<BUILD_INTERFACE:${${PROJECT_NAME}_INCLUDE_DIR}>
         $<INSTALL_INTERFACE:${${PROJECT_NAME}_INSTALL_INCLUDE_DIR}>)
 target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC ${catkin_INCLUDE_DIRS})
-if (catkin_LIBRARIES)
-    target_link_libraries(${PROJECT_NAME} PUBLIC ${catkin_LIBRARIES})
-else ()
-    target_link_libraries(${PROJECT_NAME} PUBLIC ${${PROJECT_NAME}_ERL_PACKAGES})
-endif ()
 
-###################
+if(catkin_LIBRARIES)
+        target_link_libraries(${PROJECT_NAME} PUBLIC ${catkin_LIBRARIES})
+else()
+        target_link_libraries(${PROJECT_NAME} PUBLIC ${${PROJECT_NAME}_ERL_PACKAGES})
+endif()
+
+# ##################
 # Python bindings #
-###################
+# ##################
 erl_add_python_package(
         PYTHON_PKG_DIR ${${PROJECT_NAME}_PYTHON_DIR}/${PROJECT_NAME}
         PYBIND_MODULE_NAME py${PROJECT_NAME}
         DEPENDS_PYTHON_PKGS ${${PROJECT_NAME}_ERL_PACKAGES})
 
-#######################################################################################################################
+# ######################################################################################################################
 # INSTALL
-#######################################################################################################################
+# ######################################################################################################################
 erl_install(
         LIBRARIES ${PROJECT_NAME}
         PYBIND_MODULES py${PROJECT_NAME})
 
-#######################################################################################################################
+# ######################################################################################################################
 # TEST
-#######################################################################################################################
+# ######################################################################################################################
 erl_add_tests(
         LIBRARIES ${PROJECT_NAME}
 )
 
-#######################################################################################################################
+# ######################################################################################################################
 # export variables
-#######################################################################################################################
+# ######################################################################################################################
 erl_mark_project_found(${PROJECT_NAME})

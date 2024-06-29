@@ -101,10 +101,10 @@ namespace erl::gaussian_process {
             return m_mat_l_;
         }
 
-        void
+        [[nodiscard]] bool
         Train(long num_train_samples);
 
-        void
+        [[nodiscard]] bool
         Test(const Eigen::Ref<const Eigen::MatrixXd> &mat_x_test, Eigen::Ref<Eigen::VectorXd> vec_f_out, Eigen::Ref<Eigen::VectorXd> vec_var_out) const;
 
     protected:

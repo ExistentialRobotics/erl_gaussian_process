@@ -30,7 +30,7 @@ namespace erl::gaussian_process {
         const auto n = vec_angles_original.size();
         vec_angles.resize(n);
         vec_ranges.resize(n);
-        vec_mask_hit.setConstant(n + 1, false);  // +1 flag to mask the last valid area
+        vec_mask_hit.setConstant(n + 1, false); // +1 flag to mask the last valid area
         mat_direction_local.resize(2, n);
         mat_xy_local.resize(2, n);
         mat_direction_global.resize(2, n);
@@ -46,10 +46,10 @@ namespace erl::gaussian_process {
         max_distance = 0.;
         int cnt = 0;
         for (ssize_t i = 0; i < n; ++i) {
-            const double angle = ClipAngle(vec_angles_original[i]);  // make sure angle is within [-pi, pi)
+            const double angle = ClipAngle(vec_angles_original[i]); // make sure angle is within [-pi, pi)
             const double &range = vec_ranges_original[i];
 
-            if (std::isnan(range) || range < setting->valid_range_min || range >= setting->valid_range_max) { continue; }  // valid range: [min, max)
+            if (std::isnan(range) || range <= setting->valid_range_min || range >= setting->valid_range_max) { continue; } // valid range: [min, max)
 
             vec_angles[cnt] = angle;
             vec_ranges[cnt] = range;
@@ -66,8 +66,6 @@ namespace erl::gaussian_process {
             cnt++;
         }
 
-        // observed_area = Aabb2D(position, max_distance);
-
         vec_angles.conservativeResize(cnt);
         vec_ranges.conservativeResize(cnt);
         mat_xy_local.conservativeResize(2, cnt);
@@ -77,10 +75,9 @@ namespace erl::gaussian_process {
         return cnt > 0;
     }
 
-    std::shared_ptr<LidarGaussianProcess1D>
-    LidarGaussianProcess1D::Create(std::shared_ptr<Setting> setting) {
-        return std::shared_ptr<LidarGaussianProcess1D>(new LidarGaussianProcess1D(std::move(setting)));
-    }
+    LidarGaussianProcess1D::LidarGaussianProcess1D(std::shared_ptr<Setting> setting)
+        : m_setting_(std::move(setting)),
+          m_train_buffer_(m_setting_->train_buffer) {}
 
     void
     LidarGaussianProcess1D::Reset() {
@@ -107,20 +104,20 @@ namespace erl::gaussian_process {
             return;
         }
 
-        const auto num_groups = std::max(1l, n / (m_setting_->group_size - m_setting_->overlap_size)) + 1;
-        m_setting_->gp->max_num_samples = m_setting_->group_size;  // adjust the max_num_samples
-        m_setting_->gp->kernel->x_dim = 1;                         // adjust the x_dim
+        const long s = m_setting_->group_size - m_setting_->overlap_size;
+        const auto num_groups = std::max(1l, n / s) + 1;
+        m_setting_->gp->max_num_samples = m_setting_->group_size; // adjust the max_num_samples
+        m_setting_->gp->kernel->x_dim = 1;                        // adjust the x_dim
         m_gps_.resize(num_groups);
-        // m_gps_.reserve(num_groups);
         m_partitions_.reserve(num_groups + 1);
         m_partitions_.push_back(m_train_buffer_.vec_angles[0]);
         const long half_overlap_size = m_setting_->overlap_size / 2;
 
         for (int i = 0; i < num_groups - 2; ++i) {
-            const long index_left = i * (m_setting_->group_size - m_setting_->overlap_size);  // lower bound, included
-            const long index_right = index_left + m_setting_->group_size;                     // upper bound, not included
+            const long index_left = i * s;                                // lower bound, included
+            const long index_right = index_left + m_setting_->group_size; // upper bound, not included
 
-            m_partitions_.push_back(m_train_buffer_.vec_angles(index_right - half_overlap_size));
+            m_partitions_.push_back(m_train_buffer_.vec_angles[index_right - half_overlap_size]);
             std::shared_ptr<VanillaGaussianProcess> &gp = m_gps_[i];
             if (gp == nullptr) { gp = std::make_shared<VanillaGaussianProcess>(m_setting_->gp); }
             gp->Reset(m_setting_->group_size, 1);
@@ -128,11 +125,11 @@ namespace erl::gaussian_process {
             gp->GetTrainInputSamplesBuffer() = m_train_buffer_.vec_angles.segment(index_left, index_right - index_left).transpose();
             gp->GetTrainOutputSamplesBuffer() = m_train_buffer_.vec_mapped_distances.segment(index_left, index_right - index_left);
             gp->GetTrainOutputSamplesVarianceBuffer().setConstant(m_setting_->sensor_range_var);
-            gp->Train(m_setting_->group_size);
+            (void) gp->Train(m_setting_->group_size);
         }
 
         // the last two groups
-        long index_left = (num_groups - 2) * (m_setting_->group_size - m_setting_->overlap_size);
+        long index_left = (num_groups - 2) * s;
         long index_right = index_left + (n - index_left + m_setting_->overlap_size) / 2;
         m_partitions_.push_back(m_train_buffer_.vec_angles(index_right - half_overlap_size));
         {
@@ -143,7 +140,7 @@ namespace erl::gaussian_process {
             gp->GetTrainInputSamplesBuffer().leftCols(num_samples) = m_train_buffer_.vec_angles.segment(index_left, num_samples).transpose();
             gp->GetTrainOutputSamplesBuffer().head(num_samples) = m_train_buffer_.vec_mapped_distances.segment(index_left, num_samples);
             gp->GetTrainOutputSamplesVarianceBuffer().head(num_samples).setConstant(m_setting_->sensor_range_var);
-            gp->Train(num_samples);
+            (void) gp->Train(num_samples);
         }
 
         index_left = index_left + (n - index_left - m_setting_->overlap_size) / 2;
@@ -157,7 +154,7 @@ namespace erl::gaussian_process {
             gp->GetTrainInputSamplesBuffer().leftCols(num_samples) = m_train_buffer_.vec_angles.segment(index_left, num_samples).transpose();
             gp->GetTrainOutputSamplesBuffer().head(num_samples) = m_train_buffer_.vec_mapped_distances.segment(index_left, num_samples);
             gp->GetTrainOutputSamplesVarianceBuffer().head(num_samples).setConstant(m_setting_->sensor_range_var);
-            gp->Train(num_samples);
+            (void) gp->Train(num_samples);
         }
 
         m_trained_ = true;
@@ -184,14 +181,10 @@ namespace erl::gaussian_process {
             if ((angles[i] < boundary_min) || (angles[i] > boundary_max)) { continue; }
             for (size_t j = 0; j < m_gps_.size(); ++j) {
                 if (angles[i] < m_partitions_[j] || angles[i] > m_partitions_[j + 1]) { continue; }
-                if (!m_gps_[j]->IsTrained()) { continue; }
+                if (!m_gps_[j]->IsTrained()) { break; }
                 Eigen::Scalard f, var;
-                m_gps_[j]->Test(angles.segment<1>(i), f, var);
-                if (un_map) {
-                    fs[i] = m_train_buffer_.mapping->inv(f[0]);
-                } else {
-                    fs[i] = f[0];
-                }
+                if (!m_gps_[j]->Test(angles.segment<1>(i), f, var)) { break; }
+                if (un_map) { fs[i] = m_train_buffer_.mapping->inv(f[0]); } else { fs[i] = f[0]; }
                 vars[i] = var[0];
                 break;
             }
@@ -207,15 +200,11 @@ namespace erl::gaussian_process {
         double &occ) const {
 
         Test(angle, range_pred, range_pred_var, false);
-        if (range_pred_var[0] > m_setting_->max_valid_range_var) { return false; }  // fail to estimate the mapped r f
+        if (range_pred_var[0] > m_setting_->max_valid_range_var) { return false; } // fail to estimate the mapped r f
         // when the r is larger, 1/r results in smaller different, we need a larger m_scale_.
         const double a = r * m_setting_->occ_test_temperature;
         occ = 2. / (1. + std::exp(a * (range_pred[0] - m_train_buffer_.mapping->map(r)))) - 1.;
         range_pred[0] = m_train_buffer_.mapping->inv(range_pred[0]);
         return true;
     }
-
-    LidarGaussianProcess1D::LidarGaussianProcess1D(std::shared_ptr<Setting> setting)
-        : m_setting_(std::move(setting)),
-          m_train_buffer_(m_setting_->train_buffer) {}
-}  // namespace erl::gaussian_process
+} // namespace erl::gaussian_process
