@@ -99,8 +99,8 @@ namespace erl::gaussian_process {
 
     bool
     RangeSensorGaussianProcess3D::StoreData(const Eigen::Matrix3d &rotation, const Eigen::Vector3d &translation, Eigen::MatrixXd ranges) {
-        if (m_setting_->range_sensor_frame_type == geometry::RgbdFrame3D::GetFrameType()) {
-            ranges = std::reinterpret_pointer_cast<geometry::RgbdFrame3D>(m_range_sensor_frame_)->DepthImageToDepth(ranges);
+        if (m_setting_->range_sensor_frame_type == geometry::DepthFrame3D::GetFrameType()) {
+            ranges = std::reinterpret_pointer_cast<geometry::DepthFrame3D>(m_range_sensor_frame_)->DepthImageToDepth(ranges);
         }
         m_range_sensor_frame_->UpdateRanges(rotation, translation, std::move(ranges), false);
         m_mapped_distances_ = m_range_sensor_frame_->GetRanges().unaryExpr(m_mapping_->map);
@@ -140,12 +140,11 @@ namespace erl::gaussian_process {
                         ++cnt;
                     }
                 }
-                if (cnt > 0 && !gp->Train(cnt)) {
-#pragma omp critical  // avoid multiple threads printing at the same time
-                    ERL_WARN("Failed to train GP for partition ({}, {}) X ({}, {})", row_index_left, row_index_right, col_index_left, col_index_right);
-                }
+                if (cnt > 0) { (void) gp->Train(cnt); }
             }
         }
+
+        ERL_INFO("{} x {} Gaussian processes are trained.", m_gps_.rows(), m_gps_.cols());
 
         m_trained_ = true;
         return true;
@@ -153,43 +152,35 @@ namespace erl::gaussian_process {
 
     bool
     RangeSensorGaussianProcess3D::Test(
-        const std::vector<Eigen::Vector3d> &directions_world,
+        const Eigen::Ref<const Eigen::Matrix3Xd> &directions,
+        const bool directions_are_local,
         Eigen::Ref<Eigen::VectorXd> vec_ranges,
         Eigen::Ref<Eigen::VectorXd> vec_ranges_var,
         const bool un_map,
+        // ReSharper disable once CppParameterNeverUsed
         const bool parallel) const {
 
         if (!m_trained_) { return false; }
-        if (directions_world.empty()) { return false; }
 
-        Eigen::Matrix2Xd frame_coords(2, directions_world.size());
-        for (long i = 0; i < static_cast<long>(directions_world.size()); ++i) {
-            frame_coords.col(i) = m_range_sensor_frame_->ComputeFrameCoords(GlobalToLocalSo3(directions_world[i]));
-        }
-        return Test(frame_coords, std::move(vec_ranges), std::move(vec_ranges_var), un_map, parallel);
-    }
-
-    bool
-    RangeSensorGaussianProcess3D::Test(
-        const Eigen::Ref<const Eigen::Matrix2Xd> &frame_coords,
-        Eigen::Ref<Eigen::VectorXd> vec_ranges,
-        Eigen::Ref<Eigen::VectorXd> vec_ranges_var,
-        const bool un_map,
-        const bool parallel) const {
-
-        if (!m_trained_) { return false; }
-        const long n = frame_coords.cols();
+        // ReSharper disable once CppDFAUnusedValue, CppDFAUnreadVariable
+        const long n = directions.cols();
+        ERL_DEBUG_ASSERT(n > 0, "directions_world is empty.");
         ERL_DEBUG_ASSERT(vec_ranges.size() >= n, "vec_ranges size = {}, it should be >= {}.", vec_ranges.size(), n);
         ERL_DEBUG_ASSERT(vec_ranges_var.size() >= n, "vec_ranges_var size = {}, it should be >= {}.", vec_ranges_var.size(), n);
 
         vec_ranges.setZero();
         vec_ranges_var.setConstant(m_setting_->init_variance);
 
-#pragma omp parallel for if (parallel) default(none) shared(n, frame_coords, vec_ranges, vec_ranges_var, un_map)
+#pragma omp parallel for if (parallel) default(none) shared(n, directions, directions_are_local, vec_ranges, vec_ranges_var, un_map)
         for (long i = 0; i < n; ++i) {
+            Eigen::Vector3d direction_local = directions.col(i);
+            if (!directions_are_local) { direction_local = m_range_sensor_frame_->WorldToFrameSo3(direction_local); }
+            if (!m_range_sensor_frame_->PointIsInFrame(direction_local)) { continue; }
+            const Eigen::Vector2d frame_coords = m_range_sensor_frame_->ComputeFrameCoords(direction_local);
+
             // search for the partition
             // row
-            const double row_coord = frame_coords(0, i);
+            const double &row_coord = frame_coords.x();
             long partition_row_index = 0;
             for (; partition_row_index < static_cast<long>(m_row_partitions_.size()); ++partition_row_index) {
                 if (const auto &[row_index_left, row_index_right, row_coord_left, row_coord_right] = m_row_partitions_[partition_row_index];
@@ -199,7 +190,7 @@ namespace erl::gaussian_process {
             }
             if (partition_row_index >= static_cast<long>(m_row_partitions_.size())) { continue; }
             // col
-            const double col_coord = frame_coords(1, i);
+            const double &col_coord = frame_coords.y();
             long partition_col_index = 0;
             for (; partition_col_index < static_cast<long>(m_col_partitions_.size()); ++partition_col_index) {
                 if (const auto &[col_index_left, col_index_right, col_coord_left, col_coord_right] = m_col_partitions_[partition_col_index];
@@ -212,7 +203,7 @@ namespace erl::gaussian_process {
             const auto &gp = m_gps_(partition_row_index, partition_col_index);
             if (!gp->IsTrained()) { continue; }
             Eigen::Scalard f, var;
-            if (!gp->Test(frame_coords.col(i), f, var)) { continue; }  // invalid test
+            if (!gp->Test(frame_coords, f, var)) { continue; }  // invalid test
             vec_ranges[i] = un_map ? m_mapping_->inv(f[0]) : f[0];
             vec_ranges_var[i] = var[0];
         }
@@ -221,13 +212,13 @@ namespace erl::gaussian_process {
 
     bool
     RangeSensorGaussianProcess3D::ComputeOcc(
-        const Eigen::Vector2d &frame_coords,
+        const Eigen::Vector3d &dir_local,
         const double r,
         Eigen::Ref<Eigen::Scalard> range_pred,
         Eigen::Ref<Eigen::Scalard> range_pred_var,
         double &occ) const {
 
-        if (!Test(frame_coords, range_pred, range_pred_var, false, false)) { return false; }
+        if (!Test(LocalToGlobalSo3(dir_local), true, range_pred, range_pred_var, false, false)) { return false; }
         if (range_pred_var[0] > m_setting_->max_valid_range_var) { return false; }
         const double a = r * m_setting_->occ_test_temperature;
         occ = 2.0 / (1.0 + std::exp(a * (range_pred[0] - m_mapping_->map(r)))) - 1.0;

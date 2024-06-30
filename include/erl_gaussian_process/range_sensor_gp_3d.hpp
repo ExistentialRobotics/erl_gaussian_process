@@ -5,8 +5,8 @@
 
 #include "erl_common/eigen.hpp"
 #include "erl_common/yaml.hpp"
+#include "erl_geometry/depth_frame_3d.hpp"
 #include "erl_geometry/lidar_frame_3d.hpp"
-#include "erl_geometry/rgbd_frame_3d.hpp"
 
 #include <memory>
 
@@ -19,14 +19,14 @@ namespace erl::gaussian_process {
             long row_group_size = 24;   // number of points in each group for each row, including the overlap ones
             long row_overlap_size = 6;  // number of points in the overlap region for each row
             long row_margin = 0;
-            long col_group_size = 16;   // number of elevation points in each group, including the overlap ones
-            long col_overlap_size = 4;  // number of points in the overlap region
+            long col_group_size = 8;    // number of elevation points in each group, including the overlap ones
+            long col_overlap_size = 2;  // number of points in the overlap region
             long col_margin = 0;
             double init_variance = 1e6;        // large value to initialize variance result in case of computation failure
             double sensor_range_var = 0.01;    // variance of the sensor range measurement
             double max_valid_range_var = 0.1;  // if the distance variance is greater than this threshold, the prediction is invalid and should be discarded
             double occ_test_temperature = 30;  // OCC test is a tanh function, this controls the slope around 0
-            std::string range_sensor_frame_type = "lidar";  // type of the range sensor frame: "lidar" or "rgbd"
+            std::string range_sensor_frame_type = "lidar";  // type of the range sensor frame: "lidar" or "depth"
             std::shared_ptr<geometry::RangeSensorFrame3D::Setting> range_sensor_frame = std::make_shared<geometry::LidarFrame3D::Setting>();
             std::shared_ptr<VanillaGaussianProcess::Setting> gp = std::make_shared<VanillaGaussianProcess::Setting>();
             std::shared_ptr<Mapping::Setting> mapping = []() {
@@ -116,22 +116,15 @@ namespace erl::gaussian_process {
 
         [[nodiscard]] bool
         Test(
-            const std::vector<Eigen::Vector3d> &directions_world,
-            Eigen::Ref<Eigen::VectorXd> vec_ranges,
-            Eigen::Ref<Eigen::VectorXd> vec_ranges_var,
-            bool un_map,
-            bool parallel) const;
-
-        [[nodiscard]] bool
-        Test(
-            const Eigen::Ref<const Eigen::Matrix2Xd> &frame_coords,
+            const Eigen::Ref<const Eigen::Matrix3Xd> &directions,
+            bool directions_are_local,
             Eigen::Ref<Eigen::VectorXd> vec_ranges,
             Eigen::Ref<Eigen::VectorXd> vec_ranges_var,
             bool un_map,
             bool parallel) const;
 
         bool
-        ComputeOcc(const Eigen::Vector2d &frame_coords, double r, Eigen::Ref<Eigen::Scalard> range_pred, Eigen::Ref<Eigen::Scalard> range_pred_var, double &occ)
+        ComputeOcc(const Eigen::Vector3d &dir_local, double r, Eigen::Ref<Eigen::Scalard> range_pred, Eigen::Ref<Eigen::Scalard> range_pred_var, double &occ)
             const;
     };
 }  // namespace erl::gaussian_process
@@ -155,8 +148,8 @@ struct YAML::convert<erl::gaussian_process::RangeSensorGaussianProcess3D::Settin
         node["range_sensor_frame_type"] = rhs.range_sensor_frame_type;
         if (rhs.range_sensor_frame_type == erl::geometry::LidarFrame3D::GetFrameType()) {
             node["range_sensor_frame"] = std::dynamic_pointer_cast<erl::geometry::LidarFrame3D::Setting>(rhs.range_sensor_frame);
-        } else if (rhs.range_sensor_frame_type == erl::geometry::RgbdFrame3D::GetFrameType()) {
-            node["range_sensor_frame"] = std::dynamic_pointer_cast<erl::geometry::RgbdFrame3D::Setting>(rhs.range_sensor_frame);
+        } else if (rhs.range_sensor_frame_type == erl::geometry::DepthFrame3D::GetFrameType()) {
+            node["range_sensor_frame"] = std::dynamic_pointer_cast<erl::geometry::DepthFrame3D::Setting>(rhs.range_sensor_frame);
         } else {
             ERL_FATAL("Unknown range_sensor_frame_type: {}", rhs.range_sensor_frame_type);
         }
@@ -183,8 +176,8 @@ struct YAML::convert<erl::gaussian_process::RangeSensorGaussianProcess3D::Settin
         rhs.range_sensor_frame_type = node["range_sensor_frame_type"].as<std::string>();
         if (rhs.range_sensor_frame_type == erl::geometry::LidarFrame3D::GetFrameType()) {
             rhs.range_sensor_frame = node["range_sensor_frame"].as<std::shared_ptr<erl::geometry::LidarFrame3D::Setting>>();
-        } else if (rhs.range_sensor_frame_type == erl::geometry::RgbdFrame3D::GetFrameType()) {
-            rhs.range_sensor_frame = node["range_sensor_frame"].as<std::shared_ptr<erl::geometry::RgbdFrame3D::Setting>>();
+        } else if (rhs.range_sensor_frame_type == erl::geometry::DepthFrame3D::GetFrameType()) {
+            rhs.range_sensor_frame = node["range_sensor_frame"].as<std::shared_ptr<erl::geometry::DepthFrame3D::Setting>>();
         } else {
             ERL_FATAL("Unknown range_sensor_frame_type: {}", rhs.range_sensor_frame_type);
         }
