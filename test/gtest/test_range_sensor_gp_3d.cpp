@@ -132,7 +132,7 @@ TEST(RangeSensorGp3D, Lidar) {
     line_set_rays->points_.push_back(translation);
     line_set_rays->points_.insert(line_set_rays->points_.end(), end_points_in_world.data(), end_points_in_world.data() + n_azimuths * n_elevations);
     line_set_rays->lines_.reserve(n_azimuths * n_elevations);
-    for (long i = 0; i < end_points_in_world.size(); ++i) { line_set_rays->lines_.push_back({0, i + 1}); }
+    for (long i = 0; i < end_points_in_world.size(); ++i) { line_set_rays->lines_.emplace_back(0, i + 1); }
     line_set_rays->PaintUniformColor({1.0, 0.5, 0.0});
 
     const auto point_cloud_train = std::make_shared<open3d::geometry::PointCloud>();
@@ -292,7 +292,7 @@ TEST(RangeSensorGp3D, Depth) {
     line_set_rays->points_.push_back(translation);
     line_set_rays->points_.insert(line_set_rays->points_.end(), end_points_in_world.data(), end_points_in_world.data() + image_height * image_width);
     line_set_rays->lines_.reserve(image_height * image_width);
-    for (long i = 0; i < end_points_in_world.size(); ++i) { line_set_rays->lines_.push_back({0, i + 1}); }
+    for (long i = 0; i < end_points_in_world.size(); ++i) { line_set_rays->lines_.emplace_back(0, i + 1); }
     line_set_rays->PaintUniformColor({1.0, 0.5, 0.0});
 
     const auto point_cloud_train = std::make_shared<open3d::geometry::PointCloud>();

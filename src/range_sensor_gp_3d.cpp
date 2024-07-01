@@ -218,7 +218,7 @@ namespace erl::gaussian_process {
         Eigen::Ref<Eigen::Scalard> range_pred_var,
         double &occ) const {
 
-        if (!Test(LocalToGlobalSo3(dir_local), true, range_pred, range_pred_var, false, false)) { return false; }
+        if (!Test(dir_local, true, range_pred, range_pred_var, false, false)) { return false; }
         if (range_pred_var[0] > m_setting_->max_valid_range_var) { return false; }
         const double a = r * m_setting_->occ_test_temperature;
         occ = 2.0 / (1.0 + std::exp(a * (range_pred[0] - m_mapping_->map(r)))) - 1.0;
