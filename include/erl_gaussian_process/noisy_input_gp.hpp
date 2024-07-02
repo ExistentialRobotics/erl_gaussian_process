@@ -159,7 +159,9 @@ namespace erl::gaussian_process {
         AllocateMemory(const long max_num_samples, const long x_dim) {
             if (max_num_samples <= 0 || x_dim <= 0) { return false; }  // invalid input
             if (m_setting_->max_num_samples > 0 && max_num_samples > m_setting_->max_num_samples) { return false; }
-            if (m_setting_->kernel->x_dim > 0 && x_dim != m_setting_->kernel->x_dim) { return false; }
+            if (m_setting_->kernel->x_dim > 0) {
+                ERL_ASSERTM(x_dim == m_setting_->kernel->x_dim, "x_dim {} does not match kernel->x_dim {}.", x_dim, m_setting_->kernel->x_dim);
+            }
             const auto [rows, cols] = covariance::Covariance::GetMinimumKtrainSize(max_num_samples, max_num_samples, x_dim);
             if (m_mat_k_train_.rows() < rows || m_mat_k_train_.cols() < cols) { m_mat_k_train_.resize(rows, cols); }
             if (m_mat_x_train_.rows() < x_dim || m_mat_x_train_.cols() < max_num_samples) { m_mat_x_train_.resize(x_dim, max_num_samples); }
@@ -194,12 +196,14 @@ namespace erl::gaussian_process {
     };
 }  // namespace erl::gaussian_process
 
+// ReSharper disable CppInconsistentNaming
 template<>
 struct YAML::convert<erl::gaussian_process::NoisyInputGaussianProcess::Setting> {
     static Node
     encode(const erl::gaussian_process::NoisyInputGaussianProcess::Setting &setting) {
         Node node;
-        node["kernel"] = *setting.kernel;
+        node["kernel_type"] = setting.kernel_type;
+        node["kernel"] = setting.kernel;
         node["max_num_samples"] = setting.max_num_samples;
         return node;
     }
@@ -207,8 +211,11 @@ struct YAML::convert<erl::gaussian_process::NoisyInputGaussianProcess::Setting> 
     static bool
     decode(const Node &node, erl::gaussian_process::NoisyInputGaussianProcess::Setting &setting) {
         if (!node.IsMap()) { return false; }
+        setting.kernel_type = node["kernel_type"].as<std::string>();
         setting.kernel = node["kernel"].as<std::shared_ptr<erl::covariance::Covariance::Setting>>();
         setting.max_num_samples = node["max_num_samples"].as<long>();
         return true;
     }
 };  // namespace YAML
+
+// ReSharper restore CppInconsistentNaming
