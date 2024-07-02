@@ -123,13 +123,13 @@ public:
 #define DEFAULT_OBSGP_MARGIN      double(0.0175)
 #define GPISMAP_OBS_VAR_THRE      double(0.1)
 
-TEST(ERL_GAUSSIAN_PROCESS, LidarGaussianProcess1D) {
+TEST(ERL_GAUSSIAN_PROCESS, LidarGaussianProcess2D) {
     std::filesystem::path path = __FILE__;
     path = path.parent_path().parent_path();
     path /= "double/train.dat";
     auto train_data_loader = TrainDataLoader(path.string().c_str());
 
-    auto setting = std::make_shared<LidarGaussianProcess1D::Setting>();
+    auto setting = std::make_shared<LidarGaussianProcess2D::Setting>();
     setting->group_size = DEFAULT_OBSGP_GROUP_SZ + DEFAULT_OBSGP_OVERLAP_SZ;
     setting->overlap_size = DEFAULT_OBSGP_OVERLAP_SZ;
     setting->boundary_margin = DEFAULT_OBSGP_MARGIN;
@@ -141,14 +141,14 @@ TEST(ERL_GAUSSIAN_PROCESS, LidarGaussianProcess1D) {
     setting->train_buffer->mapping->type = Mapping::Type::kIdentity;
     std::cout << *setting << std::endl;
 
-    auto lidar_gp = LidarGaussianProcess1D::Create(setting);
+    auto lidar_gp = LidarGaussianProcess2D::Create(setting);
     ObsGp1D obs_gp;
 
     auto df = train_data_loader[0];
 
     Logging::Info("Train:");
     auto n = static_cast<int>(df.x.size());
-    ReportTime<std::chrono::microseconds>("LidarGaussianProcess1D", 10, false, [&] { lidar_gp->Train(df.x, df.y, Eigen::Matrix23d::Zero()); });
+    ReportTime<std::chrono::microseconds>("LidarGaussianProcess2D", 10, false, [&] { lidar_gp->Train(df.x, df.y, Eigen::Matrix23d::Zero()); });
     ReportTime<std::chrono::microseconds>("ObsGp1D", 10, false, [&] { obs_gp.Train(df.x.data(), df.y.data(), &n); });
 
     ASSERT_STD_VECTOR_EQUAL("m_partitions_", lidar_gp->GetPartitions(), obs_gp.m_range_);
@@ -186,7 +186,7 @@ TEST(ERL_GAUSSIAN_PROCESS, LidarGaussianProcess1D) {
         gt_f.setConstant(df.x.size(), 0.);
         gt_var.setConstant(gt_f.size(), 0.);
         Logging::Info("test[", i, "]:");
-        ReportTime<std::chrono::microseconds>("LidarGaussianProcess1D", 10, false, [&] { lidar_gp->Test(df.x, ans_f, ans_var, true); });
+        ReportTime<std::chrono::microseconds>("LidarGaussianProcess2D", 10, false, [&] { lidar_gp->Test(df.x, ans_f, ans_var, true); });
         ReportTime<std::chrono::microseconds>("ObsGp1D", 10, false, [&] { obs_gp.Test(df.x.transpose(), gt_f, gt_var); });
 #ifdef NDEBUG
         ASSERT_EIGEN_VECTOR_NEAR("f", ans_f, gt_f, 1e-15);

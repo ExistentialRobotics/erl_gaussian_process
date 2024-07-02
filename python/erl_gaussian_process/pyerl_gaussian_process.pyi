@@ -12,7 +12,7 @@ from erl_covariance import Covariance
 __all__ = [
     "VanillaGaussianProcess",
     "Mapping",
-    "LidarGaussianProcess1D",
+    "LidarGaussianProcess2D",
     "NoisyInputGaussianProcess",
 ]
 
@@ -61,7 +61,7 @@ class Mapping:
     map: Callable[[float], float]
     inv: Callable[[float], float]
 
-class LidarGaussianProcess1D:
+class LidarGaussianProcess2D:
     class TrainBuffer:
         class Setting(YamlableBase):
             valid_angle_min: float
@@ -70,9 +70,9 @@ class LidarGaussianProcess1D:
             valid_range_max: float
             mapping: Mapping.Setting
 
-            def __init__(self: LidarGaussianProcess1D.TrainBuffer.Setting): ...
+            def __init__(self: LidarGaussianProcess2D.TrainBuffer.Setting): ...
 
-        def __len__(self: LidarGaussianProcess1D.TrainBuffer) -> int: ...
+        def __len__(self: LidarGaussianProcess2D.TrainBuffer) -> int: ...
 
         angles: npt.NDArray[np.float64]
         distances: npt.NDArray[np.float64]
@@ -93,41 +93,41 @@ class LidarGaussianProcess1D:
         sensor_range_var: float
         max_valid_range_var: float
         occ_test_temperature: float
-        train_buffer: LidarGaussianProcess1D.TrainBuffer.Setting
+        train_buffer: LidarGaussianProcess2D.TrainBuffer.Setting
         gp: VanillaGaussianProcess.Setting
 
-        def __init__(self: LidarGaussianProcess1D.Setting): ...
+        def __init__(self: LidarGaussianProcess2D.Setting): ...
 
-    def __init__(self: LidarGaussianProcess1D, setting: Setting): ...
+    def __init__(self: LidarGaussianProcess2D, setting: Setting): ...
     @property
-    def is_trained(self: LidarGaussianProcess1D) -> bool: ...
+    def is_trained(self: LidarGaussianProcess2D) -> bool: ...
     @property
-    def setting(self: LidarGaussianProcess1D) -> Setting: ...
+    def setting(self: LidarGaussianProcess2D) -> Setting: ...
     @property
-    def train_buffer(self: LidarGaussianProcess1D) -> TrainBuffer: ...
+    def train_buffer(self: LidarGaussianProcess2D) -> TrainBuffer: ...
     def global_to_local_so2(
-        self: LidarGaussianProcess1D, vec_global: npt.NDArray[np.float64]
+        self: LidarGaussianProcess2D, vec_global: npt.NDArray[np.float64]
     ) -> npt.NDArray[np.float64]: ...
     def local_to_global_so2(
-        self: LidarGaussianProcess1D, vec_local: npt.NDArray[np.float64]
+        self: LidarGaussianProcess2D, vec_local: npt.NDArray[np.float64]
     ) -> npt.NDArray[np.float64]: ...
     def global_to_local_se2(
-        self: LidarGaussianProcess1D, vec_global: npt.NDArray[np.float64]
+        self: LidarGaussianProcess2D, vec_global: npt.NDArray[np.float64]
     ) -> npt.NDArray[np.float64]: ...
     def local_to_global_se2(
-        self: LidarGaussianProcess1D, vec_local: npt.NDArray[np.float64]
+        self: LidarGaussianProcess2D, vec_local: npt.NDArray[np.float64]
     ) -> npt.NDArray[np.float64]: ...
-    def reset(self: LidarGaussianProcess1D) -> None: ...
+    def reset(self: LidarGaussianProcess2D) -> None: ...
     def train(
-        self: LidarGaussianProcess1D,
+        self: LidarGaussianProcess2D,
         angles: npt.NDArray[np.float64],
         distances: npt.NDArray[np.float64],
         pose: npt.NDArray[np.float64],
     ) -> None: ...
     def test(
-        self: LidarGaussianProcess1D, thetas: npt.NDArray[np.float64], un_map: bool = True
+        self: LidarGaussianProcess2D, thetas: npt.NDArray[np.float64], un_map: bool = True
     ) -> Tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]: ...
-    def compute_occ(self: LidarGaussianProcess1D, angle: float, r: float) -> Tuple[bool, float, float, float]: ...
+    def compute_occ(self: LidarGaussianProcess2D, angle: float, r: float) -> Tuple[bool, float, float, float]: ...
 
 class NoisyInputGaussianProcess:
     class Setting(YamlableBase):

@@ -10,6 +10,6 @@ __all__ = [
     "Covariance",
     "VanillaGaussianProcess",
     "Mapping",
-    "LidarGaussianProcess1D",
+    "LidarGaussianProcess2D",
     "NoisyInputGaussianProcess",
 ]

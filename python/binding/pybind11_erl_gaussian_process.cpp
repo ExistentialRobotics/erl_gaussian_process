@@ -75,11 +75,11 @@ BindMapping(const py::module &m) {
 }
 
 void
-BindLidarGaussianProcess1D(const py::module &m) {
+BindLidarGaussianProcess2D(const py::module &m) {
 
-    using T = LidarGaussianProcess1D;
+    using T = LidarGaussianProcess2D;
 
-    auto py_lidar_gp = py::class_<T, std::shared_ptr<T>>(m, "LidarGaussianProcess1D");
+    auto py_lidar_gp = py::class_<T, std::shared_ptr<T>>(m, "LidarGaussianProcess2D");
 
     // TrainBuffer
     auto py_train_buffer = py::class_<T::TrainBuffer>(py_lidar_gp, "TrainBuffer");
@@ -211,6 +211,6 @@ PYBIND11_MODULE(PYBIND_MODULE_NAME, m) {
 
     BindVanillaGaussianProcess(m);
     BindMapping(m);
-    BindLidarGaussianProcess1D(m);
+    BindLidarGaussianProcess2D(m);
     BindNoisyInputGaussianProcess(m);
 }

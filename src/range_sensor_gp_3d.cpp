@@ -184,7 +184,7 @@ namespace erl::gaussian_process {
             long partition_row_index = 0;
             for (; partition_row_index < static_cast<long>(m_row_partitions_.size()); ++partition_row_index) {
                 if (const auto &[row_index_left, row_index_right, row_coord_left, row_coord_right] = m_row_partitions_[partition_row_index];
-                    row_coord >= row_coord_left && row_coord <= row_coord_right) {
+                    row_coord >= row_coord_left && row_coord < row_coord_right) {
                     break;
                 }
             }
@@ -200,7 +200,7 @@ namespace erl::gaussian_process {
             }
             if (partition_col_index >= static_cast<long>(m_col_partitions_.size())) { continue; }
 
-            const auto &gp = m_gps_(partition_row_index, partition_col_index);
+            const auto gp = m_gps_(partition_row_index, partition_col_index);
             if (!gp->IsTrained()) { continue; }
             Eigen::Scalard f, var;
             if (!gp->Test(frame_coords, f, var)) { continue; }  // invalid test
