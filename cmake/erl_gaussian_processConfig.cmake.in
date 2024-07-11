@@ -9,7 +9,7 @@ foreach(package erl_covariance)
 endforeach()
 erl_project_setup(
     @PROJECT_NAME@
-    ERL_PACKAGES erl_common erl_covariance
+    ERL_PACKAGES erl_common erl_covariance erl_geometry
 )
 include("${CMAKE_CURRENT_LIST_DIR}/@PROJECT_NAME@Targets.cmake")
 
