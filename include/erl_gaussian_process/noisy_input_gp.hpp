@@ -36,7 +36,7 @@ namespace erl::gaussian_process {
         Eigen::MatrixXd m_mat_grad_train_ = {};                       // dh(x_j)/dx_ij for index (i, j)
         Eigen::MatrixXd m_mat_k_train_ = {};                          // Ktrain, avoid reallocation
         Eigen::MatrixXd m_mat_l_ = {};                                // lower triangular matrix of the Cholesky decomposition of Ktrain
-        Eigen::VectorXb m_vec_grad_flag_ = {};                        // true if the corresponding training sample has gradient
+        Eigen::VectorXl m_vec_grad_flag_ = {};                        // true if the corresponding training sample has gradient
         Eigen::VectorXd m_vec_alpha_ = {};                            // h(x1)..h(xn), dh(x1)/dx1_1 .. dh(xn)/dxn_1 .. dh(x1)/dx1_dim .. dh(xn)/dxn_dim
         Eigen::VectorXd m_vec_var_x_ = {};                            // variance of x1 ... xn
         Eigen::VectorXd m_vec_var_h_ = {};                            // variance of h(x1)..h(xn)
@@ -107,7 +107,7 @@ namespace erl::gaussian_process {
             return m_mat_grad_train_;
         }
 
-        [[nodiscard]] Eigen::VectorXb &
+        [[nodiscard]] Eigen::VectorXl &
         GetTrainGradientFlagsBuffer() {
             return m_vec_grad_flag_;
         }

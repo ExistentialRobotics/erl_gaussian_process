@@ -32,9 +32,9 @@ namespace erl::gaussian_process {
         }
 
         // Compute kernel matrix
-        const auto mat_x_train = m_mat_x_train_.topLeftCorner(m_x_dim_, m_num_train_samples_);
-        const auto vec_var_h = m_vec_var_h_.head(m_num_train_samples_);
-        const auto [rows, cols] = m_kernel_->ComputeKtrain(m_mat_k_train_, mat_x_train, vec_var_h);
+        // const auto mat_x_train = m_mat_x_train_.topLeftCorner(m_x_dim_, m_num_train_samples_);
+        // const auto vec_var_h = m_vec_var_h_.head(m_num_train_samples_);
+        const auto [rows, cols] = m_kernel_->ComputeKtrain(m_mat_x_train_, m_vec_var_h_, m_num_train_samples_, m_mat_k_train_);
         const auto mat_ktrain = m_mat_k_train_.topLeftCorner(rows, cols);
         auto &&mat_l = m_mat_l_.topLeftCorner(rows, cols);
         auto vec_alpha = m_vec_alpha_.head(m_num_train_samples_);
@@ -59,13 +59,13 @@ namespace erl::gaussian_process {
 
         if (!m_trained_ || m_num_train_samples_ <= 0) { return false; }
 
-        long n = mat_x_test.cols();
+        const long n = mat_x_test.cols();
         if (n == 0) { return false; }
         ERL_ASSERTM(mat_x_test.rows() == m_x_dim_, "mat_x_test.rows() = {}, it should be {}.", mat_x_test.rows(), m_x_dim_);
         ERL_ASSERTM(vec_f_out.size() >= n, "vec_f_out size = {}, it should be >= {}.", vec_f_out.size(), n);
         const auto [ktest_rows, ktest_cols] = covariance::Covariance::GetMinimumKtestSize(m_num_train_samples_, 0, 0, n);
         Eigen::MatrixXd ktest(ktest_rows, ktest_cols);
-        const auto [output_rows, output_cols] = m_kernel_->ComputeKtest(ktest, m_mat_x_train_.topLeftCorner(m_x_dim_, m_num_train_samples_), mat_x_test);
+        const auto [output_rows, output_cols] = m_kernel_->ComputeKtest(m_mat_x_train_, m_num_train_samples_, mat_x_test, n, ktest);
         ERL_DEBUG_ASSERT(
             (output_rows == ktest_rows && output_cols == ktest_cols),
             "output_size = ({}, {}), it should be ({}, {}).",

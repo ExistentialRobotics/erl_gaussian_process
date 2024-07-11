@@ -6,9 +6,9 @@ project(erl_gaussian_process
         DESCRIPTION "erl_gaussian_process is a C++ implementation of Gaussian Process.")
 message(STATUS "Configuring ${PROJECT_NAME} ${PROJECT_VERSION}")
 
-if(NOT COMMAND erl_project_setup)
-        find_package(erl_common REQUIRED)
-endif()
+if (NOT COMMAND erl_project_setup)
+    find_package(erl_common REQUIRED)
+endif ()
 
 erl_project_setup(
         ${PROJECT_NAME}
@@ -37,11 +37,11 @@ target_include_directories(${PROJECT_NAME}
         $<INSTALL_INTERFACE:${${PROJECT_NAME}_INSTALL_INCLUDE_DIR}>)
 target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC ${catkin_INCLUDE_DIRS})
 
-if(catkin_LIBRARIES)
-        target_link_libraries(${PROJECT_NAME} PUBLIC ${catkin_LIBRARIES})
-else()
-        target_link_libraries(${PROJECT_NAME} PUBLIC ${${PROJECT_NAME}_ERL_PACKAGES})
-endif()
+if (catkin_LIBRARIES)
+    target_link_libraries(${PROJECT_NAME} PUBLIC ${catkin_LIBRARIES})
+else ()
+    target_link_libraries(${PROJECT_NAME} PUBLIC ${${PROJECT_NAME}_ERL_PACKAGES})
+endif ()
 
 # ##################
 # Python bindings #

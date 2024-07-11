@@ -20,12 +20,13 @@ namespace erl::gaussian_process {
 
         // Compute kernel matrix
         const auto [rows, cols] = m_kernel_->ComputeKtrainWithGradient(
-            m_mat_k_train_,                                                // buffer of mat_ktrain
-            m_mat_x_train_.topLeftCorner(m_x_dim_, m_num_train_samples_),  // mat_x_train
-            m_vec_grad_flag_.head(m_num_train_samples_),                   // vec_grad_flag
-            m_vec_var_x_.head(m_num_train_samples_),                       // vec_var_x
-            m_vec_var_h_.head(m_num_train_samples_),                       // vec_var_h
-            m_vec_var_grad_.head(m_num_train_samples_));                   // vec_var_grad
+            m_mat_x_train_,
+            m_num_train_samples_,
+            m_vec_grad_flag_,
+            m_vec_var_x_,
+            m_vec_var_h_,
+            m_vec_var_grad_,
+            m_mat_k_train_);
         const auto mat_ktrain = m_mat_k_train_.topLeftCorner(rows, cols);  // square matrix
         auto &&mat_l = m_mat_l_.topLeftCorner(rows, cols);                 // square matrix, lower triangular
         const auto vec_alpha = m_vec_alpha_.head(rows);                    // h and gradient of h
@@ -47,8 +48,8 @@ namespace erl::gaussian_process {
             return;
         }
 
-        long dim = mat_x_test.rows();
-        long n = mat_x_test.cols();
+        const long dim = mat_x_test.rows();
+        const long n = mat_x_test.cols();
         if (n == 0) { return; }
 
         // compute mean and gradient of the test queries
@@ -56,10 +57,14 @@ namespace erl::gaussian_process {
         ERL_ASSERTM(mat_f_out.cols() >= n, "mat_f_out.cols() = {}, not enough for {} test queries.", mat_f_out.cols(), n);
 
         const auto [ktest_rows, ktest_cols] = covariance::Covariance::GetMinimumKtestSize(m_num_train_samples_, m_num_train_samples_with_grad_, dim, n);
-        Eigen::MatrixXd ktest(ktest_rows, ktest_cols);  // (dim of train samples, dim of test queries)
-        auto mat_x_train = m_mat_x_train_.topLeftCorner(m_x_dim_, m_num_train_samples_);
-        auto vec_grad_flag = m_vec_grad_flag_.head(m_num_train_samples_);
-        const auto [output_rows, output_cols] = m_kernel_->ComputeKtestWithGradient(ktest, mat_x_train, vec_grad_flag, mat_x_test);
+        Eigen::MatrixXd ktest(ktest_rows, ktest_cols);                                // (dim of train samples, dim of test queries)
+        const auto [output_rows, output_cols] = m_kernel_->ComputeKtestWithGradient(  //
+            m_mat_x_train_,
+            m_num_train_samples_,
+            m_vec_grad_flag_,
+            mat_x_test,
+            n,
+            ktest);
         ERL_DEBUG_ASSERT(
             output_rows == ktest_rows && output_cols == ktest_cols,
             "output_size = ({}, {}), it should be ({}, {}).",

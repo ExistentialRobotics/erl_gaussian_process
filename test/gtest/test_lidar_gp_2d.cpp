@@ -4,7 +4,7 @@
 
 #include "erl_common/binary_file.hpp"
 #include "erl_common/test_helper.hpp"
-#include "erl_gaussian_process/lidar_gp_1d.hpp"
+#include "erl_gaussian_process/lidar_gp_2d.hpp"
 
 #include <gtest/gtest.h>
 
@@ -132,26 +132,26 @@ TEST(ERL_GAUSSIAN_PROCESS, LidarGaussianProcess2D) {
     auto setting = std::make_shared<LidarGaussianProcess2D::Setting>();
     setting->group_size = DEFAULT_OBSGP_GROUP_SZ + DEFAULT_OBSGP_OVERLAP_SZ;
     setting->overlap_size = DEFAULT_OBSGP_OVERLAP_SZ;
-    setting->boundary_margin = DEFAULT_OBSGP_MARGIN;
+    setting->margin = 1;
     setting->init_variance = 1.e6;
     setting->sensor_range_var = DEFAULT_OBSGP_NOISE_PARAM;
     setting->max_valid_range_var = GPISMAP_OBS_VAR_THRE;
     setting->gp->kernel->alpha = 1.;
     setting->gp->kernel->scale = DEFAULT_OBSGP_SCALE_PARAM;
-    setting->train_buffer->mapping->type = Mapping::Type::kIdentity;
+    setting->mapping->type = Mapping::Type::kIdentity;
     std::cout << *setting << std::endl;
 
-    auto lidar_gp = LidarGaussianProcess2D::Create(setting);
+    auto lidar_gp = std::make_shared<LidarGaussianProcess2D>(setting);
     ObsGp1D obs_gp;
 
     auto df = train_data_loader[0];
 
     Logging::Info("Train:");
     auto n = static_cast<int>(df.x.size());
-    ReportTime<std::chrono::microseconds>("LidarGaussianProcess2D", 10, false, [&] { lidar_gp->Train(df.x, df.y, Eigen::Matrix23d::Zero()); });
+    ReportTime<std::chrono::microseconds>("LidarGaussianProcess2D", 10, false, [&] { (void) lidar_gp->Train(df.rotation, df.position, df.distances, true); });
     ReportTime<std::chrono::microseconds>("ObsGp1D", 10, false, [&] { obs_gp.Train(df.x.data(), df.y.data(), &n); });
 
-    ASSERT_STD_VECTOR_EQUAL("m_partitions_", lidar_gp->GetPartitions(), obs_gp.m_range_);
+    ASSERT_STD_VECTOR_EQUAL("m_partitions_", lidar_gp->GetAnglePartitions(), obs_gp.m_range_);
 
     auto gps = lidar_gp->GetGps();
     for (size_t i = 0; i < gps.size(); ++i) {
