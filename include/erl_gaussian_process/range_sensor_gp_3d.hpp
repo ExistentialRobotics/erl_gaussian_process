@@ -80,24 +80,29 @@ namespace erl::gaussian_process {
             return m_range_sensor_frame_;
         }
 
-        [[nodiscard]] Eigen::Vector3d
-        GlobalToLocalSo3(const Eigen::Vector3d &vec_global) const {
-            return m_range_sensor_frame_->WorldToFrameSo3(vec_global);
+        [[nodiscard]] std::shared_ptr<const Mapping>
+        GetMapping() const {
+            return m_mapping_;
         }
 
         [[nodiscard]] Eigen::Vector3d
-        LocalToGlobalSo3(const Eigen::Vector3d &vec_local) const {
-            return m_range_sensor_frame_->FrameToWorldSo3(vec_local);
+        GlobalToLocalSo3(const Eigen::Vector3d &dir_global) const {
+            return m_range_sensor_frame_->WorldToFrameSo3(dir_global);
         }
 
         [[nodiscard]] Eigen::Vector3d
-        GlobalToLocalSe3(const Eigen::Vector3d &vec_global) const {
-            return m_range_sensor_frame_->WorldToFrameSe3(vec_global);
+        LocalToGlobalSo3(const Eigen::Vector3d &dir_local) const {
+            return m_range_sensor_frame_->FrameToWorldSo3(dir_local);
         }
 
         [[nodiscard]] Eigen::Vector3d
-        LocalToGlobalSe3(const Eigen::Vector3d &vec_local) const {
-            return m_range_sensor_frame_->FrameToWorldSe3(vec_local);
+        GlobalToLocalSe3(const Eigen::Vector3d &xyz_global) const {
+            return m_range_sensor_frame_->WorldToFrameSe3(xyz_global);
+        }
+
+        [[nodiscard]] Eigen::Vector3d
+        LocalToGlobalSe3(const Eigen::Vector3d &xyz_local) const {
+            return m_range_sensor_frame_->FrameToWorldSe3(xyz_local);
         }
 
         [[nodiscard]] Eigen::Vector2d

@@ -43,9 +43,6 @@ namespace erl::gaussian_process {
         Eigen::VectorXd m_vec_var_grad_ = {};                         // variance of dh(x1)/dx1_1 .. dh(xn)/dxn_1 .. dh(x1)/dx1_dim .. dh(xn)/dxn_dim
 
     public:
-        NoisyInputGaussianProcess()
-            : m_setting_(std::make_shared<Setting>()) {}
-
         explicit NoisyInputGaussianProcess(std::shared_ptr<Setting> setting)
             : m_setting_(std::move(setting)) {
             ERL_ASSERTM(m_setting_ != nullptr, "setting should not be nullptr.");

@@ -1,0 +1,64 @@
+#include "erl_common/pybind11.hpp"
+#include "erl_gaussian_process/noisy_input_gp.hpp"
+
+using namespace erl::common;
+using namespace erl::gaussian_process;
+
+void
+BindNoisyInputGaussianProcess(const py::module &m) {
+    using T = NoisyInputGaussianProcess;
+
+    auto py_noisy_input_gp = py::class_<T, std::shared_ptr<T>>(m, "NoisyInputGaussianProcess");
+
+    py::class_<T::Setting, YamlableBase, std::shared_ptr<T::Setting>>(py_noisy_input_gp, "Setting")
+        .def(py::init<>())
+        .def_readwrite("kernel_type", &T::Setting::kernel_type)
+        .def_readwrite("kernel", &T::Setting::kernel)
+        .def_readwrite("max_num_samples", &T::Setting::max_num_samples);
+
+    py_noisy_input_gp.def(py::init<std::shared_ptr<T::Setting>>(), py::arg("setting").none(false))
+        .def_property_readonly("is_trained", &T::IsTrained)
+        .def_property_readonly("setting", &T::GetSetting)
+        .def("reset", &T::Reset, py::arg("max_num_samples"), py::arg("x_dim"))
+        .def_property_readonly("num_train_samples", &T::GetNumTrainSamples)
+        .def_property_readonly("num_train_samples_with_grad", &T::GetNumTrainSamplesWithGrad)
+        .def(
+            "train",
+            [](T &self,
+               const Eigen::Ref<const Eigen::MatrixXd> &mat_x_train,
+               const Eigen::Ref<const Eigen::VectorXl> &vec_grad_flag,
+               const Eigen::Ref<const Eigen::VectorXd> &vec_y,
+               const Eigen::Ref<const Eigen::VectorXd> &vec_var_x,
+               const Eigen::Ref<const Eigen::VectorXd> &vec_var_y,
+               const Eigen::Ref<const Eigen::VectorXd> &vec_var_grad) {
+                const long num_train_samples = mat_x_train.cols();
+                const long x_dim = mat_x_train.rows();
+                self.Reset(num_train_samples, x_dim);
+                self.GetTrainInputSamplesBuffer().topLeftCorner(x_dim, num_train_samples) = mat_x_train;
+                self.GetTrainGradientFlagsBuffer().head(num_train_samples) = vec_grad_flag;
+                self.GetTrainOutputValueSamplesVarianceBuffer().head(vec_y.size()) = vec_y;
+                self.GetTrainInputSamplesVarianceBuffer().head(num_train_samples) = vec_var_x;
+                self.GetTrainOutputValueSamplesVarianceBuffer().head(num_train_samples) = vec_var_y;
+                self.GetTrainOutputGradientSamplesVarianceBuffer().head(num_train_samples) = vec_var_grad;
+                self.Train(num_train_samples);
+            },
+            py::arg("mat_x_train"),
+            py::arg("vec_grad_flag"),
+            py::arg("vec_y"),
+            py::arg("vec_var_x"),
+            py::arg("vec_var_y"),
+            py::arg("vec_var_grad"))
+        .def(
+            "test",
+            [](const T &self, const Eigen::Ref<const Eigen::MatrixXd> &mat_x_test) {
+                Eigen::MatrixXd mat_f_out, mat_var_out, mat_cov_out;
+                const long &dim = mat_x_test.rows();
+                const long &n = mat_x_test.cols();
+                mat_f_out.resize(dim + 1, n);
+                mat_var_out.resize(dim + 1, n);
+                mat_cov_out.resize(dim * (dim + 1) / 2, n);
+                self.Test(mat_x_test, mat_f_out, mat_var_out, mat_cov_out);
+                return py::make_tuple(mat_f_out, mat_var_out, mat_cov_out);
+            },
+            py::arg("mat_x_test"));
+}

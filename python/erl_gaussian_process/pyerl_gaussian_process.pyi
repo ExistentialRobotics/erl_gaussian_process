@@ -8,6 +8,8 @@ import numpy.typing as npt
 
 from erl_common.yaml import YamlableBase
 from erl_covariance import Covariance
+from erl_geometry import LidarFrame2D
+from erl_geometry import RangeSensorFrame3D
 
 __all__ = [
     "VanillaGaussianProcess",
@@ -18,7 +20,9 @@ __all__ = [
 
 class VanillaGaussianProcess:
     class Setting(YamlableBase):
+        kernel_type: str
         kernel: Covariance.Setting
+        max_num_samples: int
         auto_normalize: bool
 
         def __init__(self: VanillaGaussianProcess.Setting): ...
@@ -31,13 +35,13 @@ class VanillaGaussianProcess:
     def reset(self: VanillaGaussianProcess) -> None: ...
     def train(
         self: VanillaGaussianProcess,
-        x: npt.NDArray[np.float64],
-        y: npt.NDArray[np.float64],
-        sigma_y: npt.NDArray[np.float64],
-    ) -> None: ...
+        mat_x_train: npt.NDArray[np.float64],
+        vec_y: npt.NDArray[np.float64],
+        vac_var_y: npt.NDArray[np.float64],
+    ) -> bool: ...
     def test(
-        self: VanillaGaussianProcess, xt: npt.NDArray[np.float64]
-    ) -> Tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]: ...
+        self: VanillaGaussianProcess, mat_x_test: npt.NDArray[np.float64]
+    ) -> Tuple[bool, npt.NDArray[np.float64], npt.NDArray[np.float64]]: ...
 
 class Mapping:
     class Type(IntEnum):
@@ -52,6 +56,7 @@ class Mapping:
     class Setting(YamlableBase):
         type: Mapping.Type
         scale: float
+
     @overload
     def __init__(self: Mapping): ...
     @overload
@@ -62,39 +67,17 @@ class Mapping:
     inv: Callable[[float], float]
 
 class LidarGaussianProcess2D:
-    class TrainBuffer:
-        class Setting(YamlableBase):
-            valid_angle_min: float
-            valid_angle_max: float
-            valid_range_min: float
-            valid_range_max: float
-            mapping: Mapping.Setting
-
-            def __init__(self: LidarGaussianProcess2D.TrainBuffer.Setting): ...
-
-        def __len__(self: LidarGaussianProcess2D.TrainBuffer) -> int: ...
-
-        angles: npt.NDArray[np.float64]
-        distances: npt.NDArray[np.float64]
-        mapped_distances: npt.NDArray[np.float64]
-        local_directions: npt.NDArray[np.float64]
-        xy_locals: npt.NDArray[np.float64]
-        global_directions: npt.NDArray[np.float64]
-        xy_globals: npt.NDArray[np.float64]
-        max_distance: float
-        position: npt.NDArray[np.float64]
-        rotation: npt.NDArray[np.float64]
-
     class Setting(YamlableBase):
         group_size: int
         overlap_size: int
-        boundary_margin: float
+        margin: float
         init_variance: float
         sensor_range_var: float
         max_valid_range_var: float
         occ_test_temperature: float
-        train_buffer: LidarGaussianProcess2D.TrainBuffer.Setting
+        lidar_frame: LidarFrame2D.Setting
         gp: VanillaGaussianProcess.Setting
+        mapping: Mapping.Setting
 
         def __init__(self: LidarGaussianProcess2D.Setting): ...
 
@@ -104,34 +87,45 @@ class LidarGaussianProcess2D:
     @property
     def setting(self: LidarGaussianProcess2D) -> Setting: ...
     @property
-    def train_buffer(self: LidarGaussianProcess2D) -> TrainBuffer: ...
+    def gps(self: LidarGaussianProcess2D) -> list[VanillaGaussianProcess]: ...
+    @property
+    def angle_partitions(self: LidarGaussianProcess2D) -> list[Tuple[int, int, float, float]]: ...
+    @property
+    def lidar_frame(self: LidarGaussianProcess2D) -> LidarFrame2D: ...
     def global_to_local_so2(
-        self: LidarGaussianProcess2D, vec_global: npt.NDArray[np.float64]
+        self: LidarGaussianProcess2D, dir_global: npt.NDArray[np.float64]
     ) -> npt.NDArray[np.float64]: ...
     def local_to_global_so2(
-        self: LidarGaussianProcess2D, vec_local: npt.NDArray[np.float64]
+        self: LidarGaussianProcess2D, dir_local: npt.NDArray[np.float64]
     ) -> npt.NDArray[np.float64]: ...
     def global_to_local_se2(
-        self: LidarGaussianProcess2D, vec_global: npt.NDArray[np.float64]
+        self: LidarGaussianProcess2D, xy_global: npt.NDArray[np.float64]
     ) -> npt.NDArray[np.float64]: ...
     def local_to_global_se2(
-        self: LidarGaussianProcess2D, vec_local: npt.NDArray[np.float64]
+        self: LidarGaussianProcess2D, xy_local: npt.NDArray[np.float64]
     ) -> npt.NDArray[np.float64]: ...
     def reset(self: LidarGaussianProcess2D) -> None: ...
     def train(
         self: LidarGaussianProcess2D,
-        angles: npt.NDArray[np.float64],
-        distances: npt.NDArray[np.float64],
-        pose: npt.NDArray[np.float64],
+        rotation: npt.NDArray[np.float64],
+        translation: npt.NDArray[np.float64],
+        ranges: npt.NDArray[np.float64],
+        repartition_on_hit_rays: bool,
     ) -> None: ...
     def test(
-        self: LidarGaussianProcess2D, thetas: npt.NDArray[np.float64], un_map: bool = True
+        self: LidarGaussianProcess2D,
+        angles: npt.NDArray[np.float64],
+        angles_are_local: bool,
+        un_map: bool,
+        parallel: bool,
     ) -> Tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]: ...
     def compute_occ(self: LidarGaussianProcess2D, angle: float, r: float) -> Tuple[bool, float, float, float]: ...
 
 class NoisyInputGaussianProcess:
     class Setting(YamlableBase):
+        kernel_type: str
         kernel: Covariance.Setting
+        max_num_samples: int
 
         def __init__(self: NoisyInputGaussianProcess.Setting): ...
 
@@ -141,15 +135,89 @@ class NoisyInputGaussianProcess:
     @property
     def setting(self: NoisyInputGaussianProcess) -> Setting: ...
     def reset(self: NoisyInputGaussianProcess) -> None: ...
+    @property
+    def num_train_samples(self: NoisyInputGaussianProcess) -> int: ...
+    @property
+    def num_train_samples_with_grad(self: NoisyInputGaussianProcess) -> int: ...
     def train(
         self: NoisyInputGaussianProcess,
         mat_x_train: npt.NDArray[np.float64],
         vec_grad_flag: npt.NDArray[np.bool_],
         vec_y: npt.NDArray[np.float64],
-        vec_sigma_x: npt.NDArray[np.float64],
-        vec_sigma_y: npt.NDArray[np.float64],
-        vec_sigma_grad: npt.NDArray[np.float64],
+        vec_var_x: npt.NDArray[np.float64],
+        vec_var_y: npt.NDArray[np.float64],
+        vec_var_grad: npt.NDArray[np.float64],
     ) -> None: ...
     def test(
         self: NoisyInputGaussianProcess, mat_x_test: npt.NDArray[np.float64]
-    ) -> Tuple[npt.NDArray[np.float64], npt.NDArray[np.float64]]: ...
+    ) -> Tuple[npt.NDArray[np.float64], npt.NDArray[np.float64], npt.NDArray[np.float64]]: ...
+
+class RangeSensorGaussianProcess3D:
+    class Setting(YamlableBase):
+        row_group_size: int
+        row_overlap_size: int
+        row_margin: int
+        col_group_size: int
+        col_overlap_size: int
+        col_margin: int
+        init_variance: float
+        sensor_range_var: float
+        max_valid_range_var: float
+        occ_test_temperature: float
+        range_sensor_frame_type: str
+        range_sensor_frame: RangeSensorFrame3D.Setting
+        gp: VanillaGaussianProcess.Setting
+        mapping: Mapping.Setting
+
+        def __init__(self: RangeSensorGaussianProcess3D.Setting): ...
+
+    def __init__(self: RangeSensorGaussianProcess3D, setting: Setting): ...
+    @property
+    def is_trained(self: RangeSensorGaussianProcess3D) -> bool: ...
+    @property
+    def setting(self: RangeSensorGaussianProcess3D) -> Setting: ...
+    @property
+    def gps(self: RangeSensorGaussianProcess3D) -> list[list[VanillaGaussianProcess]]: ...
+    @property
+    def row_partitions(self: RangeSensorGaussianProcess3D) -> list[Tuple[int, int, float, float]]: ...
+    @property
+    def col_partitions(self: RangeSensorGaussianProcess3D) -> list[Tuple[int, int, float, float]]: ...
+    @property
+    def range_sensor_frame(self: RangeSensorGaussianProcess3D) -> RangeSensorFrame3D: ...
+    @property
+    def mapping(self: RangeSensorGaussianProcess3D) -> Mapping: ...
+    def global_to_local_so3(
+        self: RangeSensorGaussianProcess3D, dir_global: npt.NDArray[np.float64]
+    ) -> npt.NDArray[np.float64]: ...
+    def local_to_global_so3(
+        self: RangeSensorGaussianProcess3D, dir_local: npt.NDArray[np.float64]
+    ) -> npt.NDArray[np.float64]: ...
+    def global_to_local_se3(
+        self: RangeSensorGaussianProcess3D, xyz_global: npt.NDArray[np.float64]
+    ) -> npt.NDArray[np.float64]: ...
+    def local_to_global_se3(
+        self: RangeSensorGaussianProcess3D, xyz_local: npt.NDArray[np.float64]
+    ) -> npt.NDArray[np.float64]: ...
+    def compute_frame_coords(
+        self: RangeSensorGaussianProcess3D, xyz_frame: npt.NDArray[np.float64]
+    ) -> npt.NDArray[np.float64]: ...
+    def reset(self: RangeSensorGaussianProcess3D) -> None: ...
+    def store_data(
+        self: RangeSensorGaussianProcess3D,
+        rotation: npt.NDArray[np.float64],
+        translation: npt.NDArray[np.float64],
+        ranges: npt.NDArray[np.float64],
+    ) -> None: ...
+    def train(
+        self: RangeSensorGaussianProcess3D,
+        rotation: npt.NDArray[np.float64],
+        translation: npt.NDArray[np.float64],
+        ranges: npt.NDArray[np.float64],
+    ) -> bool: ...
+    def test(
+        self: RangeSensorGaussianProcess3D,
+        directions: npt.NDArray[np.float64],
+        directions_are_local: bool,
+        un_map: bool,
+        parallel: bool,
+    ) -> Tuple[bool, npt.NDArray[np.float64], npt.NDArray[np.float64]]: ...

@@ -70,23 +70,23 @@ namespace erl::gaussian_process {
         }
 
         [[nodiscard]] Eigen::Vector2d
-        GlobalToLocalSo2(const Eigen::Vector2d &vec_global) const {
-            return m_lidar_frame_->WorldToFrameSo2(vec_global);
+        GlobalToLocalSo2(const Eigen::Vector2d &dir_global) const {
+            return m_lidar_frame_->WorldToFrameSo2(dir_global);
         }
 
         [[nodiscard]] Eigen::Vector2d
-        LocalToGlobalSo2(const Eigen::Vector2d &vec_local) const {
-            return m_lidar_frame_->FrameToWorldSo2(vec_local);
+        LocalToGlobalSo2(const Eigen::Vector2d &dir_local) const {
+            return m_lidar_frame_->FrameToWorldSo2(dir_local);
         }
 
         [[nodiscard]] Eigen::Vector2d
-        GlobalToLocalSe2(const Eigen::Vector2d &vec_global) const {
-            return m_lidar_frame_->WorldToFrameSe2(vec_global);
+        GlobalToLocalSe2(const Eigen::Vector2d &xy_global) const {
+            return m_lidar_frame_->WorldToFrameSe2(xy_global);
         }
 
         [[nodiscard]] Eigen::Vector2d
-        LocalToGlobalSe2(const Eigen::Vector2d &vec_local) const {
-            return m_lidar_frame_->FrameToWorldSe2(vec_local);
+        LocalToGlobalSe2(const Eigen::Vector2d &xy_local) const {
+            return m_lidar_frame_->FrameToWorldSe2(xy_local);
         }
 
         void
