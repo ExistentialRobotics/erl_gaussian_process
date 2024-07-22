@@ -326,6 +326,7 @@ namespace erl::gaussian_process {
                 }
                 case 11: {        // end_of_VanillaGaussianProcess
                     skip_line();  // skip forward until end of line
+                    m_kernel_ = covariance::Covariance::CreateCovariance(m_setting_->kernel_type, m_setting_->kernel);
                     return true;
                 }
                 default: {  // should not reach here

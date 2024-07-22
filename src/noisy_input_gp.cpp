@@ -471,6 +471,7 @@ namespace erl::gaussian_process {
                 }
                 case 16: {  // end_of_NoisyInputGaussianProcess
                     skip_line();
+                    m_kernel_ = covariance::Covariance::CreateCovariance(m_setting_->kernel_type, m_setting_->kernel);
                     return true;
                 }
                 default: {  // should not reach here
