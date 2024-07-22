@@ -12,7 +12,7 @@ namespace erl::gaussian_process {
             ERL_ASSERTM(AllocateMemory(max_num_samples, x_dim), "Failed to allocate memory.");
         }
         m_trained_ = false;
-        m_kernel_ = covariance::Covariance::CreateCovariance(m_setting_->kernel_type, m_setting_->kernel);
+        if (m_kernel_ == nullptr) { m_kernel_ = covariance::Covariance::CreateCovariance(m_setting_->kernel_type, m_setting_->kernel); }
         m_num_train_samples_ = 0;
         m_x_dim_ = x_dim;
     }
@@ -91,4 +91,251 @@ namespace erl::gaussian_process {
         for (long i = 0; i < ktest_cols; ++i) { vec_var_out[i] = m_setting_->kernel->alpha - ktest.col(i).squaredNorm(); }
         return true;
     }
+
+    bool
+    VanillaGaussianProcess::operator==(const VanillaGaussianProcess &other) const {
+        if (m_setting_ == nullptr && other.m_setting_ != nullptr) { return false; }
+        if (m_setting_ != nullptr && (other.m_setting_ == nullptr || *m_setting_ != *other.m_setting_)) { return false; }
+        if (m_x_dim_ != other.m_x_dim_) { return false; }
+        if (m_num_train_samples_ != other.m_num_train_samples_) { return false; }
+        if (m_trained_ != other.m_trained_) { return false; }
+        if (m_num_train_samples_ == 0) { return true; }
+        if (m_mean_ != other.m_mean_) { return false; }
+        if (m_std_ != other.m_std_) { return false; }
+        if (m_mat_k_train_.rows() != other.m_mat_k_train_.rows() || m_mat_k_train_.cols() != other.m_mat_k_train_.cols() ||
+            std::memcmp(m_mat_k_train_.data(), other.m_mat_k_train_.data(), m_mat_k_train_.size() * sizeof(double)) != 0) {
+            return false;
+        }
+        if (m_mat_x_train_.rows() != other.m_mat_x_train_.rows() || m_mat_x_train_.cols() != other.m_mat_x_train_.cols() ||
+            std::memcmp(m_mat_x_train_.data(), other.m_mat_x_train_.data(), m_mat_x_train_.size() * sizeof(double)) != 0) {
+            return false;
+        }
+        if (m_mat_l_.rows() != other.m_mat_l_.rows() || m_mat_l_.cols() != other.m_mat_l_.cols() ||
+            std::memcmp(m_mat_l_.data(), other.m_mat_l_.data(), m_mat_l_.size() * sizeof(double)) != 0) {
+            return false;
+        }
+        if (m_vec_alpha_.size() != other.m_vec_alpha_.size() ||
+            std::memcmp(m_vec_alpha_.data(), other.m_vec_alpha_.data(), m_vec_alpha_.size() * sizeof(double)) != 0) {
+            return false;
+        }
+        if (m_vec_var_h_.size() != other.m_vec_var_h_.size() ||
+            std::memcmp(m_vec_var_h_.data(), other.m_vec_var_h_.data(), m_vec_var_h_.size() * sizeof(double)) != 0) {
+            return false;
+        }
+        return true;
+    }
+
+    bool
+    VanillaGaussianProcess::Write(const std::string &filename) const {
+        ERL_INFO("Writing VanillaGaussianProcess to file: {}", filename);
+        std::filesystem::create_directories(std::filesystem::path(filename).parent_path());
+        std::ofstream file(filename, std::ios_base::out | std::ios_base::binary);
+        if (!file.is_open()) {
+            ERL_WARN("Failed to open file: {}", filename);
+            return false;
+        }
+
+        const bool success = Write(file);
+        file.close();
+        return success;
+    }
+
+    static const std::string kFileHeader = "# erl::gaussian_process::VanillaGaussianProcess";
+
+    bool
+    VanillaGaussianProcess::Write(std::ostream &s) const {
+        s << kFileHeader << std::endl  //
+          << "# (feel free to add / change comments, but leave the first line as it is!)" << std::endl
+          << "setting" << std::endl;
+        // write setting
+        if (!m_setting_->Write(s)) {
+            ERL_WARN("Failed to write setting.");
+            return false;
+        }
+        // write data
+        s << "x_dim " << m_x_dim_ << std::endl  //
+          << "num_train_samples " << m_num_train_samples_ << std::endl
+          << "trained " << m_trained_ << std::endl;
+        s << "mean" << std::endl;
+        s.write(reinterpret_cast<const char *>(&m_mean_), sizeof(double));
+        s << "std" << std::endl;
+        s.write(reinterpret_cast<const char *>(&m_std_), sizeof(double));
+        s << "mat_k_train" << std::endl;
+        if (!common::SaveEigenMatrixToBinaryStream(s, m_mat_k_train_)) {
+            ERL_WARN("Failed to write mat_k_train.");
+            return false;
+        }
+        s << "mat_x_train" << std::endl;
+        if (!common::SaveEigenMatrixToBinaryStream(s, m_mat_x_train_)) {
+            ERL_WARN("Failed to write mat_x_train.");
+            return false;
+        }
+        s << "mat_l" << std::endl;
+        if (!common::SaveEigenMatrixToBinaryStream(s, m_mat_l_)) {
+            ERL_WARN("Failed to write mat_l.");
+            return false;
+        }
+        s << "vec_alpha" << std::endl;
+        if (!common::SaveEigenMatrixToBinaryStream(s, m_vec_alpha_)) {
+            ERL_WARN("Failed to write vec_alpha.");
+            return false;
+        }
+        s << "vec_var_h" << std::endl;
+        if (!common::SaveEigenMatrixToBinaryStream(s, m_vec_var_h_)) {
+            ERL_WARN("Failed to write vec_var_h.");
+            return false;
+        }
+        s << "end_of_VanillaGaussianProcess" << std::endl;
+        return s.good();
+    }
+
+    bool
+    VanillaGaussianProcess::Read(const std::string &filename) {
+        ERL_INFO("Reading VanillaGaussianProcess from file: {}", std::filesystem::absolute(filename));
+        std::ifstream file(filename.c_str(), std::ios_base::in | std::ios_base::binary);
+        if (!file.is_open()) {
+            ERL_WARN("Failed to open file: {}", filename.c_str());
+            return false;
+        }
+
+        const bool success = Read(file);
+        file.close();
+        return success;
+    }
+
+    bool
+    VanillaGaussianProcess::Read(std::istream &s) {
+        if (!s.good()) {
+            ERL_WARN("Input stream is not ready for reading");
+            return false;
+        }
+
+        // check if the first line is valid
+        std::string line;
+        std::getline(s, line);
+        if (line.compare(0, kFileHeader.length(), kFileHeader) != 0) {  // check if the first line is valid
+            ERL_WARN("Header does not start with \"{}\"", kFileHeader.c_str());
+            return false;
+        }
+
+        auto skip_line = [&s]() {
+            char c;
+            do { c = static_cast<char>(s.get()); } while (s.good() && c != '\n');
+        };
+
+        static const char *tokens[] = {
+            "setting",
+            "x_dim",
+            "num_train_samples",
+            "trained",
+            "mean",
+            "std",
+            "mat_k_train",
+            "mat_x_train",
+            "mat_l",
+            "vec_alpha",
+            "vec_var_h",
+            "end_of_VanillaGaussianProcess",
+        };
+
+        // read data
+        std::string token;
+        int token_idx = 0;
+        while (s.good()) {
+            s >> token;
+            if (token.compare(0, 1, "#") == 0) {
+                skip_line();  // comment line, skip forward until end of line
+                continue;
+            }
+            // non-comment line
+            if (token != tokens[token_idx]) {
+                ERL_WARN("Expected token {}, got {}.", tokens[token_idx], token);  // check token
+                return false;
+            }
+            // reading state machine
+            switch (token_idx) {
+                case 0: {         // setting
+                    skip_line();  // skip the line to read the bindary data section
+                    if (!m_setting_->Read(s)) {
+                        ERL_WARN("Failed to read setting.");
+                        return false;
+                    }
+                    break;
+                }
+                case 1: {  // x_dim
+                    s >> m_x_dim_;
+                    break;
+                }
+                case 2: {  // num_train_samples
+                    s >> m_num_train_samples_;
+                    break;
+                }
+                case 3: {  // trained
+                    s >> m_trained_;
+                    break;
+                }
+                case 4: {         // mean
+                    skip_line();  // skip the line to read the bindary data section
+                    s.read(reinterpret_cast<char *>(&m_mean_), sizeof(double));
+                    break;
+                }
+                case 5: {         // std
+                    skip_line();  // skip the line to read the bindary data section
+                    s.read(reinterpret_cast<char *>(&m_std_), sizeof(double));
+                    break;
+                }
+                case 6: {         // mat_k_train
+                    skip_line();  // skip the line to read the bindary data section
+                    if (!common::LoadEigenMatrixFromBinaryStream(s, m_mat_k_train_)) {
+                        ERL_WARN("Failed to read mat_k_train.");
+                        return false;
+                    }
+                    break;
+                }
+                case 7: {         // mat_x_train
+                    skip_line();  // skip the line to read the bindary data section
+                    if (!common::LoadEigenMatrixFromBinaryStream(s, m_mat_x_train_)) {
+                        ERL_WARN("Failed to read mat_x_train.");
+                        return false;
+                    }
+                    break;
+                }
+                case 8: {         // mat_l
+                    skip_line();  // skip the line to read the bindary data section
+                    if (!common::LoadEigenMatrixFromBinaryStream(s, m_mat_l_)) {
+                        ERL_WARN("Failed to read mat_l.");
+                        return false;
+                    }
+                    break;
+                }
+                case 9: {         // vec_alpha
+                    skip_line();  // skip the line to read the bindary data section
+                    if (!common::LoadEigenMatrixFromBinaryStream(s, m_vec_alpha_)) {
+                        ERL_WARN("Failed to read vec_alpha.");
+                        return false;
+                    }
+                    break;
+                }
+                case 10: {        // vec_var_h
+                    skip_line();  // skip the line to read the bindary data section
+                    if (!common::LoadEigenMatrixFromBinaryStream(s, m_vec_var_h_)) {
+                        ERL_WARN("Failed to read vec_var_h.");
+                        return false;
+                    }
+                    break;
+                }
+                case 11: {        // end_of_VanillaGaussianProcess
+                    skip_line();  // skip forward until end of line
+                    return true;
+                }
+                default: {  // should not reach here
+                    ERL_FATAL("Internal error, should not reach here.");
+                }
+            }
+            ++token_idx;
+        }
+        ERL_WARN("Failed to read VanillaGaussianProcess. Truncated file?");
+        return false;  // should not reach here
+    }
+
 }  // namespace erl::gaussian_process

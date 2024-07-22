@@ -1,80 +1,6 @@
 #include "erl_gaussian_process/lidar_gp_2d.hpp"
 
 namespace erl::gaussian_process {
-    /*static double
-    ClipAngle(double angle) {
-        if (angle < -M_PI) {
-            const auto n = std::floor(std::abs(angle) / M_PI);
-            angle += n * M_PI * 2;
-        } else if (angle >= M_PI) {
-            const auto n = std::floor(angle / M_PI);
-            angle -= n * M_PI * 2;
-        }
-        return angle;
-    }*/
-
-    /*bool
-    LidarGaussianProcess2D::TrainBuffer::Store(
-        const Eigen::Ref<const Eigen::VectorXd> &vec_new_angles,
-        const Eigen::Ref<const Eigen::VectorXd> &vec_new_distances,
-        const Eigen::Ref<const Eigen::Matrix23d> &mat_new_pose) {
-
-        // Store sorted original data
-        std::vector<int> indices(vec_new_angles.size());
-        std::iota(indices.begin(), indices.end(), 0);
-        std::sort(indices.begin(), indices.end(), [&](const int i, const int j) { return vec_new_angles[i] < vec_new_angles[j]; });
-        vec_angles_original = vec_new_angles(indices);
-        vec_ranges_original = vec_new_distances(indices);
-
-        // Reset
-        const auto n = vec_angles_original.size();
-        vec_angles.resize(n);
-        vec_ranges.resize(n);
-        vec_mask_hit.setConstant(n + 1, false);  // +1 flag to mask the last valid area
-        mat_direction_local.resize(2, n);
-        mat_xy_local.resize(2, n);
-        mat_direction_global.resize(2, n);
-        mat_xy_global.resize(2, n);
-        mapping = Mapping::Create(setting->mapping);
-
-        // mat_new_pose: a flattened version of 2x3 row-major matrix array
-        // p0 p1 p2
-        // p3 p4 p5
-        position = mat_new_pose.col(2);
-        rotation = mat_new_pose.block<2, 2>(0, 0);
-
-        max_distance = 0.;
-        int cnt = 0;
-        for (ssize_t i = 0; i < n; ++i) {
-            const double angle = ClipAngle(vec_angles_original[i]);  // make sure angle is within [-pi, pi)
-            const double &range = vec_ranges_original[i];
-
-            if (std::isnan(range) || range <= setting->valid_range_min || range >= setting->valid_range_max) { continue; }  // valid range: [min, max)
-
-            vec_angles[cnt] = angle;
-            vec_ranges[cnt] = range;
-            vec_mask_hit[i] = true;
-            if (range > max_distance) { max_distance = range; }
-
-            // local frame
-            mat_direction_local.col(cnt) << std::cos(angle), std::sin(angle);
-            mat_xy_local.col(cnt) = mat_direction_local.col(cnt) * range;
-            // global frame
-            mat_direction_global.col(cnt) = LocalToGlobalSo2(mat_direction_local.col(cnt));
-            mat_xy_global.col(cnt) = LocalToGlobalSe2(mat_xy_local.col(cnt));
-
-            cnt++;
-        }
-
-        vec_angles.conservativeResize(cnt);
-        vec_ranges.conservativeResize(cnt);
-        mat_xy_local.conservativeResize(2, cnt);
-        mat_xy_global.conservativeResize(2, cnt);
-
-        vec_mapped_distances = vec_ranges.unaryExpr(mapping->map);
-        return cnt > 0;
-    }*/
-
     LidarGaussianProcess2D::LidarGaussianProcess2D(std::shared_ptr<Setting> setting)
         : m_setting_(std::move(setting)),
           m_mapping_(Mapping::Create(m_setting_->mapping)) {
@@ -197,59 +123,6 @@ namespace erl::gaussian_process {
             if (cnt > 0) { (void) gp->Train(cnt); }
         }
 
-        /*const long s = m_setting_->group_size - m_setting_->overlap_size;
-        const auto num_groups = std::max(1l, n / s) + 1;
-        m_setting_->gp->max_num_samples = m_setting_->group_size;  // adjust the max_num_samples
-        m_setting_->gp->kernel->x_dim = 1;                         // adjust the x_dim
-        m_gps_.resize(num_groups);
-        m_partitions_.reserve(num_groups + 1);
-        m_partitions_.push_back(m_train_buffer_.vec_angles[0]);
-        const long half_overlap_size = m_setting_->overlap_size / 2;
-
-        for (int i = 0; i < num_groups - 2; ++i) {
-            const long index_left = i * s;                                 // lower bound, included
-            const long index_right = index_left + m_setting_->group_size;  // upper bound, not included
-
-            m_partitions_.push_back(m_train_buffer_.vec_angles[index_right - half_overlap_size]);
-            std::shared_ptr<VanillaGaussianProcess> &gp = m_gps_[i];
-            if (gp == nullptr) { gp = std::make_shared<VanillaGaussianProcess>(m_setting_->gp); }
-            gp->Reset(m_setting_->group_size, 1);
-            // buffer size fits the data exactly
-            gp->GetTrainInputSamplesBuffer() = m_train_buffer_.vec_angles.segment(index_left, index_right - index_left).transpose();
-            gp->GetTrainOutputSamplesBuffer() = m_train_buffer_.vec_mapped_distances.segment(index_left, index_right - index_left);
-            gp->GetTrainOutputSamplesVarianceBuffer().setConstant(m_setting_->sensor_range_var);
-            (void) gp->Train(m_setting_->group_size);
-        }
-
-        // the last two groups
-        long index_left = (num_groups - 2) * s;
-        long index_right = index_left + (n - index_left + m_setting_->overlap_size) / 2;
-        m_partitions_.push_back(m_train_buffer_.vec_angles(index_right - half_overlap_size));
-        {
-            std::shared_ptr<VanillaGaussianProcess> &gp = m_gps_[num_groups - 2];
-            if (gp == nullptr) { gp = std::make_shared<VanillaGaussianProcess>(m_setting_->gp); }
-            const long num_samples = index_right - index_left;
-            gp->Reset(num_samples, 1);
-            gp->GetTrainInputSamplesBuffer().leftCols(num_samples) = m_train_buffer_.vec_angles.segment(index_left, num_samples).transpose();
-            gp->GetTrainOutputSamplesBuffer().head(num_samples) = m_train_buffer_.vec_mapped_distances.segment(index_left, num_samples);
-            gp->GetTrainOutputSamplesVarianceBuffer().head(num_samples).setConstant(m_setting_->sensor_range_var);
-            (void) gp->Train(num_samples);
-        }
-
-        index_left = index_left + (n - index_left - m_setting_->overlap_size) / 2;
-        index_right = n;
-        m_partitions_.push_back(m_train_buffer_.vec_angles(n - 1));
-        {
-            std::shared_ptr<VanillaGaussianProcess> &gp = m_gps_[num_groups - 1];
-            if (gp == nullptr) { gp = std::make_shared<VanillaGaussianProcess>(m_setting_->gp); }
-            const long num_samples = index_right - index_left;
-            gp->Reset(num_samples, 1);
-            gp->GetTrainInputSamplesBuffer().leftCols(num_samples) = m_train_buffer_.vec_angles.segment(index_left, num_samples).transpose();
-            gp->GetTrainOutputSamplesBuffer().head(num_samples) = m_train_buffer_.vec_mapped_distances.segment(index_left, num_samples);
-            gp->GetTrainOutputSamplesVarianceBuffer().head(num_samples).setConstant(m_setting_->sensor_range_var);
-            (void) gp->Train(num_samples);
-        }*/
-
         m_trained_ = true;
         return true;
     }
@@ -260,9 +133,7 @@ namespace erl::gaussian_process {
         const bool angles_are_local,
         Eigen::Ref<Eigen::VectorXd> vec_ranges,
         Eigen::Ref<Eigen::VectorXd> vec_ranges_var,
-        const bool un_map,
-        // ReSharper disable once CppParameterNeverUsed
-        const bool parallel) const {
+        const bool un_map) const {
 
         if (!m_trained_) { return false; }
 
@@ -273,7 +144,6 @@ namespace erl::gaussian_process {
         vec_ranges.setZero();
         vec_ranges_var.setConstant(m_setting_->init_variance);
 
-#pragma omp parallel for if (parallel) default(none) shared(angles, angles_are_local, vec_ranges, vec_ranges_var, un_map, parallel)
         for (int i = 0; i < angles.size(); ++i) {
             Eigen::Scalard angle_local;
             angle_local[0] = angles[i];
@@ -296,20 +166,6 @@ namespace erl::gaussian_process {
             if (!gp->Test(angle_local, f, var)) { continue; }
             vec_ranges[i] = un_map ? m_mapping_->inv(f[0]) : f[0];
             vec_ranges_var[i] = var[0];
-
-            // for (size_t j = 0; j < m_gps_.size(); ++j) {
-            //     if (angles[i] < m_partitions_[j] || angles[i] > m_partitions_[j + 1]) { continue; }
-            //     if (!m_gps_[j]->IsTrained()) { break; }
-            //     Eigen::Scalard f, var;
-            //     if (!m_gps_[j]->Test(angles.segment<1>(i), f, var)) { break; }
-            //     if (un_map) {
-            //         fs[i] = m_train_buffer_.mapping->inv(f[0]);
-            //     } else {
-            //         fs[i] = f[0];
-            //     }
-            //     vars[i] = var[0];
-            //     break;
-            // }
         }
         return true;
     }
@@ -322,7 +178,7 @@ namespace erl::gaussian_process {
         Eigen::Ref<Eigen::Scalard> range_pred_var,
         double &occ) const {
 
-        if (!Test(angle_local, true, range_pred, range_pred_var, false, false)) { return false; }
+        if (!Test(angle_local, true, range_pred, range_pred_var, false)) { return false; }
         if (range_pred_var[0] > m_setting_->max_valid_range_var) { return false; }  // fail to estimate the mapped r f
         // when the r is larger, 1/r results in smaller different, we need a larger m_scale_.
         const double a = r * m_setting_->occ_test_temperature;
@@ -330,4 +186,224 @@ namespace erl::gaussian_process {
         range_pred[0] = m_mapping_->inv(range_pred[0]);
         return true;
     }
+
+    bool
+    LidarGaussianProcess2D::operator==(const LidarGaussianProcess2D &other) const {
+        if (m_setting_ == nullptr && other.m_setting_ != nullptr) { return false; }
+        if (m_setting_ != nullptr && (other.m_setting_ == nullptr || *m_setting_ != *other.m_setting_)) { return false; }
+        if (m_trained_ != other.m_trained_) { return false; }
+        if (m_gps_.size() != other.m_gps_.size()) { return false; }
+        for (std::size_t i = 0; i < m_gps_.size(); ++i) {
+            if (m_gps_[i] == nullptr && other.m_gps_[i] != nullptr) { return false; }
+            if (m_gps_[i] != nullptr && (other.m_gps_[i] == nullptr || *m_gps_[i] != *other.m_gps_[i])) { return false; }
+        }
+        if (m_angle_partitions_.size() != other.m_angle_partitions_.size()) { return false; }
+        for (std::size_t i = 0; i < m_angle_partitions_.size(); ++i) {
+            if (m_angle_partitions_[i] != other.m_angle_partitions_[i]) { return false; }
+        }
+        if (m_lidar_frame_ == nullptr && other.m_lidar_frame_ != nullptr) { return false; }
+        if (m_lidar_frame_ != nullptr && (other.m_lidar_frame_ == nullptr || *m_lidar_frame_ != *other.m_lidar_frame_)) { return false; }
+        if (m_mapped_distances_.size() != other.m_mapped_distances_.size() ||
+            std::memcmp(m_mapped_distances_.data(), other.m_mapped_distances_.data(), m_mapped_distances_.size() * sizeof(double)) != 0) {
+            return false;
+        }
+        return true;
+    }
+
+    bool
+    LidarGaussianProcess2D::Write(const std::string &filename) const {
+        ERL_INFO("Writing LidarGaussianProcess2D to file: {}", filename);
+        std::filesystem::create_directories(std::filesystem::path(filename).parent_path());
+        std::ofstream file(filename, std::ios_base::out | std::ios_base::binary);
+        if (!file.is_open()) {
+            ERL_WARN("Failed to open file: {}", filename);
+            return false;
+        }
+
+        const bool success = Write(file);
+        file.close();
+        return success;
+    }
+
+    static const std::string kFileHeader = "# erl::gaussian_process::LidarGaussianProcess2D";
+
+    bool
+    LidarGaussianProcess2D::Write(std::ostream &s) const {
+        s << kFileHeader << std::endl  //
+          << "# (feel free to add / change comments, but leave the first line as it is!)" << std::endl
+          << "setting" << std::endl;
+        // write setting
+        if (!m_setting_->Write(s)) {
+            ERL_WARN("Failed to write setting.");
+            return false;
+        }
+        s << "trained " << m_trained_ << std::endl;
+        s << "gps " << m_gps_.size() << std::endl;
+        for (const auto &gp: m_gps_) {
+            auto has_gp = static_cast<char>(gp != nullptr);
+            s.write(&has_gp, sizeof(char));
+            if (has_gp) {
+                if (!gp->Write(s)) {
+                    ERL_WARN("Failed to write gp.");
+                    return false;
+                }
+            }
+        }
+        s << "angle_partitions " << m_angle_partitions_.size() << std::endl;
+        for (const auto &[index_left, index_right, coord_left, coord_right]: m_angle_partitions_) {
+            s.write(reinterpret_cast<const char *>(&index_left), sizeof(index_left));
+            s.write(reinterpret_cast<const char *>(&index_right), sizeof(index_right));
+            s.write(reinterpret_cast<const char *>(&coord_left), sizeof(coord_left));
+            s.write(reinterpret_cast<const char *>(&coord_right), sizeof(coord_right));
+        }
+        s << "lidar_frame" << std::endl;
+        if (!m_lidar_frame_->Write(s)) {
+            ERL_WARN("Failed to write lidar_frame.");
+            return false;
+        }
+        s << "mapped_distances" << std::endl;
+        if (!common::SaveEigenMatrixToBinaryStream(s, m_mapped_distances_)) {
+            ERL_WARN("Failed to write mapped_distances.");
+            return false;
+        }
+        s << "end_of_LidarGaussianProcess2D" << std::endl;
+        return s.good();
+    }
+
+    bool
+    LidarGaussianProcess2D::Read(const std::string &filename) {
+        ERL_INFO("Reading LidarGaussianProcess2D from file: {}", std::filesystem::absolute(filename));
+        std::ifstream file(filename.c_str(), std::ios_base::in | std::ios_base::binary);
+        if (!file.is_open()) {
+            ERL_WARN("Failed to open file: {}", filename.c_str());
+            return false;
+        }
+
+        const bool success = Read(file);
+        file.close();
+        return success;
+    }
+
+    bool
+    LidarGaussianProcess2D::Read(std::istream &s) {
+        if (!s.good()) {
+            ERL_WARN("Input stream is not ready for reading");
+            return false;
+        }
+
+        // check if the first line is valid
+        std::string line;
+        std::getline(s, line);
+        if (line.compare(0, kFileHeader.length(), kFileHeader) != 0) {  // check if the first line is valid
+            ERL_WARN("Header does not start with \"{}\"", kFileHeader.c_str());
+            return false;
+        }
+
+        auto skip_line = [&s]() {
+            char c;
+            do { c = static_cast<char>(s.get()); } while (s.good() && c != '\n');
+        };
+
+        static const char *tokens[] = {
+            "setting",
+            "trained",
+            "gps",
+            "angle_partitions",
+            "lidar_frame",
+            "mapped_distances",
+            "end_of_LidarGaussianProcess2D",
+        };
+
+        // read data
+        std::string token;
+        int token_idx = 0;
+        while (s.good()) {
+            s >> token;
+            if (token.compare(0, 1, "#") == 0) {
+                skip_line();  // comment line, skip forward until end of line
+                continue;
+            }
+            // non-comment line
+            if (token != tokens[token_idx]) {
+                ERL_WARN("Expected token {}, got {}.", tokens[token_idx], token);  // check token
+                return false;
+            }
+            // reading state machine
+            switch (token_idx) {
+                case 0: {  // setting
+                    skip_line();
+                    if (!m_setting_->Read(s)) {
+                        ERL_WARN("Failed to read setting.");
+                        return false;
+                    }
+                    break;
+                }
+                case 1: {  // trained
+                    s >> m_trained_;
+                    break;
+                }
+                case 2: {  // gps
+                    long num_gps;
+                    s >> num_gps;
+                    m_gps_.resize(num_gps, nullptr);
+                    skip_line();
+                    for (long i = 0; i < num_gps; ++i) {
+                        char has_gp;
+                        s.read(&has_gp, sizeof(char));
+                        if (has_gp) {
+                            m_gps_[i] = std::make_shared<VanillaGaussianProcess>(m_setting_->gp);
+                            if (!m_gps_[i]->Read(s)) {
+                                ERL_WARN("Failed to read gp.");
+                                return false;
+                            }
+                        }
+                    }
+                    break;
+                }
+                case 3: {  // angle_partitions
+                    long num_partitions;
+                    s >> num_partitions;
+                    m_angle_partitions_.resize(num_partitions);
+                    skip_line();
+                    for (long i = 0; i < num_partitions; ++i) {
+                        auto &[index_left, index_right, coord_left, coord_right] = m_angle_partitions_[i];
+                        s.read(reinterpret_cast<char *>(&index_left), sizeof(index_left));
+                        s.read(reinterpret_cast<char *>(&index_right), sizeof(index_right));
+                        s.read(reinterpret_cast<char *>(&coord_left), sizeof(coord_left));
+                        s.read(reinterpret_cast<char *>(&coord_right), sizeof(coord_right));
+                    }
+                    break;
+                }
+                case 4: {  // lidar_frame
+                    skip_line();
+                    m_lidar_frame_ = std::make_shared<geometry::LidarFrame2D>(m_setting_->lidar_frame);
+                    if (!m_lidar_frame_->Read(s)) {
+                        ERL_WARN("Failed to read lidar_frame.");
+                        return false;
+                    }
+                    break;
+                }
+                case 5: {  // mapped_distances
+                    skip_line();
+                    if (!common::LoadEigenMatrixFromBinaryStream(s, m_mapped_distances_)) {
+                        ERL_WARN("Failed to read mapped_distances.");
+                        return false;
+                    }
+                    break;
+                }
+                case 6: {  // end_of_LidarGaussianProcess2D
+                    skip_line();
+                    m_mapping_ = Mapping::Create(m_setting_->mapping);
+                    return true;
+                }
+                default: {  // should not reach here
+                    ERL_FATAL("Internal error, should not reach here.");
+                }
+            }
+            ++token_idx;
+        }
+        ERL_WARN("Failed to read LidarGaussianProcess2D. Truncated file?");
+        return false;  // should not reach here
+    }
+
 }  // namespace erl::gaussian_process

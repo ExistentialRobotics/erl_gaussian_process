@@ -24,7 +24,7 @@ namespace erl::gaussian_process {
             double occ_test_temperature = 30;  // OCC Test is a tanh function, this controls the slope around 0.
             std::shared_ptr<geometry::LidarFrame2D::Setting> lidar_frame = std::make_shared<geometry::LidarFrame2D::Setting>();  // parameters of lidar frame
             std::shared_ptr<VanillaGaussianProcess::Setting> gp = std::make_shared<VanillaGaussianProcess::Setting>();  // parameters of local GP regression
-            std::shared_ptr<Mapping::Setting> mapping = []() {
+            std::shared_ptr<Mapping::Setting> mapping = []() -> std::shared_ptr<Mapping::Setting> {
                 auto mapping_setting = std::make_shared<Mapping::Setting>();
                 mapping_setting->type = Mapping::Type::kInverseSqrt;
                 mapping_setting->scale = 1.0;
@@ -104,8 +104,7 @@ namespace erl::gaussian_process {
             bool angles_are_local,
             Eigen::Ref<Eigen::VectorXd> vec_ranges,
             Eigen::Ref<Eigen::VectorXd> vec_ranges_var,
-            bool un_map,
-            bool parallel) const;
+            bool un_map) const;
 
         [[nodiscard]] bool
         ComputeOcc(
@@ -114,6 +113,26 @@ namespace erl::gaussian_process {
             Eigen::Ref<Eigen::Scalard> range_pred,
             Eigen::Ref<Eigen::Scalard> range_pred_var,
             double &occ) const;  // return false if failed to compute occ
+
+        [[nodiscard]] bool
+        operator==(const LidarGaussianProcess2D &other) const;
+
+        [[nodiscard]] bool
+        operator!=(const LidarGaussianProcess2D &other) const {
+            return !(*this == other);
+        }
+
+        [[nodiscard]] bool
+        Write(const std::string &filename) const;
+
+        [[nodiscard]] bool
+        Write(std::ostream &s) const;
+
+        [[nodiscard]] bool
+        Read(const std::string &filename);
+
+        [[nodiscard]] bool
+        Read(std::istream &s);
     };
 }  // namespace erl::gaussian_process
 

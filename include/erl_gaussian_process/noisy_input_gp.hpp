@@ -51,6 +51,8 @@ namespace erl::gaussian_process {
             if (!m_trained_) { ERL_ASSERTM(AllocateMemory(m_setting_->max_num_samples, m_setting_->kernel->x_dim), "Failed to allocate memory."); }
         }
 
+        virtual ~NoisyInputGaussianProcess() = default;
+
         [[nodiscard]] std::shared_ptr<Setting>
         GetSetting() const {
             return m_setting_;
@@ -62,22 +64,7 @@ namespace erl::gaussian_process {
         }
 
         virtual void
-        Reset(const long max_num_samples, const long x_dim) {
-            ERL_ASSERTM(max_num_samples > 0, "max_num_samples should be > 0.");
-            ERL_ASSERTM(x_dim > 0, "x_dim should be > 0.");
-            if (m_setting_->max_num_samples > 0 && m_setting_->kernel->x_dim > 0) {  // memory already allocated
-                ERL_ASSERTM(m_setting_->max_num_samples >= max_num_samples, "max_num_samples should be <= {}.", m_setting_->max_num_samples);
-            } else {
-                if (m_setting_->kernel->x_dim > 0) { ERL_ASSERTM(m_setting_->kernel->x_dim == x_dim, "x_dim should be {}.", m_setting_->kernel->x_dim); }
-                ERL_ASSERTM(AllocateMemory(max_num_samples, x_dim), "Failed to allocate memory.");
-            }
-            m_trained_ = false;
-            m_kernel_ = covariance::Covariance::CreateCovariance(m_setting_->kernel_type, m_setting_->kernel);
-            m_three_over_scale_square_ = 3. * m_setting_->kernel->alpha / (m_setting_->kernel->scale * m_setting_->kernel->scale);
-            m_num_train_samples_ = 0;
-            m_num_train_samples_with_grad_ = 0;
-            m_x_dim_ = x_dim;
-        }
+        Reset(long max_num_samples, long x_dim);
 
         [[nodiscard]] long
         GetNumTrainSamples() const {
@@ -139,6 +126,9 @@ namespace erl::gaussian_process {
             return m_mat_l_;
         }
 
+        [[nodiscard]] virtual std::size_t
+        GetMemoryUsage() const;
+
         virtual void
         Train(long num_train_samples);
 
@@ -149,47 +139,32 @@ namespace erl::gaussian_process {
             Eigen::Ref<Eigen::MatrixXd> mat_var_out,
             Eigen::Ref<Eigen::MatrixXd> mat_cov_out) const;
 
-        virtual ~NoisyInputGaussianProcess() = default;
+        [[nodiscard]] bool
+        operator==(const NoisyInputGaussianProcess &other) const;
+
+        [[nodiscard]] bool
+        operator!=(const NoisyInputGaussianProcess &other) const {
+            return !(*this == other);
+        }
+
+        [[nodiscard]] virtual bool
+        Write(const std::string &filename) const;
+
+        [[nodiscard]] virtual bool
+        Write(std::ostream &s) const;
+
+        [[nodiscard]] virtual bool
+        Read(const std::string &filename);
+
+        [[nodiscard]] virtual bool
+        Read(std::istream &s);
 
     protected:
         bool
-        AllocateMemory(const long max_num_samples, const long x_dim) {
-            if (max_num_samples <= 0 || x_dim <= 0) { return false; }  // invalid input
-            if (m_setting_->max_num_samples > 0 && max_num_samples > m_setting_->max_num_samples) { return false; }
-            if (m_setting_->kernel->x_dim > 0) {
-                ERL_ASSERTM(x_dim == m_setting_->kernel->x_dim, "x_dim {} does not match kernel->x_dim {}.", x_dim, m_setting_->kernel->x_dim);
-            }
-            const auto [rows, cols] = covariance::Covariance::GetMinimumKtrainSize(max_num_samples, max_num_samples, x_dim);
-            if (m_mat_k_train_.rows() < rows || m_mat_k_train_.cols() < cols) { m_mat_k_train_.resize(rows, cols); }
-            if (m_mat_x_train_.rows() < x_dim || m_mat_x_train_.cols() < max_num_samples) { m_mat_x_train_.resize(x_dim, max_num_samples); }
-            if (m_vec_y_train_.size() < max_num_samples) { m_vec_y_train_.resize(max_num_samples); }
-            if (m_mat_grad_train_.rows() < x_dim || m_mat_grad_train_.cols() < max_num_samples) { m_mat_grad_train_.resize(x_dim, max_num_samples); }
-            if (m_mat_l_.rows() < rows || m_mat_l_.cols() < cols) { m_mat_l_.resize(rows, cols); }
-            if (m_vec_alpha_.size() < max_num_samples * (x_dim + 1)) { m_vec_alpha_.resize(max_num_samples * (x_dim + 1)); }
-            if (m_vec_grad_flag_.size() < max_num_samples) { m_vec_grad_flag_.resize(max_num_samples); }
-            if (m_vec_var_x_.size() < max_num_samples) { m_vec_var_x_.resize(max_num_samples); }
-            if (m_vec_var_h_.size() < max_num_samples) { m_vec_var_h_.resize(max_num_samples); }
-            if (m_vec_var_grad_.size() < max_num_samples) { m_vec_var_grad_.resize(max_num_samples); }
-            return true;
-        }
+        AllocateMemory(long max_num_samples, long x_dim);
 
         void
-        InitializeVectorAlpha() {
-            ERL_DEBUG_ASSERT(
-                m_vec_alpha_.size() >= m_num_train_samples_ * (m_x_dim_ + 1),
-                "m_vec_alpha_ should have size >= {}.",
-                m_num_train_samples_ * (m_x_dim_ + 1));
-
-            m_num_train_samples_with_grad_ = 0;
-            for (long i = 0; i < m_num_train_samples_; ++i) {
-                m_vec_alpha_[i] = m_vec_y_train_[i];  // h(x_i)
-                if (m_vec_grad_flag_[i]) { ++m_num_train_samples_with_grad_; }
-            }
-            for (long i = 0, j = m_num_train_samples_; i < m_num_train_samples_; ++i) {
-                if (!m_vec_grad_flag_[i]) { continue; }
-                for (long k = 0, l = j++; k < m_x_dim_; ++k, l += m_num_train_samples_with_grad_) { m_vec_alpha_[l] = m_mat_grad_train_(k, i); }
-            }
-        }
+        InitializeVectorAlpha();
     };
 }  // namespace erl::gaussian_process
 

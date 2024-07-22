@@ -125,12 +125,31 @@ namespace erl::gaussian_process {
             bool directions_are_local,
             Eigen::Ref<Eigen::VectorXd> vec_ranges,
             Eigen::Ref<Eigen::VectorXd> vec_ranges_var,
-            bool un_map,
-            bool parallel) const;
+            bool un_map) const;
 
         bool
         ComputeOcc(const Eigen::Vector3d &dir_local, double r, Eigen::Ref<Eigen::Scalard> range_pred, Eigen::Ref<Eigen::Scalard> range_pred_var, double &occ)
             const;
+
+        [[nodiscard]] bool
+        operator==(const RangeSensorGaussianProcess3D &other) const;
+
+        [[nodiscard]] bool
+        operator!=(const RangeSensorGaussianProcess3D &other) const {
+            return !(*this == other);
+        }
+
+        [[nodiscard]] bool
+        Write(const std::string &filename) const;
+
+        [[nodiscard]] bool
+        Write(std::ostream &s) const;
+
+        [[nodiscard]] bool
+        Read(const std::string &filename);
+
+        [[nodiscard]] bool
+        Read(std::istream &s);
     };
 }  // namespace erl::gaussian_process
 

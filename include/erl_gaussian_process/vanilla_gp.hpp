@@ -107,6 +107,26 @@ namespace erl::gaussian_process {
         [[nodiscard]] bool
         Test(const Eigen::Ref<const Eigen::MatrixXd> &mat_x_test, Eigen::Ref<Eigen::VectorXd> vec_f_out, Eigen::Ref<Eigen::VectorXd> vec_var_out) const;
 
+        [[nodiscard]] bool
+        operator==(const VanillaGaussianProcess &other) const;
+
+        [[nodiscard]] bool
+        operator!=(const VanillaGaussianProcess &other) const {
+            return !(*this == other);
+        }
+
+        [[nodiscard]] bool
+        Write(const std::string &filename) const;
+
+        [[nodiscard]] bool
+        Write(std::ostream &s) const;
+
+        [[nodiscard]] bool
+        Read(const std::string &filename);
+
+        [[nodiscard]] bool
+        Read(std::istream &s);
+
     protected:
         bool
         AllocateMemory(const long max_num_samples, const long x_dim) {
