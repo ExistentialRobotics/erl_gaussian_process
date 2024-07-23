@@ -40,15 +40,14 @@ BindLidarGaussianProcess2D(const py::module &m) {
         .def("train", &T::Train, py::arg("rotation"), py::arg("translation"), py::arg("ranges"), py::arg("repartition_on_hit_rays"))
         .def(
             "test",
-            [](const T &gp, const Eigen::Ref<const Eigen::VectorXd> &angles, const bool angles_are_local, const bool un_map, const bool parallel) {
+            [](const T &gp, const Eigen::Ref<const Eigen::VectorXd> &angles, const bool angles_are_local, const bool un_map) {
                 Eigen::VectorXd fs(angles.size()), vars(angles.size());
-                bool success = gp.Test(angles, angles_are_local, fs, vars, un_map, parallel);
+                bool success = gp.Test(angles, angles_are_local, fs, vars, un_map);
                 return py::make_tuple(success, fs, vars);
             },
             py::arg("angles"),
             py::arg("angles_are_local"),
-            py::arg("un_map"),
-            py::arg("parallel"))
+            py::arg("un_map"))
         .def(
             "compute_occ",
             [](const T &gp, const double angle, const double r) {

@@ -58,13 +58,12 @@ BindRangeSensorGaussianProcess3D(const py::module &m) {
         .def("train", &T::Train, py::arg("rotation"), py::arg("translation"), py::arg("ranges"))
         .def(
             "test",
-            [](const T &gp, const Eigen::Ref<const Eigen::Matrix3Xd> &directions, const bool directions_are_local, const bool un_map, const bool parallel) {
+            [](const T &gp, const Eigen::Ref<const Eigen::Matrix3Xd> &directions, const bool directions_are_local, const bool un_map) {
                 Eigen::VectorXd fs(directions.cols()), vars(directions.cols());
-                bool success = gp.Test(directions, directions_are_local, fs, vars, un_map, parallel);
+                bool success = gp.Test(directions, directions_are_local, fs, vars, un_map);
                 return py::make_tuple(success, fs, vars);
             },
             py::arg("directions"),
             py::arg("directions_are_local"),
-            py::arg("un_map"),
-            py::arg("parallel"));
+            py::arg("un_map"));
 }

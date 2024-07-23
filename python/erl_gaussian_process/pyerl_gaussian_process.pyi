@@ -16,6 +16,7 @@ __all__ = [
     "Mapping",
     "LidarGaussianProcess2D",
     "NoisyInputGaussianProcess",
+    "RangeSensorGaussianProcess3D",
 ]
 
 class VanillaGaussianProcess:
