@@ -1,13 +1,13 @@
 # import pybind dependencies
-from erl_common.yaml import YamlableBase
-from erl_covariance import Covariance
+import erl_common as common
+import erl_covariance as covariance
 
 # import package modules
 from .pyerl_gaussian_process import *
 
 __all__ = [
-    "YamlableBase",
-    "Covariance",
+    "common",
+    "covariance",
     "VanillaGaussianProcess",
     "Mapping",
     "LidarGaussianProcess2D",
