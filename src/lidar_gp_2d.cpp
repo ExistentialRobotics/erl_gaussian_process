@@ -180,7 +180,7 @@ namespace erl::gaussian_process {
 
         if (!Test(angle_local, true, range_pred, range_pred_var, false)) { return false; }
         if (range_pred_var[0] > m_setting_->max_valid_range_var) { return false; }  // fail to estimate the mapped r f
-        // when the r is larger, 1/r results in smaller different, we need a larger m_scale_.
+        // when the r is larger, 1/r results in smaller difference, we need a larger scale.
         const double a = r * m_setting_->occ_test_temperature;
         occ = 2. / (1. + std::exp(a * (range_pred[0] - m_mapping_->map(r)))) - 1.;
         range_pred[0] = m_mapping_->inv(range_pred[0]);

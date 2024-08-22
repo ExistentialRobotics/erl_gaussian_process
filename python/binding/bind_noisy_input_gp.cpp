@@ -18,10 +18,22 @@ BindNoisyInputGaussianProcess(const py::module &m) {
 
     py_noisy_input_gp.def(py::init<std::shared_ptr<T::Setting>>(), py::arg("setting").none(false))
         .def_property_readonly("is_trained", &T::IsTrained)
-        .def_property_readonly("setting", &T::GetSetting)
+        .def_property_readonly("setting", &T::GetSetting<T::Setting>)
         .def("reset", &T::Reset, py::arg("max_num_samples"), py::arg("x_dim"))
         .def_property_readonly("num_train_samples", &T::GetNumTrainSamples)
         .def_property_readonly("num_train_samples_with_grad", &T::GetNumTrainSamplesWithGrad)
+        .def_property_readonly("kernel", &T::GetKernel)
+        .def_property_readonly("x_train", &T::GetTrainInputSamplesBuffer)
+        .def_property_readonly("y_train", &T::GetTrainOutputSamplesBuffer)
+        .def_property_readonly("grad_train", &T::GetTrainOutputGradientSamplesBuffer)
+        .def_property_readonly("grad_flag", &T::GetTrainGradientFlagsBuffer)
+        .def_property_readonly("var_x_train", &T::GetTrainInputSamplesVarianceBuffer)
+        .def_property_readonly("var_y_train", &T::GetTrainOutputValueSamplesVarianceBuffer)
+        .def_property_readonly("var_grad_train", &T::GetTrainOutputGradientSamplesVarianceBuffer)
+        .def_property_readonly("k_train", &T::GetKtrain)
+        .def_property_readonly("alpha", &T::GetAlpha)
+        .def_property_readonly("cholesky_k_train", &T::GetCholeskyDecomposition)
+        .def_property_readonly("memory_usage", &T::GetMemoryUsage)
         .def(
             "train",
             [](T &self,

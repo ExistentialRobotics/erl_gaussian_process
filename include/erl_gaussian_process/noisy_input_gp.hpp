@@ -53,9 +53,10 @@ namespace erl::gaussian_process {
 
         virtual ~NoisyInputGaussianProcess() = default;
 
-        [[nodiscard]] std::shared_ptr<Setting>
+        template<typename T = Setting>
+        [[nodiscard]] std::shared_ptr<T>
         GetSetting() const {
-            return m_setting_;
+            return std::dynamic_pointer_cast<T>(m_setting_);
         }
 
         [[maybe_unused]] [[nodiscard]] bool
@@ -74,6 +75,11 @@ namespace erl::gaussian_process {
         [[nodiscard]] long
         GetNumTrainSamplesWithGrad() const {
             return m_num_train_samples_with_grad_;
+        }
+
+        [[nodiscard]] std::shared_ptr<covariance::Covariance>
+        GetKernel() const {
+            return m_kernel_;
         }
 
         [[nodiscard]] Eigen::MatrixXd &
