@@ -26,7 +26,8 @@ namespace erl::gaussian_process {
             double sensor_range_var = 0.01;    // variance of the sensor range measurement
             double max_valid_range_var = 0.1;  // if the distance variance is greater than this threshold, the prediction is invalid and should be discarded
             double occ_test_temperature = 30;  // OCC test is a tanh function, this controls the slope around 0
-            std::string range_sensor_frame_type = "lidar";  // type of the range sensor frame: "lidar" or "depth"
+            std::string range_sensor_frame_type = "erl::geometry::LidarFrame3D";                   // type of the range sensor frame
+            std::string range_sensor_frame_setting_type = "erl::geometry::LidarFrame3D::Setting";  // type of the range sensor frame setting
             std::shared_ptr<geometry::RangeSensorFrame3D::Setting> range_sensor_frame = std::make_shared<geometry::LidarFrame3D::Setting>();
             std::shared_ptr<VanillaGaussianProcess::Setting> gp = std::make_shared<VanillaGaussianProcess::Setting>();
             std::shared_ptr<Mapping::Setting> mapping = []() {
@@ -36,6 +37,8 @@ namespace erl::gaussian_process {
                 return mapping_setting;
             }();
         };
+
+        inline static const volatile bool kSettingRegistered = common::YamlableBase::Register<Setting>();
 
     protected:
         bool m_trained_ = false;
@@ -170,9 +173,9 @@ struct YAML::convert<erl::gaussian_process::RangeSensorGaussianProcess3D::Settin
         node["max_valid_range_var"] = rhs.max_valid_range_var;
         node["occ_test_temperature"] = rhs.occ_test_temperature;
         node["range_sensor_frame_type"] = rhs.range_sensor_frame_type;
-        if (rhs.range_sensor_frame_type == erl::geometry::LidarFrame3D::GetFrameType()) {
+        if (rhs.range_sensor_frame_type == demangle(typeid(erl::geometry::LidarFrame3D).name())) {
             node["range_sensor_frame"] = std::dynamic_pointer_cast<erl::geometry::LidarFrame3D::Setting>(rhs.range_sensor_frame);
-        } else if (rhs.range_sensor_frame_type == erl::geometry::DepthFrame3D::GetFrameType()) {
+        } else if (rhs.range_sensor_frame_type == demangle(typeid(erl::geometry::DepthFrame3D).name())) {
             node["range_sensor_frame"] = std::dynamic_pointer_cast<erl::geometry::DepthFrame3D::Setting>(rhs.range_sensor_frame);
         } else {
             ERL_FATAL("Unknown range_sensor_frame_type: {}", rhs.range_sensor_frame_type);
@@ -198,13 +201,9 @@ struct YAML::convert<erl::gaussian_process::RangeSensorGaussianProcess3D::Settin
         rhs.max_valid_range_var = node["max_valid_range_var"].as<double>();
         rhs.occ_test_temperature = node["occ_test_temperature"].as<double>();
         rhs.range_sensor_frame_type = node["range_sensor_frame_type"].as<std::string>();
-        if (rhs.range_sensor_frame_type == erl::geometry::LidarFrame3D::GetFrameType()) {
-            rhs.range_sensor_frame = node["range_sensor_frame"].as<std::shared_ptr<erl::geometry::LidarFrame3D::Setting>>();
-        } else if (rhs.range_sensor_frame_type == erl::geometry::DepthFrame3D::GetFrameType()) {
-            rhs.range_sensor_frame = node["range_sensor_frame"].as<std::shared_ptr<erl::geometry::DepthFrame3D::Setting>>();
-        } else {
-            ERL_FATAL("Unknown range_sensor_frame_type: {}", rhs.range_sensor_frame_type);
-        }
+        rhs.range_sensor_frame_setting_type = node["range_sensor_frame_setting_type"].as<std::string>();
+        rhs.range_sensor_frame = erl::common::YamlableBase::Create<erl::geometry::RangeSensorFrame3D::Setting>(rhs.range_sensor_frame_setting_type);
+        if (!rhs.range_sensor_frame->FromYamlNode(node["range_sensor_frame"])) { return false; }
         rhs.row_margin = node["row_margin"].as<long>();
         rhs.col_margin = node["col_margin"].as<long>();
         rhs.gp = node["gp"].as<std::shared_ptr<erl::gaussian_process::VanillaGaussianProcess::Setting>>();

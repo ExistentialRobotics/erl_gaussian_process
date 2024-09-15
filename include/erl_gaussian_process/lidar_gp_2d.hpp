@@ -32,6 +32,8 @@ namespace erl::gaussian_process {
             }();
         };
 
+        inline static const volatile bool kSettingRegistered = common::YamlableBase::Register<Setting>();
+
     protected:
         bool m_trained_ = false;
         std::shared_ptr<Setting> m_setting_ = nullptr;

@@ -1,6 +1,80 @@
 #include "erl_gaussian_process/noisy_input_gp.hpp"
 
+#include "erl_covariance/reduced_rank_covariance.hpp"
+
 namespace erl::gaussian_process {
+    NoisyInputGaussianProcess::NoisyInputGaussianProcess(const erl::gaussian_process::NoisyInputGaussianProcess &other)
+        : m_x_dim_(other.m_x_dim_),
+          m_num_train_samples_(other.m_num_train_samples_),
+          m_num_train_samples_with_grad_(other.m_num_train_samples_with_grad_),
+          m_trained_(other.m_trained_),
+          m_three_over_scale_square_(other.m_three_over_scale_square_),
+          m_setting_(other.m_setting_),
+          m_reduced_rank_kernel_(other.m_reduced_rank_kernel_),
+          m_mat_x_train_(other.m_mat_x_train_),
+          m_vec_y_train_(other.m_vec_y_train_),
+          m_mat_grad_train_(other.m_mat_grad_train_),
+          m_mat_k_train_(other.m_mat_k_train_),
+          m_mat_l_(other.m_mat_l_),
+          m_vec_grad_flag_(other.m_vec_grad_flag_),
+          m_vec_alpha_(other.m_vec_alpha_),
+          m_vec_var_x_(other.m_vec_var_x_),
+          m_vec_var_h_(other.m_vec_var_h_),
+          m_vec_var_grad_(other.m_vec_var_grad_) {
+        if (other.m_kernel_ != nullptr) {
+            m_kernel_ = covariance::Covariance::CreateCovariance(m_setting_->kernel_type, m_setting_->kernel);
+            if (m_reduced_rank_kernel_) {  // rank-reduced kernel is stateful, so we need to copy the kernel
+                *std::reinterpret_pointer_cast<covariance::ReducedRankCovariance>(m_kernel_) =
+                    *std::reinterpret_pointer_cast<covariance::ReducedRankCovariance>(other.m_kernel_);
+            }
+        }
+    }
+
+    NoisyInputGaussianProcess &
+    NoisyInputGaussianProcess::operator=(const erl::gaussian_process::NoisyInputGaussianProcess &other) {
+        if (this != &other) {
+            m_x_dim_ = other.m_x_dim_;
+            m_num_train_samples_ = other.m_num_train_samples_;
+            m_num_train_samples_with_grad_ = other.m_num_train_samples_with_grad_;
+            m_trained_ = other.m_trained_;
+            m_three_over_scale_square_ = other.m_three_over_scale_square_;
+            m_setting_ = other.m_setting_;
+            m_reduced_rank_kernel_ = other.m_reduced_rank_kernel_;
+            m_mat_x_train_ = other.m_mat_x_train_;
+            m_vec_y_train_ = other.m_vec_y_train_;
+            m_mat_grad_train_ = other.m_mat_grad_train_;
+            m_mat_k_train_ = other.m_mat_k_train_;
+            m_mat_l_ = other.m_mat_l_;
+            m_vec_grad_flag_ = other.m_vec_grad_flag_;
+            m_vec_alpha_ = other.m_vec_alpha_;
+            m_vec_var_x_ = other.m_vec_var_x_;
+            m_vec_var_h_ = other.m_vec_var_h_;
+            m_vec_var_grad_ = other.m_vec_var_grad_;
+            if (other.m_kernel_ != nullptr) {
+                m_kernel_ = covariance::Covariance::CreateCovariance(m_setting_->kernel_type, m_setting_->kernel);
+                if (m_reduced_rank_kernel_) {  // rank-reduced kernel is stateful, so we need to copy the kernel
+                    *std::reinterpret_pointer_cast<covariance::ReducedRankCovariance>(m_kernel_) =
+                        *std::reinterpret_pointer_cast<covariance::ReducedRankCovariance>(other.m_kernel_);
+                }
+            }
+        }
+        return *this;
+    }
+
+    Eigen::VectorXd
+    NoisyInputGaussianProcess::GetKernelCoordOrigin() const {
+        if (m_reduced_rank_kernel_) {
+            return std::reinterpret_pointer_cast<covariance::ReducedRankCovariance>(m_kernel_)->GetCoordOrigin();
+        } else {
+            return Eigen::VectorXd::Zero(m_x_dim_);
+        }
+    }
+
+    void
+    NoisyInputGaussianProcess::SetKernelCoordOrigin(const Eigen::VectorXd &coord_origin) {
+        if (m_reduced_rank_kernel_) { std::reinterpret_pointer_cast<covariance::ReducedRankCovariance>(m_kernel_)->SetCoordOrigin(coord_origin); }
+    }
+
     void
     NoisyInputGaussianProcess::Reset(const long max_num_samples, const long x_dim) {
         ERL_ASSERTM(max_num_samples > 0, "max_num_samples should be > 0.");
@@ -13,6 +87,9 @@ namespace erl::gaussian_process {
         }
         m_trained_ = false;
         m_kernel_ = covariance::Covariance::CreateCovariance(m_setting_->kernel_type, m_setting_->kernel);
+        auto rank_reduced_kernel = std::dynamic_pointer_cast<covariance::ReducedRankCovariance>(m_kernel_);
+        m_reduced_rank_kernel_ = rank_reduced_kernel != nullptr;
+        if (m_reduced_rank_kernel_) { rank_reduced_kernel->BuildSpectralDensities(); }
         m_three_over_scale_square_ = 3. * m_setting_->kernel->alpha / (m_setting_->kernel->scale * m_setting_->kernel->scale);
         m_num_train_samples_ = 0;
         m_num_train_samples_with_grad_ = 0;
@@ -51,20 +128,42 @@ namespace erl::gaussian_process {
             return;
         }
 
-        InitializeVectorAlpha();  // initialize m_vec_alpha_
+        // initialize m_vec_alpha_
+        long rows, cols;
+        if (m_setting_->no_gradient_observation) {
+            m_vec_grad_flag_.setZero(m_num_train_samples_);
+            m_vec_alpha_.head(m_num_train_samples_) = m_vec_y_train_.head(m_num_train_samples_);
+            std::tie(rows, cols) = m_kernel_->ComputeKtrain(m_mat_x_train_, m_vec_var_x_ + m_vec_var_h_, m_num_train_samples_, m_mat_k_train_, m_vec_alpha_);
+        } else {
+            m_num_train_samples_with_grad_ = m_vec_grad_flag_.head(m_num_train_samples_).count();
+            const long m = m_num_train_samples_ + m_x_dim_ * m_num_train_samples_with_grad_;
+            ERL_ASSERTM(m_vec_alpha_.size() >= m, "m_vec_alpha_ should have size >= {}.", m);
+            double *alpha = m_vec_alpha_.data();
+            double *y = m_vec_y_train_.data();
+            long *grad_flag = m_vec_grad_flag_.data();
+            for (long i = 0, j = m_num_train_samples_; i < m_num_train_samples_; ++i) {
+                alpha[i] = y[i];  // h(x_i)
+                if (!grad_flag[i]) { continue; }
+                double *grad_i = m_mat_grad_train_.col(i).data();
+                for (long k = 0, l = j++; k < m_x_dim_; ++k, l += m_num_train_samples_with_grad_) { alpha[l] = grad_i[k]; }
+            }
 
-        // Compute kernel matrix
-        const auto [rows, cols] = m_kernel_->ComputeKtrainWithGradient(
-            m_mat_x_train_,
-            m_num_train_samples_,
-            m_vec_grad_flag_,
-            m_vec_var_x_,
-            m_vec_var_h_,
-            m_vec_var_grad_,
-            m_mat_k_train_);
+            // Compute kernel matrix
+            std::tie(rows, cols) = m_kernel_->ComputeKtrainWithGradient(
+                m_mat_x_train_,
+                m_num_train_samples_,
+                m_vec_grad_flag_,
+                m_vec_var_x_,
+                m_vec_var_h_,
+                m_vec_var_grad_,
+                m_mat_k_train_,
+                m_vec_alpha_);
+        }
+        ERL_DEBUG_ASSERT(!m_mat_k_train_.topLeftCorner(rows, cols).hasNaN(), "NaN in m_mat_k_train_!");
+
         const auto mat_ktrain = m_mat_k_train_.topLeftCorner(rows, cols);  // square matrix
         auto &&mat_l = m_mat_l_.topLeftCorner(rows, cols);                 // square matrix, lower triangular
-        const auto vec_alpha = m_vec_alpha_.head(rows);                    // h and gradient of h
+        const auto vec_alpha = m_vec_alpha_.head(cols);                    // h and gradient of h
         mat_l = mat_ktrain.llt().matrixL();
         mat_l.triangularView<Eigen::Lower>().solveInPlace(vec_alpha);
         mat_l.transpose().triangularView<Eigen::Upper>().solveInPlace(vec_alpha);
@@ -91,15 +190,12 @@ namespace erl::gaussian_process {
         ERL_ASSERTM(mat_f_out.rows() >= dim + 1, "mat_f_out.rows() = {}, it should be >= Dim + 1 = {}.", mat_f_out.rows(), dim + 1);
         ERL_ASSERTM(mat_f_out.cols() >= n, "mat_f_out.cols() = {}, not enough for {} test queries.", mat_f_out.cols(), n);
 
-        const auto [ktest_rows, ktest_cols] = covariance::Covariance::GetMinimumKtestSize(m_num_train_samples_, m_num_train_samples_with_grad_, dim, n);
-        Eigen::MatrixXd ktest(ktest_rows, ktest_cols);                                // (dim of train samples, dim of test queries)
-        const auto [output_rows, output_cols] = m_kernel_->ComputeKtestWithGradient(  //
-            m_mat_x_train_,
-            m_num_train_samples_,
-            m_vec_grad_flag_,
-            mat_x_test,
-            n,
-            ktest);
+        const auto [ktest_rows, ktest_cols] = m_kernel_->GetMinimumKtestSize(m_num_train_samples_, m_num_train_samples_with_grad_, dim, n);
+        Eigen::MatrixXd ktest(ktest_rows, ktest_cols);  // (dim of train samples, dim of test queries)
+        const auto [output_rows, output_cols] =
+            m_kernel_->ComputeKtestWithGradient(m_mat_x_train_, m_num_train_samples_, m_vec_grad_flag_, mat_x_test, n, ktest);
+        (void) output_rows;
+        (void) output_cols;
         ERL_DEBUG_ASSERT(
             output_rows == ktest_rows && output_cols == ktest_cols,
             "output_size = ({}, {}), it should be ({}, {}).",
@@ -110,23 +206,40 @@ namespace erl::gaussian_process {
 
         // compute value prediction
         /// ktest.T * m_vec_alpha_ = [h(x1),...,h(xn),dh(x1)/dx_1,...,dh(xn)/dx_1,...,dh(x1)/dx_dim,...,dh(xn)/dx_dim]
-        auto vec_alpha = m_vec_alpha_.head(output_rows);
+        auto vec_alpha = m_vec_alpha_.head(ktest_rows);
         for (long i = 0; i < n; ++i) {
-            mat_f_out(0, i) = ktest.col(i).dot(vec_alpha);                                                            // h(x)
-            for (long j = 1, jj = i + n; j <= dim; ++j, jj += n) { mat_f_out(j, i) = ktest.col(jj).dot(vec_alpha); }  // dh(x)/dx_j
+            double *f = mat_f_out.col(i).data();
+            f[0] = ktest.col(i).dot(vec_alpha);                                                            // h(x)
+            for (long j = 1, jj = i + n; j <= dim; ++j, jj += n) { f[j] = ktest.col(jj).dot(vec_alpha); }  // dh(x)/dx_j
         }
-        if (mat_var_out.size() == 0) { return; }  // only compute mean
+        const bool compute_var = mat_var_out.size() > 0;
+        const bool compute_cov = mat_cov_out.size() > 0;
+        if (!compute_var && !compute_cov) { return; }  // only compute mean
 
         // compute (co)variance of the test queries
-        m_mat_l_.topLeftCorner(output_rows, output_rows).triangularView<Eigen::Lower>().solveInPlace(ktest);
-        ERL_ASSERTM(mat_var_out.rows() >= dim + 1, "mat_var_out.rows() = {}, it should be >= {} for variance.", mat_var_out.rows(), dim + 1);
-        ERL_ASSERTM(mat_var_out.cols() >= n, "mat_var_out.cols() = {}, not enough for {} test queries.", mat_var_out.cols(), n);
-        if (mat_cov_out.size() == 0) {  // compute variance only
+        m_mat_l_.topLeftCorner(ktest_rows, ktest_rows).triangularView<Eigen::Lower>().solveInPlace(ktest);
+        if (compute_var) {
+            ERL_ASSERTM(mat_var_out.rows() >= dim + 1, "mat_var_out.rows() = {}, it should be >= {} for variance.", mat_var_out.rows(), dim + 1);
+            ERL_ASSERTM(mat_var_out.cols() >= n, "mat_var_out.cols() = {}, not enough for {} test queries.", mat_var_out.cols(), n);
+        }
+        if (!compute_cov) {  // compute variance only
             // column-wise square sum of ktest = var([h(x1),...,h(xn),dh(x1)/dx_1,...,dh(xn)/dx_1,...,dh(x1)/dx_dim,...,dh(xn)/dx_dim])
-            for (long i = 0; i < n; ++i) {
-                mat_var_out(0, i) = m_setting_->kernel->alpha - ktest.col(i).squaredNorm();  // variance of h(x)
-                for (long j = 1, jj = i + n; j <= dim; ++j, jj += n) {                       // variance of dh(x)/dx_j
-                    mat_var_out(j, i) = m_three_over_scale_square_ - ktest.col(jj).squaredNorm();
+            if (m_reduced_rank_kernel_) {
+                for (long i = 0; i < n; ++i) {
+                    double *var = mat_var_out.col(i).data();
+                    var[0] = ktest.col(i).squaredNorm();                    // variance of h(x)
+                    for (long j = 1, jj = i + n; j <= dim; ++j, jj += n) {  // variance of dh(x)/dx_j
+                        var[j] = ktest.col(jj).squaredNorm();
+                    }
+                }
+            } else {
+                const double alpha = m_setting_->kernel->alpha;
+                for (long i = 0; i < n; ++i) {
+                    double *var = mat_var_out.col(i).data();
+                    var[0] = alpha - ktest.col(i).squaredNorm();            // variance of h(x)
+                    for (long j = 1, jj = i + n; j <= dim; ++j, jj += n) {  // variance of dh(x)/dx_j
+                        var[j] = m_three_over_scale_square_ - ktest.col(jj).squaredNorm();
+                    }
                 }
             }
         } else {  // compute covariance
@@ -134,14 +247,38 @@ namespace erl::gaussian_process {
             ERL_ASSERTM(mat_cov_out.rows() >= min_n_rows, "mat_cov_out.rows() = {}, it should be >= {} for covariance.", mat_cov_out.rows(), min_n_rows);
             ERL_ASSERTM(mat_cov_out.cols() >= n, "mat_cov_out.cols() = {}, not enough for {} test queries.", mat_cov_out.cols(), n);
             // each column of mat_cov_out is the lower triangular part of the covariance matrix of the corresponding test query
-            for (long i = 0; i < n; ++i) {
-                mat_var_out(0, i) = m_setting_->kernel->alpha - ktest.col(i).squaredNorm();  // var(h(x))
-                long index = 0;
-                for (long j = 1, jj = i + n; j <= dim; ++j, jj += n) {
-                    const auto &col_jj = ktest.col(jj);
-                    mat_cov_out(index++, i) = -col_jj.dot(ktest.col(i));                                                         // cov(dh(x)/dx_j, h(x))
-                    for (long k = 1, kk = i + n; k < j; ++k, kk += n) { mat_cov_out(index++, i) = -col_jj.dot(ktest.col(kk)); }  // cov(dh(x)/dx_j, dh(x)/dx_k)
-                    mat_var_out(j, i) = m_three_over_scale_square_ - col_jj.squaredNorm();                                       // var(dh(x)/dx_j)
+            if (m_reduced_rank_kernel_) {
+                for (long i = 0; i < n; ++i) {
+                    double *var = nullptr;
+                    if (compute_var) {
+                        var = mat_var_out.col(i).data();
+                        var[0] = ktest.col(i).squaredNorm();  // var(h(x))
+                    }
+                    double *cov = mat_cov_out.col(i).data();
+                    long index = 0;
+                    for (long j = 1, jj = i + n; j <= dim; ++j, jj += n) {
+                        const auto &col_jj = ktest.col(jj);
+                        cov[index++] = col_jj.dot(ktest.col(i));                                                         // cov(dh(x)/dx_j, h(x))
+                        for (long k = 1, kk = i + n; k < j; ++k, kk += n) { cov[index++] = col_jj.dot(ktest.col(kk)); }  // cov(dh(x)/dx_j, dh(x)/dx_k)
+                        if (var != nullptr) { var[j] = col_jj.squaredNorm(); }                                           // var(dh(x)/dx_j)
+                    }
+                }
+            } else {
+                const double alpha = m_setting_->kernel->alpha;
+                for (long i = 0; i < n; ++i) {
+                    double *var = nullptr;
+                    if (compute_var) {
+                        var = mat_var_out.col(i).data();
+                        var[0] = alpha - ktest.col(i).squaredNorm();  // var(h(x))
+                    }
+                    double *cov = mat_cov_out.col(i).data();
+                    long index = 0;
+                    for (long j = 1, jj = i + n; j <= dim; ++j, jj += n) {
+                        const auto &col_jj = ktest.col(jj);
+                        cov[index++] = -col_jj.dot(ktest.col(i));                                                         // cov(dh(x)/dx_j, h(x))
+                        for (long k = 1, kk = i + n; k < j; ++k, kk += n) { cov[index++] = -col_jj.dot(ktest.col(kk)); }  // cov(dh(x)/dx_j, dh(x)/dx_k)
+                        if (var != nullptr) { var[j] = m_three_over_scale_square_ - col_jj.squaredNorm(); }               // var(dh(x)/dx_j)
+                    }
                 }
             }
         }
@@ -472,6 +609,9 @@ namespace erl::gaussian_process {
                 case 16: {  // end_of_NoisyInputGaussianProcess
                     skip_line();
                     m_kernel_ = covariance::Covariance::CreateCovariance(m_setting_->kernel_type, m_setting_->kernel);
+                    auto rank_reduced_kernel = std::dynamic_pointer_cast<covariance::ReducedRankCovariance>(m_kernel_);
+                    m_reduced_rank_kernel_ = rank_reduced_kernel != nullptr;
+                    if (m_reduced_rank_kernel_) { rank_reduced_kernel->BuildSpectralDensities(); }
                     return true;
                 }
                 default: {  // should not reach here
@@ -491,36 +631,35 @@ namespace erl::gaussian_process {
         if (m_setting_->kernel->x_dim > 0) {
             ERL_ASSERTM(x_dim == m_setting_->kernel->x_dim, "x_dim {} does not match kernel->x_dim {}.", x_dim, m_setting_->kernel->x_dim);
         }
-        const auto [rows, cols] = covariance::Covariance::GetMinimumKtrainSize(max_num_samples, max_num_samples, x_dim);
-        if (m_mat_k_train_.rows() < rows || m_mat_k_train_.cols() < cols) { m_mat_k_train_.resize(rows, cols); }
-        if (m_mat_x_train_.rows() < x_dim || m_mat_x_train_.cols() < max_num_samples) { m_mat_x_train_.resize(x_dim, max_num_samples); }
-        if (m_vec_y_train_.size() < max_num_samples) { m_vec_y_train_.resize(max_num_samples); }
-        if (m_mat_grad_train_.rows() < x_dim || m_mat_grad_train_.cols() < max_num_samples) { m_mat_grad_train_.resize(x_dim, max_num_samples); }
-        if (m_mat_l_.rows() < rows || m_mat_l_.cols() < cols) { m_mat_l_.resize(rows, cols); }
-        if (m_vec_alpha_.size() < max_num_samples * (x_dim + 1)) { m_vec_alpha_.resize(max_num_samples * (x_dim + 1)); }
-        if (m_vec_grad_flag_.size() < max_num_samples) { m_vec_grad_flag_.resize(max_num_samples); }
-        if (m_vec_var_x_.size() < max_num_samples) { m_vec_var_x_.resize(max_num_samples); }
-        if (m_vec_var_h_.size() < max_num_samples) { m_vec_var_h_.resize(max_num_samples); }
-        if (m_vec_var_grad_.size() < max_num_samples) { m_vec_var_grad_.resize(max_num_samples); }
+        m_kernel_ = covariance::Covariance::CreateCovariance(m_setting_->kernel_type, m_setting_->kernel);
+
+        if (m_setting_->no_gradient_observation) {  // y does not contain gradient information
+            const auto [rows, cols] = m_kernel_->GetMinimumKtrainSize(max_num_samples, 0, x_dim);
+            if (m_mat_k_train_.rows() < rows || m_mat_k_train_.cols() < cols) { m_mat_k_train_.resize(rows, cols); }
+            if (m_mat_x_train_.rows() < x_dim || m_mat_x_train_.cols() < max_num_samples) { m_mat_x_train_.resize(x_dim, max_num_samples); }
+            if (m_vec_y_train_.size() < max_num_samples) { m_vec_y_train_.resize(max_num_samples); }
+            if (m_mat_l_.rows() < rows || m_mat_l_.cols() < cols) { m_mat_l_.resize(rows, cols); }
+            if (const long alpha_size = std::max(max_num_samples, cols); m_vec_alpha_.size() < alpha_size) { m_vec_alpha_.resize(alpha_size); }
+            if (m_vec_grad_flag_.size() < max_num_samples) { m_vec_grad_flag_.resize(max_num_samples); }
+            if (m_vec_var_x_.size() < max_num_samples) { m_vec_var_x_.resize(max_num_samples); }
+            if (m_vec_var_h_.size() < max_num_samples) { m_vec_var_h_.resize(max_num_samples); }
+            // m_mat_grad_train_, m_vec_var_grad_ are not used
+            // to save memory, they are not allocated
+        } else {
+            const auto [rows, cols] = m_kernel_->GetMinimumKtrainSize(max_num_samples, max_num_samples, x_dim);
+            if (m_mat_k_train_.rows() < rows || m_mat_k_train_.cols() < cols) { m_mat_k_train_.resize(rows, cols); }
+            if (m_mat_x_train_.rows() < x_dim || m_mat_x_train_.cols() < max_num_samples) { m_mat_x_train_.resize(x_dim, max_num_samples); }
+            if (m_vec_y_train_.size() < max_num_samples) { m_vec_y_train_.resize(max_num_samples); }
+            if (m_mat_grad_train_.rows() < x_dim || m_mat_grad_train_.cols() < max_num_samples) { m_mat_grad_train_.resize(x_dim, max_num_samples); }
+            if (m_mat_l_.rows() < rows || m_mat_l_.cols() < cols) { m_mat_l_.resize(rows, cols); }
+            if (const long alpha_size = std::max(max_num_samples * (x_dim + 1), cols); m_vec_alpha_.size() < alpha_size) { m_vec_alpha_.resize(alpha_size); }
+            if (m_vec_grad_flag_.size() < max_num_samples) { m_vec_grad_flag_.resize(max_num_samples); }
+            if (m_vec_var_x_.size() < max_num_samples) { m_vec_var_x_.resize(max_num_samples); }
+            if (m_vec_var_h_.size() < max_num_samples) { m_vec_var_h_.resize(max_num_samples); }
+            if (m_vec_var_grad_.size() < max_num_samples) { m_vec_var_grad_.resize(max_num_samples); }
+        }
+
         return true;
-    }
-
-    void
-    NoisyInputGaussianProcess::InitializeVectorAlpha() {
-        ERL_DEBUG_ASSERT(
-            m_vec_alpha_.size() >= m_num_train_samples_ * (m_x_dim_ + 1),
-            "m_vec_alpha_ should have size >= {}.",
-            m_num_train_samples_ * (m_x_dim_ + 1));
-
-        m_num_train_samples_with_grad_ = 0;
-        for (long i = 0; i < m_num_train_samples_; ++i) {
-            m_vec_alpha_[i] = m_vec_y_train_[i];  // h(x_i)
-            if (m_vec_grad_flag_[i]) { ++m_num_train_samples_with_grad_; }
-        }
-        for (long i = 0, j = m_num_train_samples_; i < m_num_train_samples_; ++i) {
-            if (!m_vec_grad_flag_[i]) { continue; }
-            for (long k = 0, l = j++; k < m_x_dim_; ++k, l += m_num_train_samples_with_grad_) { m_vec_alpha_[l] = m_mat_grad_train_(k, i); }
-        }
     }
 
 }  // namespace erl::gaussian_process

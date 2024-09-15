@@ -14,7 +14,7 @@ namespace erl::gaussian_process {
     public:
         // structure for holding the parameters
         struct Setting : public common::Yamlable<Setting> {
-            std::string kernel_type = "OrnsteinUhlenbeck2D";
+            std::string kernel_type = "erl::covariance::OrnsteinUhlenbeck<2l>";
             std::shared_ptr<covariance::Covariance::Setting> kernel = []() -> std::shared_ptr<covariance::Covariance::Setting> {
                 auto setting = std::make_shared<covariance::Covariance::Setting>();
                 setting->x_dim = 2;
@@ -26,6 +26,8 @@ namespace erl::gaussian_process {
             long max_num_samples = 256;
             bool auto_normalize = false;
         };
+
+        inline static const volatile bool kSettingRegistered = common::YamlableBase::Register<Setting>();
 
     protected:
         long m_x_dim_ = 0;                                            // dimension of x
@@ -49,8 +51,9 @@ namespace erl::gaussian_process {
             : m_setting_(std::move(setting)) {
             ERL_ASSERTM(m_setting_ != nullptr, "setting should not be nullptr.");
             ERL_ASSERTM(m_setting_->kernel != nullptr, "setting->kernel should not be nullptr.");
-            m_trained_ = !(m_setting_->max_num_samples > 0 && m_setting_->kernel->x_dim > 0);  // if memory is allocated, the model is ready to be trained
-            if (!m_trained_) { ERL_ASSERTM(AllocateMemory(m_setting_->max_num_samples, m_setting_->kernel->x_dim), "Failed to allocate memory."); }
+            if (m_setting_->max_num_samples > 0 && m_setting_->kernel->x_dim > 0) {
+                ERL_ASSERTM(AllocateMemory(m_setting_->max_num_samples, m_setting_->kernel->x_dim), "Failed to allocate memory.");
+            }
         }
 
         [[nodiscard]] std::shared_ptr<Setting>
@@ -132,7 +135,8 @@ namespace erl::gaussian_process {
         AllocateMemory(const long max_num_samples, const long x_dim) {
             if (m_setting_->max_num_samples > 0 && max_num_samples > m_setting_->max_num_samples) { return false; }
             if (m_setting_->kernel->x_dim > 0 && x_dim != m_setting_->kernel->x_dim) { return false; }
-            const auto [rows, cols] = covariance::Covariance::GetMinimumKtrainSize(max_num_samples, 0, 0);
+            m_kernel_ = covariance::Covariance::CreateCovariance(m_setting_->kernel_type, m_setting_->kernel);
+            const auto [rows, cols] = m_kernel_->GetMinimumKtrainSize(max_num_samples, 0, 0);
             if (m_mat_k_train_.rows() < rows || m_mat_k_train_.cols() < cols) { m_mat_k_train_.resize(rows, cols); }
             if (m_mat_x_train_.rows() < x_dim || m_mat_x_train_.cols() < max_num_samples) { m_mat_x_train_.resize(x_dim, max_num_samples); }
             if (m_mat_l_.rows() < rows || m_mat_l_.cols() < cols) { m_mat_l_.resize(rows, cols); }

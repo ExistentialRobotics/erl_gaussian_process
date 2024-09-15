@@ -12,16 +12,14 @@ namespace erl::gaussian_process {
 
     public:
         struct Setting : public common::Yamlable<Setting> {
-            std::string kernel_type = "Matern32_2D";
-            std::shared_ptr<covariance::Covariance::Setting> kernel = []() -> std::shared_ptr<covariance::Covariance::Setting> {
-                auto setting = std::make_shared<covariance::Covariance::Setting>();
-                setting->x_dim = 2;
-                setting->alpha = 1.;
-                setting->scale = 1.2;
-                return setting;
-            }();
+            std::string kernel_type = "erl::covariance::Matern32<2l>";
+            std::string kernel_setting_type = "erl::covariance::Covariance::Setting";
+            std::shared_ptr<covariance::Covariance::Setting> kernel = std::make_shared<covariance::Covariance::Setting>();
             long max_num_samples = -1;  // maximum number of training samples, -1 means no limit
+            bool no_gradient_observation = false;
         };
+
+        inline static const volatile bool kSettingRegistered = common::YamlableBase::Register<Setting>();
 
     protected:
         long m_x_dim_ = 0;                                            // dimension of x
@@ -31,6 +29,7 @@ namespace erl::gaussian_process {
         double m_three_over_scale_square_ = 0.;                       // for computing normal variance
         std::shared_ptr<Setting> m_setting_ = nullptr;                // setting
         std::shared_ptr<covariance::Covariance> m_kernel_ = nullptr;  // kernel
+        bool m_reduced_rank_kernel_ = false;                          // whether the kernel is rank reduced or not
         Eigen::MatrixXd m_mat_x_train_ = {};                          // x1, ..., xn
         Eigen::VectorXd m_vec_y_train_ = {};                          // h(x1), ..., h(xn)
         Eigen::MatrixXd m_mat_grad_train_ = {};                       // dh(x_j)/dx_ij for index (i, j)
@@ -47,9 +46,20 @@ namespace erl::gaussian_process {
             : m_setting_(std::move(setting)) {
             ERL_ASSERTM(m_setting_ != nullptr, "setting should not be nullptr.");
             ERL_ASSERTM(m_setting_->kernel != nullptr, "setting->kernel should not be nullptr.");
-            m_trained_ = !(m_setting_->max_num_samples > 0 && m_setting_->kernel->x_dim > 0);  // if memory is allocated, the model is ready to be trained
-            if (!m_trained_) { ERL_ASSERTM(AllocateMemory(m_setting_->max_num_samples, m_setting_->kernel->x_dim), "Failed to allocate memory."); }
+            if (m_setting_->max_num_samples > 0 && m_setting_->kernel->x_dim > 0) {
+                ERL_ASSERTM(AllocateMemory(m_setting_->max_num_samples, m_setting_->kernel->x_dim), "Failed to allocate memory.");
+            }
         }
+
+        NoisyInputGaussianProcess(const NoisyInputGaussianProcess &other);
+
+        NoisyInputGaussianProcess(NoisyInputGaussianProcess &&other) = default;
+
+        NoisyInputGaussianProcess &
+        operator=(const NoisyInputGaussianProcess &other);
+
+        NoisyInputGaussianProcess &
+        operator=(NoisyInputGaussianProcess &&other) = default;
 
         virtual ~NoisyInputGaussianProcess() = default;
 
@@ -59,12 +69,23 @@ namespace erl::gaussian_process {
             return std::dynamic_pointer_cast<T>(m_setting_);
         }
 
-        [[maybe_unused]] [[nodiscard]] bool
+        [[nodiscard]] bool
         IsTrained() const {
             return m_trained_;
         }
 
-        virtual void
+        [[nodiscard]] bool
+        UsingReducedRankKernel() const {
+            return m_reduced_rank_kernel_;
+        }
+
+        [[nodiscard]] Eigen::VectorXd
+        GetKernelCoordOrigin() const;
+
+        void
+        SetKernelCoordOrigin(const Eigen::VectorXd &coord_origin);
+
+        void
         Reset(long max_num_samples, long x_dim);
 
         [[nodiscard]] long
@@ -168,9 +189,6 @@ namespace erl::gaussian_process {
     protected:
         bool
         AllocateMemory(long max_num_samples, long x_dim);
-
-        void
-        InitializeVectorAlpha();
     };
 }  // namespace erl::gaussian_process
 
@@ -181,8 +199,10 @@ struct YAML::convert<erl::gaussian_process::NoisyInputGaussianProcess::Setting> 
     encode(const erl::gaussian_process::NoisyInputGaussianProcess::Setting &setting) {
         Node node;
         node["kernel_type"] = setting.kernel_type;
-        node["kernel"] = setting.kernel;
+        node["kernel_setting_type"] = setting.kernel_setting_type;
+        node["kernel"] = setting.kernel->AsYamlNode();
         node["max_num_samples"] = setting.max_num_samples;
+        node["no_gradient_observation"] = setting.no_gradient_observation;
         return node;
     }
 
@@ -190,8 +210,11 @@ struct YAML::convert<erl::gaussian_process::NoisyInputGaussianProcess::Setting> 
     decode(const Node &node, erl::gaussian_process::NoisyInputGaussianProcess::Setting &setting) {
         if (!node.IsMap()) { return false; }
         setting.kernel_type = node["kernel_type"].as<std::string>();
-        setting.kernel = node["kernel"].as<std::shared_ptr<erl::covariance::Covariance::Setting>>();
+        setting.kernel_setting_type = node["kernel_setting_type"].as<std::string>();
+        setting.kernel = erl::common::YamlableBase::Create<erl::covariance::Covariance::Setting>(setting.kernel_setting_type);
+        if (!setting.kernel->FromYamlNode(node["kernel"])) { return false; }
         setting.max_num_samples = node["max_num_samples"].as<long>();
+        setting.no_gradient_observation = node["no_gradient_observation"].as<bool>();
         return true;
     }
 };  // namespace YAML

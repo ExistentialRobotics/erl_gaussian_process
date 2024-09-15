@@ -17,6 +17,8 @@ namespace erl::gaussian_process {
             double scale = 1.0;
         };
 
+        inline static const volatile bool kSettingRegistered = common::YamlableBase::Register<Setting>();
+
         static const char *
         GetTypeName(const Type &type) {
             static const char *names[] = {"kIdentity", "kInverse", "kInverseSqrt", "kExp", "kLog", "kTanh", "kSigmoid", "kUnknown"};
