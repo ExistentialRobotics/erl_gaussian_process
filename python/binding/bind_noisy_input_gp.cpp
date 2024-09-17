@@ -13,8 +13,10 @@ BindNoisyInputGaussianProcess(const py::module &m) {
     py::class_<T::Setting, YamlableBase, std::shared_ptr<T::Setting>>(py_noisy_input_gp, "Setting")
         .def(py::init<>())
         .def_readwrite("kernel_type", &T::Setting::kernel_type)
+        .def_readwrite("kernel_setting_type", &T::Setting::kernel_setting_type)
         .def_readwrite("kernel", &T::Setting::kernel)
-        .def_readwrite("max_num_samples", &T::Setting::max_num_samples);
+        .def_readwrite("max_num_samples", &T::Setting::max_num_samples)
+        .def_readwrite("no_gradient_observation", &T::Setting::no_gradient_observation);
 
     py_noisy_input_gp.def(py::init<std::shared_ptr<T::Setting>>(), py::arg("setting").none(false))
         .def_property_readonly("is_trained", &T::IsTrained)

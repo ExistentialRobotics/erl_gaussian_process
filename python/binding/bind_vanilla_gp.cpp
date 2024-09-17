@@ -11,9 +11,9 @@ BindVanillaGaussianProcess(const py::module &m) {
     py::class_<VanillaGaussianProcess::Setting, YamlableBase, std::shared_ptr<VanillaGaussianProcess::Setting>>(py_vanilla_gp, "Setting")
         .def(py::init<>())
         .def_readwrite("kernel_type", &VanillaGaussianProcess::Setting::kernel_type)
+        .def_readwrite("kernel_setting_type", &VanillaGaussianProcess::Setting::kernel_setting_type)
         .def_readwrite("kernel", &VanillaGaussianProcess::Setting::kernel)
-        .def_readwrite("max_num_samples", &VanillaGaussianProcess::Setting::max_num_samples)
-        .def_readwrite("auto_normalize", &VanillaGaussianProcess::Setting::auto_normalize);
+        .def_readwrite("max_num_samples", &VanillaGaussianProcess::Setting::max_num_samples);
 
     py_vanilla_gp.def(py::init<std::shared_ptr<VanillaGaussianProcess::Setting>>(), py::arg("setting").none(false))
         .def_property_readonly("is_trained", &VanillaGaussianProcess::IsTrained)

@@ -22,9 +22,9 @@ __all__ = [
 class VanillaGaussianProcess:
     class Setting(YamlableBase):
         kernel_type: str
+        kernel_setting_type: str
         kernel: Covariance.Setting
         max_num_samples: int
-        auto_normalize: bool
 
         def __init__(self: VanillaGaussianProcess.Setting): ...
 
@@ -125,8 +125,10 @@ class LidarGaussianProcess2D:
 class NoisyInputGaussianProcess:
     class Setting(YamlableBase):
         kernel_type: str
+        kernel_setting_type: str
         kernel: Covariance.Setting
         max_num_samples: int
+        no_gradient_observation: bool
 
         def __init__(self: NoisyInputGaussianProcess.Setting): ...
 
