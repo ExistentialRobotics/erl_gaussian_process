@@ -3,7 +3,8 @@
 #include "erl_covariance/reduced_rank_covariance.hpp"
 
 namespace erl::gaussian_process {
-    NoisyInputGaussianProcess::NoisyInputGaussianProcess(const erl::gaussian_process::NoisyInputGaussianProcess &other)
+    NoisyInputGaussianProcess::
+    NoisyInputGaussianProcess(const NoisyInputGaussianProcess &other)
         : m_x_dim_(other.m_x_dim_),
           m_num_train_samples_(other.m_num_train_samples_),
           m_num_train_samples_with_grad_(other.m_num_train_samples_with_grad_),
@@ -31,31 +32,30 @@ namespace erl::gaussian_process {
     }
 
     NoisyInputGaussianProcess &
-    NoisyInputGaussianProcess::operator=(const erl::gaussian_process::NoisyInputGaussianProcess &other) {
-        if (this != &other) {
-            m_x_dim_ = other.m_x_dim_;
-            m_num_train_samples_ = other.m_num_train_samples_;
-            m_num_train_samples_with_grad_ = other.m_num_train_samples_with_grad_;
-            m_trained_ = other.m_trained_;
-            m_three_over_scale_square_ = other.m_three_over_scale_square_;
-            m_setting_ = other.m_setting_;
-            m_reduced_rank_kernel_ = other.m_reduced_rank_kernel_;
-            m_mat_x_train_ = other.m_mat_x_train_;
-            m_vec_y_train_ = other.m_vec_y_train_;
-            m_mat_grad_train_ = other.m_mat_grad_train_;
-            m_mat_k_train_ = other.m_mat_k_train_;
-            m_mat_l_ = other.m_mat_l_;
-            m_vec_grad_flag_ = other.m_vec_grad_flag_;
-            m_vec_alpha_ = other.m_vec_alpha_;
-            m_vec_var_x_ = other.m_vec_var_x_;
-            m_vec_var_h_ = other.m_vec_var_h_;
-            m_vec_var_grad_ = other.m_vec_var_grad_;
-            if (other.m_kernel_ != nullptr) {
-                m_kernel_ = covariance::Covariance::CreateCovariance(m_setting_->kernel_type, m_setting_->kernel);
-                if (m_reduced_rank_kernel_) {  // rank-reduced kernel is stateful, so we need to copy the kernel
-                    *std::reinterpret_pointer_cast<covariance::ReducedRankCovariance>(m_kernel_) =
-                        *std::reinterpret_pointer_cast<covariance::ReducedRankCovariance>(other.m_kernel_);
-                }
+    NoisyInputGaussianProcess::operator=(const NoisyInputGaussianProcess &other) {
+        if (this == &other) { return *this; }
+        m_x_dim_ = other.m_x_dim_;
+        m_num_train_samples_ = other.m_num_train_samples_;
+        m_num_train_samples_with_grad_ = other.m_num_train_samples_with_grad_;
+        m_trained_ = other.m_trained_;
+        m_three_over_scale_square_ = other.m_three_over_scale_square_;
+        m_setting_ = other.m_setting_;
+        m_reduced_rank_kernel_ = other.m_reduced_rank_kernel_;
+        m_mat_x_train_ = other.m_mat_x_train_;
+        m_vec_y_train_ = other.m_vec_y_train_;
+        m_mat_grad_train_ = other.m_mat_grad_train_;
+        m_mat_k_train_ = other.m_mat_k_train_;
+        m_mat_l_ = other.m_mat_l_;
+        m_vec_grad_flag_ = other.m_vec_grad_flag_;
+        m_vec_alpha_ = other.m_vec_alpha_;
+        m_vec_var_x_ = other.m_vec_var_x_;
+        m_vec_var_h_ = other.m_vec_var_h_;
+        m_vec_var_grad_ = other.m_vec_var_grad_;
+        if (other.m_kernel_ != nullptr) {
+            m_kernel_ = covariance::Covariance::CreateCovariance(m_setting_->kernel_type, m_setting_->kernel);
+            if (m_reduced_rank_kernel_) {  // rank-reduced kernel is stateful, so we need to copy the kernel
+                *std::reinterpret_pointer_cast<covariance::ReducedRankCovariance>(m_kernel_) =
+                    *std::reinterpret_pointer_cast<covariance::ReducedRankCovariance>(other.m_kernel_);
             }
         }
         return *this;
@@ -63,15 +63,12 @@ namespace erl::gaussian_process {
 
     Eigen::VectorXd
     NoisyInputGaussianProcess::GetKernelCoordOrigin() const {
-        if (m_reduced_rank_kernel_) {
-            return std::reinterpret_pointer_cast<covariance::ReducedRankCovariance>(m_kernel_)->GetCoordOrigin();
-        } else {
-            return Eigen::VectorXd::Zero(m_x_dim_);
-        }
+        if (m_reduced_rank_kernel_) { return std::reinterpret_pointer_cast<covariance::ReducedRankCovariance>(m_kernel_)->GetCoordOrigin(); }
+        return Eigen::VectorXd::Zero(m_x_dim_);
     }
 
     void
-    NoisyInputGaussianProcess::SetKernelCoordOrigin(const Eigen::VectorXd &coord_origin) {
+    NoisyInputGaussianProcess::SetKernelCoordOrigin(const Eigen::VectorXd &coord_origin) const {
         if (m_reduced_rank_kernel_) { std::reinterpret_pointer_cast<covariance::ReducedRankCovariance>(m_kernel_)->SetCoordOrigin(coord_origin); }
     }
 
@@ -86,10 +83,10 @@ namespace erl::gaussian_process {
             ERL_ASSERTM(AllocateMemory(max_num_samples, x_dim), "Failed to allocate memory.");
         }
         m_trained_ = false;
-        m_kernel_ = covariance::Covariance::CreateCovariance(m_setting_->kernel_type, m_setting_->kernel);
-        auto rank_reduced_kernel = std::dynamic_pointer_cast<covariance::ReducedRankCovariance>(m_kernel_);
-        m_reduced_rank_kernel_ = rank_reduced_kernel != nullptr;
-        if (m_reduced_rank_kernel_) { rank_reduced_kernel->BuildSpectralDensities(); }
+        m_k_train_updated_ = false;
+        m_k_train_rows_ = 0;
+        m_k_train_cols_ = 0;
+        InitKernel();
         m_three_over_scale_square_ = 3. * m_setting_->kernel->alpha / (m_setting_->kernel->scale * m_setting_->kernel->scale);
         m_num_train_samples_ = 0;
         m_num_train_samples_with_grad_ = 0;
@@ -114,26 +111,19 @@ namespace erl::gaussian_process {
         return memory_usage;
     }
 
-    void
-    NoisyInputGaussianProcess::Train(const long num_train_samples) {
-
-        if (m_trained_) {
-            ERL_WARN("The model has been trained. Please reset the model before training.");
-            return;
-        }
-
+    bool
+    NoisyInputGaussianProcess::UpdateKtrain(const long num_train_samples) {
+        if (m_k_train_updated_) { return true; }
         m_num_train_samples_ = num_train_samples;
         if (m_num_train_samples_ <= 0) {
             ERL_WARN("num_train_samples = {}, it should be > 0.", m_num_train_samples_);
-            return;
+            return false;
         }
-
-        // initialize m_vec_alpha_
-        long rows, cols;
         if (m_setting_->no_gradient_observation) {
             m_vec_grad_flag_.setZero(m_num_train_samples_);
             m_vec_alpha_.head(m_num_train_samples_) = m_vec_y_train_.head(m_num_train_samples_);
-            std::tie(rows, cols) = m_kernel_->ComputeKtrain(m_mat_x_train_, m_vec_var_x_ + m_vec_var_h_, m_num_train_samples_, m_mat_k_train_, m_vec_alpha_);
+            std::tie(m_k_train_rows_, m_k_train_cols_) =
+                m_kernel_->ComputeKtrain(m_mat_x_train_, m_vec_var_x_ + m_vec_var_h_, m_num_train_samples_, m_mat_k_train_, m_vec_alpha_);
         } else {
             m_num_train_samples_with_grad_ = m_vec_grad_flag_.head(m_num_train_samples_).count();
             const long m = m_num_train_samples_ + m_x_dim_ * m_num_train_samples_with_grad_;
@@ -149,7 +139,7 @@ namespace erl::gaussian_process {
             }
 
             // Compute kernel matrix
-            std::tie(rows, cols) = m_kernel_->ComputeKtrainWithGradient(
+            std::tie(m_k_train_rows_, m_k_train_cols_) = m_kernel_->ComputeKtrainWithGradient(
                 m_mat_x_train_,
                 m_num_train_samples_,
                 m_vec_grad_flag_,
@@ -159,18 +149,32 @@ namespace erl::gaussian_process {
                 m_mat_k_train_,
                 m_vec_alpha_);
         }
-        ERL_DEBUG_ASSERT(!m_mat_k_train_.topLeftCorner(rows, cols).hasNaN(), "NaN in m_mat_k_train_!");
-
-        const auto mat_ktrain = m_mat_k_train_.topLeftCorner(rows, cols);  // square matrix
-        auto &&mat_l = m_mat_l_.topLeftCorner(rows, cols);                 // square matrix, lower triangular
-        const auto vec_alpha = m_vec_alpha_.head(cols);                    // h and gradient of h
-        mat_l = mat_ktrain.llt().matrixL();
-        mat_l.triangularView<Eigen::Lower>().solveInPlace(vec_alpha);
-        mat_l.transpose().triangularView<Eigen::Upper>().solveInPlace(vec_alpha);
-        m_trained_ = true;
+        ERL_DEBUG_ASSERT(!m_mat_k_train_.topLeftCorner(m_k_train_rows_, m_k_train_cols_).hasNaN(), "NaN in m_mat_k_train_!");
+        m_k_train_updated_ = true;
+        return true;
     }
 
     void
+    NoisyInputGaussianProcess::Train(const long num_train_samples) {
+
+        if (m_trained_) {
+            ERL_WARN("The model has been trained. Please reset the model before training.");
+            return;
+        }
+        m_trained_ = m_trained_once_;
+        if (!UpdateKtrain(num_train_samples)) { return; }
+
+        const auto mat_ktrain = m_mat_k_train_.topLeftCorner(m_k_train_rows_, m_k_train_cols_);  // square matrix
+        auto &&mat_l = m_mat_l_.topLeftCorner(m_k_train_rows_, m_k_train_cols_);                 // square matrix, lower triangular
+        const auto vec_alpha = m_vec_alpha_.head(m_k_train_cols_);                               // h and gradient of h
+        mat_l = mat_ktrain.llt().matrixL();
+        mat_l.triangularView<Eigen::Lower>().solveInPlace(vec_alpha);
+        mat_l.transpose().triangularView<Eigen::Upper>().solveInPlace(vec_alpha);
+        m_trained_once_ = true;
+        m_trained_ = true;
+    }
+
+    bool
     NoisyInputGaussianProcess::Test(
         const Eigen::Ref<const Eigen::MatrixXd> &mat_x_test,
         Eigen::Ref<Eigen::MatrixXd> mat_f_out,
@@ -179,21 +183,21 @@ namespace erl::gaussian_process {
 
         if (!m_trained_) {
             ERL_WARN("The model has not been trained.");
-            return;
+            return false;
         }
 
         const long dim = mat_x_test.rows();
         const long n = mat_x_test.cols();
-        if (n == 0) { return; }
+        if (n == 0) { return false; }
 
         // compute mean and gradient of the test queries
         ERL_ASSERTM(mat_f_out.rows() >= dim + 1, "mat_f_out.rows() = {}, it should be >= Dim + 1 = {}.", mat_f_out.rows(), dim + 1);
         ERL_ASSERTM(mat_f_out.cols() >= n, "mat_f_out.cols() = {}, not enough for {} test queries.", mat_f_out.cols(), n);
 
-        const auto [ktest_rows, ktest_cols] = m_kernel_->GetMinimumKtestSize(m_num_train_samples_, m_num_train_samples_with_grad_, dim, n);
+        const auto [ktest_rows, ktest_cols] = m_kernel_->GetMinimumKtestSize(m_num_train_samples_, m_num_train_samples_with_grad_, dim, n, true);
         Eigen::MatrixXd ktest(ktest_rows, ktest_cols);  // (dim of train samples, dim of test queries)
         const auto [output_rows, output_cols] =
-            m_kernel_->ComputeKtestWithGradient(m_mat_x_train_, m_num_train_samples_, m_vec_grad_flag_, mat_x_test, n, ktest);
+            m_kernel_->ComputeKtestWithGradient(m_mat_x_train_, m_num_train_samples_, m_vec_grad_flag_, mat_x_test, n, true, ktest);
         (void) output_rows;
         (void) output_cols;
         ERL_DEBUG_ASSERT(
@@ -214,7 +218,7 @@ namespace erl::gaussian_process {
         }
         const bool compute_var = mat_var_out.size() > 0;
         const bool compute_cov = mat_cov_out.size() > 0;
-        if (!compute_var && !compute_cov) { return; }  // only compute mean
+        if (!compute_var && !compute_cov) { return true; }  // only compute mean
 
         // compute (co)variance of the test queries
         m_mat_l_.topLeftCorner(ktest_rows, ktest_rows).triangularView<Eigen::Lower>().solveInPlace(ktest);
@@ -282,6 +286,7 @@ namespace erl::gaussian_process {
                 }
             }
         }
+        return true;
     }
 
     bool
@@ -369,7 +374,16 @@ namespace erl::gaussian_process {
         s << "x_dim " << m_x_dim_ << std::endl
           << "num_train_samples " << m_num_train_samples_ << std::endl
           << "num_train_samples_with_grad " << m_num_train_samples_with_grad_ << std::endl
-          << "trained " << m_trained_ << std::endl;
+          << "trained " << m_trained_ << std::endl
+          << "trained_once " << m_trained_once_ << std::endl
+          << "ktrain_updated " << m_k_train_updated_ << std::endl
+          << "ktrain_rows " << m_k_train_rows_ << std::endl
+          << "ktrain_cols " << m_k_train_cols_ << std::endl
+          << "kernel " << (m_kernel_ != nullptr) << std::endl;
+        if (m_kernel_ != nullptr && !m_kernel_->Write(s)) {
+            ERL_WARN("Failed to write kernel.");
+            return false;
+        }
         s << "three_over_scale_square" << std::endl;
         s.write(reinterpret_cast<const char *>(&m_three_over_scale_square_), sizeof(m_three_over_scale_square_));
         // m_kernel_ is set by Reset() according to m_setting_
@@ -467,6 +481,11 @@ namespace erl::gaussian_process {
             "num_train_samples",
             "num_train_samples_with_grad",
             "trained",
+            "trained_once",
+            "ktrain_updated",
+            "ktrain_rows",
+            "ktrain_cols",
+            "kernel",
             "three_over_scale_square",
             "mat_x_train",
             "vec_y_train",
@@ -521,12 +540,44 @@ namespace erl::gaussian_process {
                     s >> m_trained_;
                     break;
                 }
-                case 5: {  // three_over_scale_square
+                case 5: {  // trained_once
+                    s >> m_trained_once_;
+                    break;
+                }
+                case 6: {  // ktrain_updated
+                    s >> m_k_train_updated_;
+                    break;
+                }
+                case 7: {  // ktrain_rows
+                    s >> m_k_train_rows_;
+                    break;
+                }
+                case 8: {  // ktrain_cols
+                    s >> m_k_train_cols_;
+                    break;
+                }
+                case 9: {  // kernel
+                    bool has_kernel;
+                    s >> has_kernel;
+                    if (has_kernel) {
+                        skip_line();  // skip the line to read the binary data section
+                        m_kernel_ = covariance::Covariance::CreateCovariance(m_setting_->kernel_type, m_setting_->kernel);
+                        if (!m_kernel_->Read(s)) {
+                            ERL_WARN("Failed to read kernel.");
+                            return false;
+                        }
+                        const auto rank_reduced_kernel = std::dynamic_pointer_cast<covariance::ReducedRankCovariance>(m_kernel_);
+                        m_reduced_rank_kernel_ = rank_reduced_kernel != nullptr;
+                        if (m_reduced_rank_kernel_) { rank_reduced_kernel->BuildSpectralDensities(); }
+                    }
+                    break;
+                }
+                case 10: {  // three_over_scale_square
                     skip_line();
                     s.read(reinterpret_cast<char *>(&m_three_over_scale_square_), sizeof(m_three_over_scale_square_));
                     break;
                 }
-                case 6: {  // mat_x_train
+                case 11: {  // mat_x_train
                     skip_line();
                     if (!common::LoadEigenMatrixFromBinaryStream(s, m_mat_x_train_)) {
                         ERL_WARN("Failed to read mat_x_train.");
@@ -534,7 +585,7 @@ namespace erl::gaussian_process {
                     }
                     break;
                 }
-                case 7: {  // vec_y_train
+                case 12: {  // vec_y_train
                     skip_line();
                     if (!common::LoadEigenMatrixFromBinaryStream(s, m_vec_y_train_)) {
                         ERL_WARN("Failed to read vec_y_train.");
@@ -542,7 +593,7 @@ namespace erl::gaussian_process {
                     }
                     break;
                 }
-                case 8: {  // mat_grad_train
+                case 13: {  // mat_grad_train
                     skip_line();
                     if (!common::LoadEigenMatrixFromBinaryStream(s, m_mat_grad_train_)) {
                         ERL_WARN("Failed to read mat_grad_train.");
@@ -550,7 +601,7 @@ namespace erl::gaussian_process {
                     }
                     break;
                 }
-                case 9: {  // mat_k_train
+                case 14: {  // mat_k_train
                     skip_line();
                     if (!common::LoadEigenMatrixFromBinaryStream(s, m_mat_k_train_)) {
                         ERL_WARN("Failed to read mat_k_train.");
@@ -558,7 +609,7 @@ namespace erl::gaussian_process {
                     }
                     break;
                 }
-                case 10: {  // mat_l
+                case 15: {  // mat_l
                     skip_line();
                     if (!common::LoadEigenMatrixFromBinaryStream(s, m_mat_l_)) {
                         ERL_WARN("Failed to read mat_l.");
@@ -566,7 +617,7 @@ namespace erl::gaussian_process {
                     }
                     break;
                 }
-                case 11: {  // vec_grad_flag
+                case 16: {  // vec_grad_flag
                     skip_line();
                     if (!common::LoadEigenMatrixFromBinaryStream(s, m_vec_grad_flag_)) {
                         ERL_WARN("Failed to read vec_grad_flag.");
@@ -574,7 +625,7 @@ namespace erl::gaussian_process {
                     }
                     break;
                 }
-                case 12: {  // vec_alpha
+                case 17: {  // vec_alpha
                     skip_line();
                     if (!common::LoadEigenMatrixFromBinaryStream(s, m_vec_alpha_)) {
                         ERL_WARN("Failed to read vec_alpha.");
@@ -582,7 +633,7 @@ namespace erl::gaussian_process {
                     }
                     break;
                 }
-                case 13: {  // vec_var_x
+                case 18: {  // vec_var_x
                     skip_line();
                     if (!common::LoadEigenMatrixFromBinaryStream(s, m_vec_var_x_)) {
                         ERL_WARN("Failed to read vec_var_x.");
@@ -590,7 +641,7 @@ namespace erl::gaussian_process {
                     }
                     break;
                 }
-                case 14: {  // vec_var_h
+                case 19: {  // vec_var_h
                     skip_line();
                     if (!common::LoadEigenMatrixFromBinaryStream(s, m_vec_var_h_)) {
                         ERL_WARN("Failed to read vec_var_h.");
@@ -598,7 +649,7 @@ namespace erl::gaussian_process {
                     }
                     break;
                 }
-                case 15: {  // vec_var_grad
+                case 20: {  // vec_var_grad
                     skip_line();
                     if (!common::LoadEigenMatrixFromBinaryStream(s, m_vec_var_grad_)) {
                         ERL_WARN("Failed to read vec_var_grad.");
@@ -606,12 +657,8 @@ namespace erl::gaussian_process {
                     }
                     break;
                 }
-                case 16: {  // end_of_NoisyInputGaussianProcess
+                case 21: {  // end_of_NoisyInputGaussianProcess
                     skip_line();
-                    m_kernel_ = covariance::Covariance::CreateCovariance(m_setting_->kernel_type, m_setting_->kernel);
-                    auto rank_reduced_kernel = std::dynamic_pointer_cast<covariance::ReducedRankCovariance>(m_kernel_);
-                    m_reduced_rank_kernel_ = rank_reduced_kernel != nullptr;
-                    if (m_reduced_rank_kernel_) { rank_reduced_kernel->BuildSpectralDensities(); }
                     return true;
                 }
                 default: {  // should not reach here
@@ -628,10 +675,8 @@ namespace erl::gaussian_process {
     NoisyInputGaussianProcess::AllocateMemory(const long max_num_samples, const long x_dim) {
         if (max_num_samples <= 0 || x_dim <= 0) { return false; }  // invalid input
         if (m_setting_->max_num_samples > 0 && max_num_samples > m_setting_->max_num_samples) { return false; }
-        if (m_setting_->kernel->x_dim > 0) {
-            ERL_ASSERTM(x_dim == m_setting_->kernel->x_dim, "x_dim {} does not match kernel->x_dim {}.", x_dim, m_setting_->kernel->x_dim);
-        }
-        m_kernel_ = covariance::Covariance::CreateCovariance(m_setting_->kernel_type, m_setting_->kernel);
+        if (m_setting_->kernel->x_dim > 0 && x_dim != m_setting_->kernel->x_dim) { return false; }
+        InitKernel();
 
         if (m_setting_->no_gradient_observation) {  // y does not contain gradient information
             const auto [rows, cols] = m_kernel_->GetMinimumKtrainSize(max_num_samples, 0, x_dim);
@@ -660,6 +705,16 @@ namespace erl::gaussian_process {
         }
 
         return true;
+    }
+
+    void
+    NoisyInputGaussianProcess::InitKernel() {
+        if (m_kernel_ == nullptr) {
+            m_kernel_ = covariance::Covariance::CreateCovariance(m_setting_->kernel_type, m_setting_->kernel);
+            const auto rank_reduced_kernel = std::dynamic_pointer_cast<covariance::ReducedRankCovariance>(m_kernel_);
+            m_reduced_rank_kernel_ = rank_reduced_kernel != nullptr;
+            if (m_reduced_rank_kernel_) { rank_reduced_kernel->BuildSpectralDensities(); }
+        }
     }
 
 }  // namespace erl::gaussian_process

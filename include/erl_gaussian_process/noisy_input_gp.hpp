@@ -26,6 +26,10 @@ namespace erl::gaussian_process {
         long m_num_train_samples_ = 0;                                // number of training samples
         long m_num_train_samples_with_grad_ = 0;                      // number of training samples with gradient
         bool m_trained_ = false;                                      // true if the GP is trained
+        bool m_trained_once_ = false;                                 // true if the GP is trained at least once
+        bool m_k_train_updated_ = false;                              // true if Ktrain is updated
+        long m_k_train_rows_ = 0;                                     // number of rows of Ktrain
+        long m_k_train_cols_ = 0;                                     // number of columns of Ktrain
         double m_three_over_scale_square_ = 0.;                       // for computing normal variance
         std::shared_ptr<Setting> m_setting_ = nullptr;                // setting
         std::shared_ptr<covariance::Covariance> m_kernel_ = nullptr;  // kernel
@@ -83,7 +87,7 @@ namespace erl::gaussian_process {
         GetKernelCoordOrigin() const;
 
         void
-        SetKernelCoordOrigin(const Eigen::VectorXd &coord_origin);
+        SetKernelCoordOrigin(const Eigen::VectorXd &coord_origin) const;
 
         void
         Reset(long max_num_samples, long x_dim);
@@ -156,10 +160,13 @@ namespace erl::gaussian_process {
         [[nodiscard]] virtual std::size_t
         GetMemoryUsage() const;
 
+        bool
+        UpdateKtrain(long num_train_samples);
+
         virtual void
         Train(long num_train_samples);
 
-        virtual void
+        [[nodiscard]] virtual bool
         Test(
             const Eigen::Ref<const Eigen::MatrixXd> &mat_x_test,
             Eigen::Ref<Eigen::MatrixXd> mat_f_out,
@@ -189,6 +196,9 @@ namespace erl::gaussian_process {
     protected:
         bool
         AllocateMemory(long max_num_samples, long x_dim);
+
+        void
+        InitKernel();
     };
 }  // namespace erl::gaussian_process
 
