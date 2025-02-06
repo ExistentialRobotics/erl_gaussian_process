@@ -1,6 +1,7 @@
 #include "erl_gaussian_process/range_sensor_gp_3d.hpp"
 
 #include "erl_common/angle_utils.hpp"
+#include "erl_common/block_timer.hpp"
 
 namespace erl::gaussian_process {
 
@@ -78,7 +79,7 @@ namespace erl::gaussian_process {
 
     bool
     RangeSensorGaussianProcess3D::Train(const Eigen::Matrix3d &rotation, const Eigen::Vector3d &translation, Eigen::MatrixXd ranges) {
-
+        ERL_BLOCK_TIMER();
         Reset();
 
         if (!StoreData(rotation, translation, std::move(ranges))) {

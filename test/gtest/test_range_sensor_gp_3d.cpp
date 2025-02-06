@@ -24,7 +24,7 @@ TEST(RangeSensorGp3D, Lidar) {
     lidar_frame_setting->elevation_min = -M_PI / 2;
     lidar_frame_setting->elevation_max = M_PI / 2;
     lidar_frame_setting->num_elevation_lines = 91;
-    gp_setting->range_sensor_frame_type = "lidar";
+    gp_setting->range_sensor_frame_type = "erl::geometry::LidarFrame3D";
     gp_setting->range_sensor_frame = lidar_frame_setting;
     gp_setting->row_group_size = 10;
     gp_setting->row_overlap_size = 3;
@@ -43,7 +43,8 @@ TEST(RangeSensorGp3D, Lidar) {
     lidar_setting->elevation_min = lidar_frame_setting->elevation_min;
     lidar_setting->elevation_max = lidar_frame_setting->elevation_max;
     lidar_setting->num_elevation_lines = lidar_frame_setting->num_elevation_lines;
-    erl::geometry::Lidar3D lidar(lidar_setting, mesh->vertices_, mesh->triangles_);
+    erl::geometry::Lidar3D lidar(lidar_setting);
+    lidar.AddMesh(mesh->vertices_, mesh->triangles_);
 
     srand(0);                                                               // NOLINT(*-msc51-cpp)
     Eigen::Vector3d rpy = (Eigen::Vector3d::Random() * 2.0).array() - 1.0;  // [-1, 1]
@@ -93,7 +94,7 @@ TEST(RangeSensorGp3D, Lidar) {
     {
         erl::common::BlockTimer<std::chrono::milliseconds> timer("gp.Test");
         (void) timer;
-        ASSERT_TRUE(gp.Test(directions_world, false, vec_ranges, vec_ranges_var, true, true));
+        ASSERT_TRUE(gp.Test(directions_world, false, vec_ranges, vec_ranges_var, true));
     }
 
     // cast invalid test queries and compute mse
@@ -170,7 +171,8 @@ TEST(RangeSensorGp3D, Depth) {
 
     const auto gp_setting = std::make_shared<erl::gaussian_process::RangeSensorGaussianProcess3D::Setting>();
     const auto depth_frame_setting = std::make_shared<erl::geometry::DepthFrame3D::Setting>();
-    gp_setting->range_sensor_frame_type = "depth";
+    gp_setting->range_sensor_frame_type = "erl::geometry::DepthFrame3D";
+    gp_setting->range_sensor_frame_setting_type = "erl::geometry::DepthFrame3D::Setting";
     gp_setting->range_sensor_frame = depth_frame_setting;
     gp_setting->row_group_size = 10;
     gp_setting->row_overlap_size = 3;
@@ -178,28 +180,26 @@ TEST(RangeSensorGp3D, Depth) {
     gp_setting->col_group_size = 10;
     gp_setting->col_overlap_size = 3;
     gp_setting->col_margin = 0;
+    std::cout << "gp_setting: " << std::endl << *gp_setting << std::endl;
     erl::gaussian_process::RangeSensorGaussianProcess3D gp(gp_setting);
 
     const auto mesh = open3d::io::CreateMeshFromFile(gtest_src_dir / "replica-hotel-0.ply");
     const auto depth_camera_setting = std::make_shared<erl::geometry::DepthCamera3D::Setting>();
-    depth_camera_setting->image_height = depth_frame_setting->image_height;
-    depth_camera_setting->image_width = depth_frame_setting->image_width;
-    depth_camera_setting->camera_cx = depth_frame_setting->camera_cx;
-    depth_camera_setting->camera_cy = depth_frame_setting->camera_cy;
-    depth_camera_setting->camera_fx = depth_frame_setting->camera_fx;
-    depth_camera_setting->camera_fy = depth_frame_setting->camera_fy;
-    depth_frame_setting->camera_to_optical = erl::geometry::DepthCamera3D::CameraToOptical();
-    erl::geometry::DepthCamera3D depth_camera(depth_camera_setting, mesh->vertices_, mesh->triangles_);
+    *depth_camera_setting = depth_frame_setting->camera_intrinsic;
+    std::cout << "depth_camera_setting: " << std::endl << *depth_camera_setting << std::endl;
+    std::cout << "depth_frame_setting: " << std::endl << *depth_frame_setting << std::endl;
+    erl::geometry::DepthCamera3D depth_camera(depth_camera_setting);
+    depth_camera.AddMesh(mesh->vertices_, mesh->triangles_);
 
-    srand(0);                                                               // NOLINT(*-msc51-cpp)
+    srand(10);                                                              // NOLINT(*-msc51-cpp)
     Eigen::Vector3d rpy = (Eigen::Vector3d::Random() * 2.0).array() - 1.0;  // [-1, 1]
     rpy[0] *= M_PI_4;                                                       // roll
     rpy[1] *= M_PI_4;                                                       // pitch
     rpy[2] *= M_PI;                                                         // yaw
-    rpy.setZero();                                                          // for debug
-    rpy[1] = -M_PI_2;
-    const Eigen::Matrix3d rotation = erl::geometry::EulerToRotation3D(rpy[0], rpy[1], rpy[2], erl::geometry::EulerAngleOrder::kRxyz);
-    const Eigen::Vector3d translation = mesh->GetCenter();
+    // rpy.setZero();                                                          // for debug
+    // rpy[1] = -M_PI_2;
+    Eigen::Matrix3d rotation = erl::geometry::EulerToRotation3D(rpy[0], rpy[1], rpy[2], erl::geometry::EulerAngleOrder::kRxyz);
+    Eigen::Vector3d translation = mesh->GetCenter();
 
     // generate training data
     Eigen::MatrixXd real_depths;
@@ -207,24 +207,24 @@ TEST(RangeSensorGp3D, Depth) {
         erl::common::BlockTimer<std::chrono::milliseconds> timer("depth_camera.Scan");
         (void) timer;
         real_depths = depth_camera.Scan(rotation, translation);
+        // convert camera pose to optical pose
+        std::tie(rotation, translation) = depth_camera.GetOpticalPose(rotation, translation);
     }
     ERL_INFO("real_depths: min={}, max={}, shape={}x{}", real_depths.minCoeff(), real_depths.maxCoeff(), real_depths.rows(), real_depths.cols());
-    const Eigen::MatrixXd depths = real_depths * depth_frame_setting->depth_scale;
-    (void) depths;
 
-    // // visualize depth image
-    // const Eigen::MatrixX8U depth_image = (real_depths.array() / real_depths.maxCoeff() * 255).cast<uint8_t>();
-    // cv::Mat depth_image_cv;
-    // cv::eigen2cv(depth_image, depth_image_cv);
-    // // cv::applyColorMap(depth_image_cv, depth_image_cv, cv::COLORMAP_JET);
-    // cv::imshow("Depth Image", depth_image_cv);
-    // cv::waitKey(0);
+    // visualize depth image
+    const Eigen::MatrixX8U depth_image = (real_depths.array() / real_depths.maxCoeff() * 255).cast<uint8_t>();
+    cv::Mat depth_image_cv;
+    cv::eigen2cv(depth_image, depth_image_cv);
+    // cv::applyColorMap(depth_image_cv, depth_image_cv, cv::COLORMAP_JET);
+    cv::imshow("Depth Image", depth_image_cv);
+    cv::waitKey(10);
 
     // train
     {
         erl::common::BlockTimer<std::chrono::milliseconds> timer("gp.Train");
         (void) timer;
-        ASSERT_TRUE(gp.Train(rotation, translation, depths));
+        ASSERT_TRUE(gp.Train(rotation, translation, real_depths));
     }
 
     // test
@@ -251,7 +251,7 @@ TEST(RangeSensorGp3D, Depth) {
     {
         erl::common::BlockTimer<std::chrono::milliseconds> timer("gp.Test");
         (void) timer;
-        ASSERT_TRUE(gp.Test(directions_world, false, vec_ranges, vec_ranges_var, true, true));
+        ASSERT_TRUE(gp.Test(directions_world, false, vec_ranges, vec_ranges_var, true));
     }
 
     // cast invalid test queries
@@ -318,9 +318,14 @@ TEST(RangeSensorGp3D, Depth) {
     // point_cloud_test_gt->points_.reserve(test_azimuths.size());
     // for (long i = 0; i < test_azimuths.size(); ++i) { point_cloud_test_gt->points_.emplace_back(translation + directions_world.col(i) * vec_ranges_gt[i]); }
     // point_cloud_test_gt->PaintUniformColor({0.0, 1.0, 1.0});
-
+    auto line_set_camera = open3d::geometry::LineSet::CreateCameraVisualization(
+        static_cast<int>(depth_camera_setting->image_width),
+        static_cast<int>(depth_camera_setting->image_height),
+        depth_camera_setting->GetIntrinsicMatrix(),
+        erl::geometry::CameraBase3D::ComputeExtrinsic(rotation, translation));
     open3d::visualization::DrawGeometries(
         {mesh,
+         line_set_camera,
          // line_set_rays,
          // point_cloud_train,
          point_cloud_test,

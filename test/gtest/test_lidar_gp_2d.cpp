@@ -151,7 +151,8 @@ TEST(ERL_GAUSSIAN_PROCESS, LidarGaussianProcess2D) {
     ReportTime<std::chrono::microseconds>("LidarGaussianProcess2D", 10, false, [&] { (void) lidar_gp->Train(df.rotation, df.position, df.distances, true); });
     ReportTime<std::chrono::microseconds>("ObsGp1D", 10, false, [&] { obs_gp.Train(df.x.data(), df.y.data(), &n); });
 
-    ASSERT_STD_VECTOR_EQUAL("m_partitions_", lidar_gp->GetAnglePartitions(), obs_gp.m_range_);
+    ASSERT_EQ(lidar_gp->GetAnglePartitions().size(), obs_gp.m_range_.size());
+    for (size_t i = 0; i < lidar_gp->GetAnglePartitions().size(); ++i) { ASSERT_EQ(std::get<2>(lidar_gp->GetAnglePartitions()[i]), obs_gp.m_range_[i]); }
 
     auto gps = lidar_gp->GetGps();
     for (size_t i = 0; i < gps.size(); ++i) {
@@ -186,7 +187,7 @@ TEST(ERL_GAUSSIAN_PROCESS, LidarGaussianProcess2D) {
         gt_f.setConstant(df.x.size(), 0.);
         gt_var.setConstant(gt_f.size(), 0.);
         Logging::Info("test[", i, "]:");
-        ReportTime<std::chrono::microseconds>("LidarGaussianProcess2D", 10, false, [&] { lidar_gp->Test(df.x, ans_f, ans_var, true); });
+        ReportTime<std::chrono::microseconds>("LidarGaussianProcess2D", 10, false, [&] { (void) lidar_gp->Test(df.x, false, ans_f, ans_var, true); });
         ReportTime<std::chrono::microseconds>("ObsGp1D", 10, false, [&] { obs_gp.Test(df.x.transpose(), gt_f, gt_var); });
 #ifdef NDEBUG
         ASSERT_EIGEN_VECTOR_NEAR("f", ans_f, gt_f, 1e-15);
