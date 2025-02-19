@@ -1,66 +1,68 @@
 #include "erl_gaussian_process/mapping.hpp"
 
-#include <cmath>
-
-namespace erl::gaussian_process {
-    std::shared_ptr<Mapping>
-    Mapping::Create() {
-        return std::shared_ptr<Mapping>(new Mapping());
-    }
-
-    std::shared_ptr<Mapping>
-    Mapping::Create(std::shared_ptr<Setting> setting) {
-        return std::shared_ptr<Mapping>(new Mapping(std::move(setting)));
-    }
-
-    Mapping::Mapping()
-        : Mapping(std::make_shared<Setting>()) {}
-
-    Mapping::Mapping(std::shared_ptr<Setting> setting)
-        : m_setting_(std::move(setting)) {
-        switch (m_setting_->type) {
-            case Type::kIdentity: {
-                map = [](const double x) { return x; };
-                inv = map;
-                break;
-            }
-            case Type::kInverse: {
-                map = [](const double x) { return 1. / x; };
-                inv = map;
-                break;
-            }
-            case Type::kInverseSqrt: {
-                map = [](const double x) { return 1. / std::sqrt(x); };
-                inv = [](const double y) { return 1. / (y * y); };
-                break;
-            }
-            case Type::kExp: {
-                map = [&](const double x) { return std::exp(-m_setting_->scale * x); };
-                inv = [&](const double y) { return -std::log(y) / m_setting_->scale; };
-                break;
-            }
-            case Type::kLog: {
-                map = [&](const double x) { return std::log(m_setting_->scale * x); };
-                inv = [&](const double y) { return std::exp(y) / m_setting_->scale; };
-                break;
-            }
-            case Type::kTanh: {
-                map = [&](const double x) { return std::tanh(m_setting_->scale * x); };
-                inv = [&](const double y) { return std::atanh(y) / m_setting_->scale; };
-                break;
-            }
-            case Type::kSigmoid: {
-                map = [&](const double x) { return 1. / (1. + std::exp(-m_setting_->scale * x)); };
-                inv = [&](const double y) {
-                    if (y >= 1.) { return std::numeric_limits<double>::infinity() / m_setting_->scale; }
-                    if (y <= 0.) { return -std::numeric_limits<double>::infinity() / m_setting_->scale; }
-                    return std::log(y / (1. - y)) / m_setting_->scale;
-                };
-                break;
-            }
-            case Type::kUnknown:
-            default:
-                throw std::logic_error("Mapping type is kUnknown, which is unexpected.");
+YAML::Node
+YAML::convert<erl::gaussian_process::MappingType>::encode(const erl::gaussian_process::MappingType &type) {
+    Node node;
+    using namespace erl::gaussian_process;
+    switch (type) {
+        case MappingType::kIdentity: {
+            node = "kIdentity";
+            break;
+        }
+        case MappingType::kInverse: {
+            node = "kInverse";
+            break;
+        }
+        case MappingType::kInverseSqrt: {
+            node = "kInverseSqrt";
+            break;
+        }
+        case MappingType::kExp: {
+            node = "kExp";
+            break;
+        }
+        case MappingType::kLog: {
+            node = "kLog";
+            break;
+        }
+        case MappingType::kTanh: {
+            node = "kTanh";
+            break;
+        }
+        case MappingType::kSigmoid: {
+            node = "kSigmoid";
+            break;
+        }
+        case MappingType::kUnknown:
+        default: {
+            node = "kUnknown";
         }
     }
-}  // namespace erl::gaussian_process
+    return node;
+}
+
+bool
+YAML::convert<erl::gaussian_process::MappingType>::decode(const Node &node, erl::gaussian_process::MappingType &type) {
+    if (!node.IsScalar()) { return false; }
+    auto type_name = node.as<std::string>();
+    using namespace erl::gaussian_process;
+    if (type_name == "kIdentity") {
+        type = MappingType::kIdentity;
+    } else if (type_name == "kInverse") {
+        type = MappingType::kInverse;
+    } else if (type_name == "kInverseSqrt") {
+        type = MappingType::kInverseSqrt;
+    } else if (type_name == "kExp") {
+        type = MappingType::kExp;
+    } else if (type_name == "kLog") {
+        type = MappingType::kLog;
+    } else if (type_name == "kTanh") {
+        type = MappingType::kTanh;
+    } else if (type_name == "kSigmoid") {
+        type = MappingType::kSigmoid;
+    } else {
+        type = MappingType::kUnknown;
+    }
+
+    return true;
+}

@@ -3,7 +3,6 @@
 #include "mapping.hpp"
 #include "vanilla_gp.hpp"
 
-#include "erl_common/eigen.hpp"
 #include "erl_common/yaml.hpp"
 #include "erl_geometry/depth_frame_3d.hpp"
 #include "erl_geometry/lidar_frame_3d.hpp"
@@ -12,43 +11,65 @@
 
 namespace erl::gaussian_process {
 
+    template<typename Dtype>
     class RangeSensorGaussianProcess3D {
-
     public:
-        struct Setting : public common::Yamlable<Setting> {
+        using Gp = VanillaGaussianProcess<Dtype>;
+        using RangeSensorFrame = geometry::RangeSensorFrame3D<Dtype>;
+        using LidarFrame = geometry::LidarFrame3D<Dtype>;
+        using DepthFrame = geometry::DepthFrame3D<Dtype>;
+        using MappingDtype = Mapping<Dtype>;
+        using Scalar = Eigen::Matrix<Dtype, 1, 1>;
+        using Matrix3 = Eigen::Matrix3<Dtype>;
+        using Matrix3X = Eigen::Matrix3X<Dtype>;
+        using Vector2 = Eigen::Vector2<Dtype>;
+        using Vector3 = Eigen::Vector3<Dtype>;
+        using Matrix = Eigen::MatrixX<Dtype>;
+        using Vector = Eigen::VectorX<Dtype>;
+
+        struct Setting : common::Yamlable<Setting> {
             long row_group_size = 24;   // number of points in each group for each row, including the overlap ones
             long row_overlap_size = 6;  // number of points in the overlap region for each row
             long row_margin = 0;
             long col_group_size = 8;    // number of elevation points in each group, including the overlap ones
             long col_overlap_size = 2;  // number of points in the overlap region
             long col_margin = 0;
-            double init_variance = 1e6;        // large value to initialize variance result in case of computation failure
-            double sensor_range_var = 0.01;    // variance of the sensor range measurement
-            double max_valid_range_var = 0.1;  // if the distance variance is greater than this threshold, the prediction is invalid and should be discarded
-            double occ_test_temperature = 30;  // OCC test is a tanh function, this controls the slope around 0
-            std::string range_sensor_frame_type = "erl::geometry::LidarFrame3D";                   // type of the range sensor frame
-            std::string range_sensor_frame_setting_type = "erl::geometry::LidarFrame3D::Setting";  // type of the range sensor frame setting
-            std::shared_ptr<geometry::RangeSensorFrame3D::Setting> range_sensor_frame = std::make_shared<geometry::LidarFrame3D::Setting>();
-            std::shared_ptr<VanillaGaussianProcess::Setting> gp = std::make_shared<VanillaGaussianProcess::Setting>();
-            std::shared_ptr<Mapping::Setting> mapping = []() {
-                auto mapping_setting = std::make_shared<Mapping::Setting>();
-                mapping_setting->type = Mapping::Type::kInverseSqrt;
+            Dtype init_variance = 1e6;        // large value to initialize variance result in case of computation failure
+            Dtype sensor_range_var = 0.01;    // variance of the sensor range measurement
+            Dtype max_valid_range_var = 0.1;  // if the distance variance is greater than this threshold, the prediction is invalid and should be discarded
+            Dtype occ_test_temperature = 30;  // OCC test is a tanh function, this controls the slope around 0
+            std::string range_sensor_frame_type = type_name<LidarFrame>();                            // type of the range sensor frame
+            std::string range_sensor_frame_setting_type = type_name<typename LidarFrame::Setting>();  // type of the range sensor frame setting
+            std::shared_ptr<typename RangeSensorFrame::Setting> range_sensor_frame = std::make_shared<typename LidarFrame::Setting>();
+            std::shared_ptr<typename Gp::Setting> gp = std::make_shared<typename Gp::Setting>();
+            std::shared_ptr<typename MappingDtype::Setting> mapping = []() {
+                auto mapping_setting = std::make_shared<typename MappingDtype::Setting>();
+                mapping_setting->type = MappingType::kInverseSqrt;
                 mapping_setting->scale = 1.0;
                 return mapping_setting;
             }();
+
+            struct YamlConvertImpl {
+                static YAML::Node
+                encode(const Setting &setting);
+
+                static bool
+                decode(const YAML::Node &node, Setting &setting);
+            };
         };
 
-        inline static const volatile bool kSettingRegistered = common::YamlableBase::Register<Setting>();
+    private:
+        inline static const std::string kFileHeader = fmt::format("# erl::gaussian_process::RangeSensorGaussianProcess3D<{}>", type_name<Dtype>());
 
     protected:
         bool m_trained_ = false;
         std::shared_ptr<Setting> m_setting_ = nullptr;
-        Eigen::MatrixX<std::shared_ptr<VanillaGaussianProcess>> m_gps_ = {};
-        std::vector<std::tuple<long, long, double, double>> m_row_partitions_ = {};
-        std::vector<std::tuple<long, long, double, double>> m_col_partitions_ = {};
-        std::shared_ptr<geometry::RangeSensorFrame3D> m_range_sensor_frame_ = nullptr;
-        std::shared_ptr<Mapping> m_mapping_ = nullptr;
-        Eigen::MatrixXd m_mapped_distances_ = {};
+        Eigen::MatrixX<std::shared_ptr<Gp>> m_gps_ = {};
+        std::vector<std::tuple<long, long, Dtype, Dtype>> m_row_partitions_ = {};
+        std::vector<std::tuple<long, long, Dtype, Dtype>> m_col_partitions_ = {};
+        std::shared_ptr<RangeSensorFrame> m_range_sensor_frame_ = nullptr;
+        std::shared_ptr<MappingDtype> m_mapping_ = nullptr;
+        Matrix m_mapped_distances_ = {};
 
     public:
         explicit RangeSensorGaussianProcess3D(std::shared_ptr<Setting> setting);
@@ -63,53 +84,53 @@ namespace erl::gaussian_process {
             return m_setting_;
         }
 
-        [[nodiscard]] const Eigen::MatrixX<std::shared_ptr<VanillaGaussianProcess>> &
+        [[nodiscard]] const Eigen::MatrixX<std::shared_ptr<Gp>> &
         GetGps() const {
             return m_gps_;
         }
 
-        [[nodiscard]] const std::vector<std::tuple<long, long, double, double>> &
+        [[nodiscard]] const std::vector<std::tuple<long, long, Dtype, Dtype>> &
         GetRowPartitions() const {
             return m_row_partitions_;
         }
 
-        [[nodiscard]] const std::vector<std::tuple<long, long, double, double>> &
+        [[nodiscard]] const std::vector<std::tuple<long, long, Dtype, Dtype>> &
         GetColPartitions() const {
             return m_col_partitions_;
         }
 
-        [[nodiscard]] std::shared_ptr<const geometry::RangeSensorFrame3D>
+        [[nodiscard]] std::shared_ptr<const RangeSensorFrame>
         GetRangeSensorFrame() const {
             return m_range_sensor_frame_;
         }
 
-        [[nodiscard]] std::shared_ptr<const Mapping>
+        [[nodiscard]] std::shared_ptr<const MappingDtype>
         GetMapping() const {
             return m_mapping_;
         }
 
-        [[nodiscard]] Eigen::Vector3d
-        GlobalToLocalSo3(const Eigen::Vector3d &dir_global) const {
+        [[nodiscard]] Vector3
+        GlobalToLocalSo3(const Vector3 &dir_global) const {
             return m_range_sensor_frame_->WorldToFrameSo3(dir_global);
         }
 
-        [[nodiscard]] Eigen::Vector3d
-        LocalToGlobalSo3(const Eigen::Vector3d &dir_local) const {
+        [[nodiscard]] Vector3
+        LocalToGlobalSo3(const Vector3 &dir_local) const {
             return m_range_sensor_frame_->FrameToWorldSo3(dir_local);
         }
 
-        [[nodiscard]] Eigen::Vector3d
-        GlobalToLocalSe3(const Eigen::Vector3d &xyz_global) const {
+        [[nodiscard]] Vector3
+        GlobalToLocalSe3(const Vector3 &xyz_global) const {
             return m_range_sensor_frame_->WorldToFrameSe3(xyz_global);
         }
 
-        [[nodiscard]] Eigen::Vector3d
-        LocalToGlobalSe3(const Eigen::Vector3d &xyz_local) const {
+        [[nodiscard]] Vector3
+        LocalToGlobalSe3(const Vector3 &xyz_local) const {
             return m_range_sensor_frame_->FrameToWorldSe3(xyz_local);
         }
 
         [[nodiscard]] Eigen::Vector2d
-        ComputeFrameCoords(const Eigen::Vector3d &xyz_frame) const {
+        ComputeFrameCoords(const Vector3 &xyz_frame) const {
             return m_range_sensor_frame_->ComputeFrameCoords(xyz_frame);
         }
 
@@ -117,22 +138,21 @@ namespace erl::gaussian_process {
         Reset();
 
         bool
-        StoreData(const Eigen::Matrix3d &rotation, const Eigen::Vector3d &translation, Eigen::MatrixXd ranges);
+        StoreData(const Matrix3 &rotation, const Vector3 &translation, Matrix ranges);
 
         [[nodiscard]] bool
-        Train(const Eigen::Matrix3d &rotation, const Eigen::Vector3d &translation, Eigen::MatrixXd ranges);
+        Train(const Matrix3 &rotation, const Vector3 &translation, Matrix ranges);
 
         [[nodiscard]] bool
         Test(
-            const Eigen::Ref<const Eigen::Matrix3Xd> &directions,
+            const Eigen::Ref<const Matrix3X> &directions,
             bool directions_are_local,
-            Eigen::Ref<Eigen::VectorXd> vec_ranges,
-            Eigen::Ref<Eigen::VectorXd> vec_ranges_var,
+            Eigen::Ref<Vector> vec_ranges,
+            Eigen::Ref<Vector> vec_ranges_var,
             bool un_map) const;
 
         bool
-        ComputeOcc(const Eigen::Vector3d &dir_local, double r, Eigen::Ref<Eigen::Scalard> range_pred, Eigen::Ref<Eigen::Scalard> range_pred_var, double &occ)
-            const;
+        ComputeOcc(const Vector3 &dir_local, Dtype r, Eigen::Ref<Scalar> range_pred, Eigen::Ref<Scalar> range_pred_var, Dtype &occ) const;
 
         [[nodiscard]] bool
         operator==(const RangeSensorGaussianProcess3D &other) const;
@@ -154,62 +174,17 @@ namespace erl::gaussian_process {
         [[nodiscard]] bool
         Read(std::istream &s);
     };
+
+    using RangeSensorGaussianProcess3Dd = RangeSensorGaussianProcess3D<double>;
+    using RangeSensorGaussianProcess3Df = RangeSensorGaussianProcess3D<float>;
 }  // namespace erl::gaussian_process
 
-// ReSharper disable CppInconsistentNaming
+#include "range_sensor_gp_3d.tpp"
+
 template<>
-struct YAML::convert<erl::gaussian_process::RangeSensorGaussianProcess3D::Setting> {
-    static Node
-    encode(const erl::gaussian_process::RangeSensorGaussianProcess3D::Setting &rhs) {
-        Node node;
-        node["row_group_size"] = rhs.row_group_size;
-        node["row_overlap_size"] = rhs.row_overlap_size;
-        node["row_margin"] = rhs.row_margin;
-        node["col_group_size"] = rhs.col_group_size;
-        node["col_overlap_size"] = rhs.col_overlap_size;
-        node["col_margin"] = rhs.col_margin;
-        node["init_variance"] = rhs.init_variance;
-        node["sensor_range_var"] = rhs.sensor_range_var;
-        node["max_valid_range_var"] = rhs.max_valid_range_var;
-        node["occ_test_temperature"] = rhs.occ_test_temperature;
-        node["range_sensor_frame_type"] = rhs.range_sensor_frame_type;
-        if (rhs.range_sensor_frame_type == demangle(typeid(erl::geometry::LidarFrame3D).name())) {
-            node["range_sensor_frame"] = std::dynamic_pointer_cast<erl::geometry::LidarFrame3D::Setting>(rhs.range_sensor_frame);
-        } else if (rhs.range_sensor_frame_type == demangle(typeid(erl::geometry::DepthFrame3D).name())) {
-            node["range_sensor_frame"] = std::dynamic_pointer_cast<erl::geometry::DepthFrame3D::Setting>(rhs.range_sensor_frame);
-        } else {
-            ERL_FATAL("Unknown range_sensor_frame_type: {}", rhs.range_sensor_frame_type);
-        }
-        node["row_margin"] = rhs.row_margin;
-        node["col_margin"] = rhs.col_margin;
-        node["gp"] = rhs.gp;
-        node["mapping"] = rhs.mapping;
-        return node;
-    }
+struct YAML::convert<erl::gaussian_process::RangeSensorGaussianProcess3Dd::Setting>
+    : erl::gaussian_process::RangeSensorGaussianProcess3Dd::Setting::YamlConvertImpl {};
 
-    static bool
-    decode(const Node &node, erl::gaussian_process::RangeSensorGaussianProcess3D::Setting &rhs) {
-        if (!node.IsMap()) { return false; }
-        rhs.row_group_size = node["row_group_size"].as<int>();
-        rhs.row_overlap_size = node["row_overlap_size"].as<int>();
-        rhs.row_margin = node["row_margin"].as<long>();
-        rhs.col_group_size = node["col_group_size"].as<int>();
-        rhs.col_overlap_size = node["col_overlap_size"].as<int>();
-        rhs.col_margin = node["col_margin"].as<long>();
-        rhs.init_variance = node["init_variance"].as<double>();
-        rhs.sensor_range_var = node["sensor_range_var"].as<double>();
-        rhs.max_valid_range_var = node["max_valid_range_var"].as<double>();
-        rhs.occ_test_temperature = node["occ_test_temperature"].as<double>();
-        rhs.range_sensor_frame_type = node["range_sensor_frame_type"].as<std::string>();
-        rhs.range_sensor_frame_setting_type = node["range_sensor_frame_setting_type"].as<std::string>();
-        rhs.range_sensor_frame = erl::common::YamlableBase::Create<erl::geometry::RangeSensorFrame3D::Setting>(rhs.range_sensor_frame_setting_type);
-        if (!rhs.range_sensor_frame->FromYamlNode(node["range_sensor_frame"])) { return false; }
-        rhs.row_margin = node["row_margin"].as<long>();
-        rhs.col_margin = node["col_margin"].as<long>();
-        rhs.gp = node["gp"].as<std::shared_ptr<erl::gaussian_process::VanillaGaussianProcess::Setting>>();
-        rhs.mapping = node["mapping"].as<std::shared_ptr<erl::gaussian_process::Mapping::Setting>>();
-        return true;
-    }
-};
-
-// ReSharper restore CppInconsistentNaming
+template<>
+struct YAML::convert<erl::gaussian_process::RangeSensorGaussianProcess3Df::Setting>
+    : erl::gaussian_process::RangeSensorGaussianProcess3Df::Setting::YamlConvertImpl {};

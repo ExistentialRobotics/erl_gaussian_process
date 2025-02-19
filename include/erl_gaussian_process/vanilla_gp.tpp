@@ -1,9 +1,33 @@
-#include "erl_gaussian_process/vanilla_gp.hpp"
+#pragma once
 
-#include "erl_covariance/reduced_rank_covariance.hpp"
+#include "erl_common/yaml.hpp"
 
 namespace erl::gaussian_process {
-    VanillaGaussianProcess::VanillaGaussianProcess(const VanillaGaussianProcess &other)
+    template<typename Dtype>
+    YAML::Node
+    VanillaGaussianProcess<Dtype>::Setting::YamlConvertImpl::encode(const Setting &setting) {
+        YAML::Node node;
+        node["kernel_type"] = setting.kernel_type;
+        node["kernel_setting_type"] = setting.kernel_setting_type;
+        node["kernel"] = setting.kernel->AsYamlNode();
+        node["max_num_samples"] = setting.max_num_samples;
+        return node;
+    }
+
+    template<typename Dtype>
+    bool
+    VanillaGaussianProcess<Dtype>::Setting::YamlConvertImpl::decode(const YAML::Node &node, Setting &setting) {
+        if (!node.IsMap()) { return false; }
+        setting.kernel_type = node["kernel_type"].as<std::string>();
+        setting.kernel_setting_type = node["kernel_setting_type"].as<std::string>();
+        setting.kernel = common::YamlableBase::Create<typename Covariance::Setting>(setting.kernel_setting_type);
+        if (!setting.kernel->FromYamlNode(node["kernel"])) { return false; }
+        setting.max_num_samples = node["max_num_samples"].as<long>();
+        return true;
+    }
+
+    template<typename Dtype>
+    VanillaGaussianProcess<Dtype>::VanillaGaussianProcess(const VanillaGaussianProcess &other)
         : m_x_dim_(other.m_x_dim_),
           m_num_train_samples_(other.m_num_train_samples_),
           m_trained_(other.m_trained_),
@@ -15,16 +39,16 @@ namespace erl::gaussian_process {
           m_vec_alpha_(other.m_vec_alpha_),
           m_vec_var_h_(other.m_vec_var_h_) {
         if (other.m_kernel_ != nullptr) {
-            m_kernel_ = covariance::Covariance::CreateCovariance(m_setting_->kernel_type, m_setting_->kernel);
+            m_kernel_ = Covariance::CreateCovariance(m_setting_->kernel_type, m_setting_->kernel);
             if (m_reduced_rank_kernel_) {  // rank-reduced kernel is stateful, so we need to copy the kernel
-                *std::reinterpret_pointer_cast<covariance::ReducedRankCovariance>(m_kernel_) =
-                    *std::reinterpret_pointer_cast<covariance::ReducedRankCovariance>(other.m_kernel_);
+                *std::reinterpret_pointer_cast<ReducedRankCovariance>(m_kernel_) = *std::reinterpret_pointer_cast<ReducedRankCovariance>(other.m_kernel_);
             }
         }
     }
 
-    VanillaGaussianProcess &
-    VanillaGaussianProcess::operator=(const VanillaGaussianProcess &other) {
+    template<typename Dtype>
+    VanillaGaussianProcess<Dtype> &
+    VanillaGaussianProcess<Dtype>::operator=(const VanillaGaussianProcess &other) {
         if (this == &other) { return *this; }
         m_x_dim_ = other.m_x_dim_;
         m_num_train_samples_ = other.m_num_train_samples_;
@@ -37,28 +61,30 @@ namespace erl::gaussian_process {
         m_vec_alpha_ = other.m_vec_alpha_;
         m_vec_var_h_ = other.m_vec_var_h_;
         if (other.m_kernel_ != nullptr) {
-            m_kernel_ = covariance::Covariance::CreateCovariance(m_setting_->kernel_type, m_setting_->kernel);
+            m_kernel_ = Covariance::CreateCovariance(m_setting_->kernel_type, m_setting_->kernel);
             if (m_reduced_rank_kernel_) {  // rank-reduced kernel is stateful, so we need to copy the kernel
-                *std::reinterpret_pointer_cast<covariance::ReducedRankCovariance>(m_kernel_) =
-                    *std::reinterpret_pointer_cast<covariance::ReducedRankCovariance>(other.m_kernel_);
+                *std::reinterpret_pointer_cast<ReducedRankCovariance>(m_kernel_) = *std::reinterpret_pointer_cast<ReducedRankCovariance>(other.m_kernel_);
             }
         }
         return *this;
     }
 
-    Eigen::VectorXd
-    VanillaGaussianProcess::GetKernelCoordOrigin() const {
-        if (m_reduced_rank_kernel_) { return std::reinterpret_pointer_cast<covariance::ReducedRankCovariance>(m_kernel_)->GetCoordOrigin(); }
-        return Eigen::VectorXd::Zero(m_x_dim_);
+    template<typename Dtype>
+    typename VanillaGaussianProcess<Dtype>::Vector
+    VanillaGaussianProcess<Dtype>::GetKernelCoordOrigin() const {
+        if (m_reduced_rank_kernel_) { return std::reinterpret_pointer_cast<ReducedRankCovariance>(m_kernel_)->GetCoordOrigin(); }
+        return Vector::Zero(m_x_dim_);
     }
 
+    template<typename Dtype>
     void
-    VanillaGaussianProcess::SetKernelCoordOrigin(const Eigen::VectorXd &coord_origin) const {
-        if (m_reduced_rank_kernel_) { std::reinterpret_pointer_cast<covariance::ReducedRankCovariance>(m_kernel_)->SetCoordOrigin(coord_origin); }
+    VanillaGaussianProcess<Dtype>::SetKernelCoordOrigin(const Vector &coord_origin) const {
+        if (m_reduced_rank_kernel_) { std::reinterpret_pointer_cast<ReducedRankCovariance>(m_kernel_)->SetCoordOrigin(coord_origin); }
     }
 
+    template<typename Dtype>
     void
-    VanillaGaussianProcess::Reset(const long max_num_samples, const long x_dim) {
+    VanillaGaussianProcess<Dtype>::Reset(const long max_num_samples, const long x_dim) {
         ERL_ASSERTM(x_dim > 0, "x_dim should be > 0.");
         if (const long &max_num_samples_setting = m_setting_->max_num_samples, &x_dim_setting = m_setting_->kernel->x_dim;
             max_num_samples_setting > 0 && x_dim_setting > 0) {  // memory already allocated
@@ -76,21 +102,23 @@ namespace erl::gaussian_process {
         m_x_dim_ = x_dim;
     }
 
+    template<typename Dtype>
     std::size_t
-    VanillaGaussianProcess::GetMemoryUsage() const {
+    VanillaGaussianProcess<Dtype>::GetMemoryUsage() const {
         std::size_t memory_usage = sizeof(VanillaGaussianProcess);
         if (m_setting_ != nullptr) { memory_usage += sizeof(Setting); }
         if (m_kernel_ != nullptr) { memory_usage += m_kernel_->GetMemoryUsage(); }
-        memory_usage += m_mat_x_train_.size() * sizeof(double);
-        memory_usage += m_mat_k_train_.size() * sizeof(double);
-        memory_usage += m_mat_l_.size() * sizeof(double);
-        memory_usage += m_vec_alpha_.size() * sizeof(double);
-        memory_usage += m_vec_var_h_.size() * sizeof(double);
+        memory_usage += m_mat_x_train_.size() * sizeof(Dtype);
+        memory_usage += m_mat_k_train_.size() * sizeof(Dtype);
+        memory_usage += m_mat_l_.size() * sizeof(Dtype);
+        memory_usage += m_vec_alpha_.size() * sizeof(Dtype);
+        memory_usage += m_vec_var_h_.size() * sizeof(Dtype);
         return memory_usage;
     }
 
+    template<typename Dtype>
     bool
-    VanillaGaussianProcess::UpdateKtrain(const long num_train_samples) {
+    VanillaGaussianProcess<Dtype>::UpdateKtrain(const long num_train_samples) {
         if (m_k_train_updated_) { return true; }
         m_num_train_samples_ = num_train_samples;
         if (m_num_train_samples_ <= 0) { return false; }
@@ -99,8 +127,9 @@ namespace erl::gaussian_process {
         return true;
     }
 
+    template<typename Dtype>
     bool
-    VanillaGaussianProcess::Train(const long num_train_samples) {
+    VanillaGaussianProcess<Dtype>::Train(const long num_train_samples) {
 
         if (m_trained_) {
             ERL_WARN("The model has been trained. Please reset the model before training.");
@@ -113,18 +142,16 @@ namespace erl::gaussian_process {
         auto &&mat_l = m_mat_l_.topLeftCorner(m_k_train_rows_, m_k_train_cols_);
         const auto vec_alpha = m_vec_alpha_.head(m_k_train_cols_);
         mat_l = mat_ktrain.llt().matrixL();  // A = ktrain(mat_x_train, mat_x_train) + sigma * I = mat_l @ mat_l.T
-        mat_l.triangularView<Eigen::Lower>().solveInPlace(vec_alpha);
-        mat_l.transpose().triangularView<Eigen::Upper>().solveInPlace(vec_alpha);  // A.m_inv_() @ vec_alpha
+        mat_l.template triangularView<Eigen::Lower>().solveInPlace(vec_alpha);
+        mat_l.transpose().template triangularView<Eigen::Upper>().solveInPlace(vec_alpha);  // A.m_inv_() @ vec_alpha
         m_trained_once_ = true;
         m_trained_ = true;
         return true;
     }
 
+    template<typename Dtype>
     bool
-    VanillaGaussianProcess::Test(
-        const Eigen::Ref<const Eigen::MatrixXd> &mat_x_test,
-        Eigen::Ref<Eigen::VectorXd> vec_f_out,
-        Eigen::Ref<Eigen::VectorXd> vec_var_out) const {
+    VanillaGaussianProcess<Dtype>::Test(const Eigen::Ref<const Matrix> &mat_x_test, Eigen::Ref<Vector> vec_f_out, Eigen::Ref<Vector> vec_var_out) const {
 
         if (!m_trained_) { return false; }
 
@@ -133,7 +160,7 @@ namespace erl::gaussian_process {
         ERL_DEBUG_ASSERT(mat_x_test.rows() == m_x_dim_, "mat_x_test.rows() = {}, it should be {}.", mat_x_test.rows(), m_x_dim_);
         ERL_DEBUG_ASSERT(vec_f_out.size() >= n, "vec_f_out size = {}, it should be >= {}.", vec_f_out.size(), n);
         const auto [ktest_rows, ktest_cols] = m_kernel_->GetMinimumKtestSize(m_num_train_samples_, 0, m_x_dim_, n, false);
-        Eigen::MatrixXd ktest(ktest_rows, ktest_cols);
+        Matrix ktest(ktest_rows, ktest_cols);
         const auto [output_rows, output_cols] = m_kernel_->ComputeKtest(m_mat_x_train_, m_num_train_samples_, mat_x_test, n, ktest);
         ERL_DEBUG_ASSERT(
             (output_rows == ktest_rows && output_cols == ktest_cols),
@@ -152,8 +179,8 @@ namespace erl::gaussian_process {
         // variance of vec_f_out = ktest(xt, xt) - ktest(xt, X) @ (ktest(X, X) + sigma * I).m_inv_() @ ktest(X, xt)
         //                       = ktest(xt, xt) - ktest(xt, X) @ (m_l_ @ m_l_.T).m_inv_() @ ktest(X, xt)
         ERL_DEBUG_ASSERT(vec_var_out.size() >= n, "vec_var_out size = {}, it should be >= {}.", vec_var_out.size(), n);
-        m_mat_l_.topLeftCorner(output_rows, output_rows).triangularView<Eigen::Lower>().solveInPlace(ktest);
-        const double alpha = m_setting_->kernel->alpha;
+        m_mat_l_.topLeftCorner(output_rows, output_rows).template triangularView<Eigen::Lower>().solveInPlace(ktest);
+        const Dtype alpha = m_setting_->kernel->alpha;
         if (m_reduced_rank_kernel_) {
             for (long i = 0; i < ktest_cols; ++i) { vec_var_out[i] = ktest.col(i).squaredNorm(); }
         } else {
@@ -162,8 +189,9 @@ namespace erl::gaussian_process {
         return true;
     }
 
+    template<typename Dtype>
     bool
-    VanillaGaussianProcess::operator==(const VanillaGaussianProcess &other) const {
+    VanillaGaussianProcess<Dtype>::operator==(const VanillaGaussianProcess &other) const {
         if (m_setting_ == nullptr && other.m_setting_ != nullptr) { return false; }
         if (m_setting_ != nullptr && (other.m_setting_ == nullptr || *m_setting_ != *other.m_setting_)) { return false; }
         if (m_x_dim_ != other.m_x_dim_) { return false; }
@@ -171,30 +199,31 @@ namespace erl::gaussian_process {
         if (m_trained_ != other.m_trained_) { return false; }
         if (m_num_train_samples_ == 0) { return true; }
         if (m_mat_k_train_.rows() != other.m_mat_k_train_.rows() || m_mat_k_train_.cols() != other.m_mat_k_train_.cols() ||
-            std::memcmp(m_mat_k_train_.data(), other.m_mat_k_train_.data(), m_mat_k_train_.size() * sizeof(double)) != 0) {
+            std::memcmp(m_mat_k_train_.data(), other.m_mat_k_train_.data(), m_mat_k_train_.size() * sizeof(Dtype)) != 0) {
             return false;
         }
         if (m_mat_x_train_.rows() != other.m_mat_x_train_.rows() || m_mat_x_train_.cols() != other.m_mat_x_train_.cols() ||
-            std::memcmp(m_mat_x_train_.data(), other.m_mat_x_train_.data(), m_mat_x_train_.size() * sizeof(double)) != 0) {
+            std::memcmp(m_mat_x_train_.data(), other.m_mat_x_train_.data(), m_mat_x_train_.size() * sizeof(Dtype)) != 0) {
             return false;
         }
         if (m_mat_l_.rows() != other.m_mat_l_.rows() || m_mat_l_.cols() != other.m_mat_l_.cols() ||
-            std::memcmp(m_mat_l_.data(), other.m_mat_l_.data(), m_mat_l_.size() * sizeof(double)) != 0) {
+            std::memcmp(m_mat_l_.data(), other.m_mat_l_.data(), m_mat_l_.size() * sizeof(Dtype)) != 0) {
             return false;
         }
         if (m_vec_alpha_.size() != other.m_vec_alpha_.size() ||
-            std::memcmp(m_vec_alpha_.data(), other.m_vec_alpha_.data(), m_vec_alpha_.size() * sizeof(double)) != 0) {
+            std::memcmp(m_vec_alpha_.data(), other.m_vec_alpha_.data(), m_vec_alpha_.size() * sizeof(Dtype)) != 0) {
             return false;
         }
         if (m_vec_var_h_.size() != other.m_vec_var_h_.size() ||
-            std::memcmp(m_vec_var_h_.data(), other.m_vec_var_h_.data(), m_vec_var_h_.size() * sizeof(double)) != 0) {
+            std::memcmp(m_vec_var_h_.data(), other.m_vec_var_h_.data(), m_vec_var_h_.size() * sizeof(Dtype)) != 0) {
             return false;
         }
         return true;
     }
 
+    template<typename Dtype>
     bool
-    VanillaGaussianProcess::Write(const std::string &filename) const {
+    VanillaGaussianProcess<Dtype>::Write(const std::string &filename) const {
         ERL_INFO("Writing VanillaGaussianProcess to file: {}", filename);
         std::filesystem::create_directories(std::filesystem::path(filename).parent_path());
         std::ofstream file(filename, std::ios_base::out | std::ios_base::binary);
@@ -208,10 +237,9 @@ namespace erl::gaussian_process {
         return success;
     }
 
-    static const std::string kFileHeader = "# erl::gaussian_process::VanillaGaussianProcess";
-
+    template<typename Dtype>
     bool
-    VanillaGaussianProcess::Write(std::ostream &s) const {
+    VanillaGaussianProcess<Dtype>::Write(std::ostream &s) const {
         s << kFileHeader << std::endl  //
           << "# (feel free to add / change comments, but leave the first line as it is!)" << std::endl
           << "setting" << std::endl;
@@ -262,8 +290,9 @@ namespace erl::gaussian_process {
         return s.good();
     }
 
+    template<typename Dtype>
     bool
-    VanillaGaussianProcess::Read(const std::string &filename) {
+    VanillaGaussianProcess<Dtype>::Read(const std::string &filename) {
         ERL_INFO("Reading VanillaGaussianProcess from file: {}", std::filesystem::absolute(filename));
         std::ifstream file(filename.c_str(), std::ios_base::in | std::ios_base::binary);
         if (!file.is_open()) {
@@ -276,8 +305,9 @@ namespace erl::gaussian_process {
         return success;
     }
 
+    template<typename Dtype>
     bool
-    VanillaGaussianProcess::Read(std::istream &s) {
+    VanillaGaussianProcess<Dtype>::Read(std::istream &s) {
         if (!s.good()) {
             ERL_WARN("Input stream is not ready for reading");
             return false;
@@ -371,12 +401,12 @@ namespace erl::gaussian_process {
                     s >> has_kernel;
                     if (has_kernel) {
                         skip_line();  // skip the line to read the binary data section
-                        m_kernel_ = covariance::Covariance::CreateCovariance(m_setting_->kernel_type, m_setting_->kernel);
+                        m_kernel_ = Covariance::CreateCovariance(m_setting_->kernel_type, m_setting_->kernel);
                         if (!m_kernel_->Read(s)) {
                             ERL_WARN("Failed to read kernel.");
                             return false;
                         }
-                        const auto rank_reduced_kernel = std::dynamic_pointer_cast<covariance::ReducedRankCovariance>(m_kernel_);
+                        const auto rank_reduced_kernel = std::dynamic_pointer_cast<ReducedRankCovariance>(m_kernel_);
                         m_reduced_rank_kernel_ = rank_reduced_kernel != nullptr;
                         if (m_reduced_rank_kernel_) { rank_reduced_kernel->BuildSpectralDensities(); }
                     }
@@ -436,8 +466,9 @@ namespace erl::gaussian_process {
         return false;  // should not reach here
     }
 
+    template<typename Dtype>
     bool
-    VanillaGaussianProcess::AllocateMemory(const long max_num_samples, const long x_dim) {
+    VanillaGaussianProcess<Dtype>::AllocateMemory(const long max_num_samples, const long x_dim) {
         if (max_num_samples <= 0 || x_dim <= 0) { return false; }  // invalid input
         if (m_setting_->max_num_samples > 0 && max_num_samples > m_setting_->max_num_samples) { return false; }
         if (m_setting_->kernel->x_dim > 0 && x_dim != m_setting_->kernel->x_dim) { return false; }
@@ -451,14 +482,14 @@ namespace erl::gaussian_process {
         return true;
     }
 
+    template<typename Dtype>
     void
-    VanillaGaussianProcess::InitKernel() {
+    VanillaGaussianProcess<Dtype>::InitKernel() {
         if (m_kernel_ == nullptr) {
-            m_kernel_ = covariance::Covariance::CreateCovariance(m_setting_->kernel_type, m_setting_->kernel);
-            const auto rank_reduced_kernel = std::dynamic_pointer_cast<covariance::ReducedRankCovariance>(m_kernel_);
+            m_kernel_ = Covariance::CreateCovariance(m_setting_->kernel_type, m_setting_->kernel);
+            const auto rank_reduced_kernel = std::dynamic_pointer_cast<ReducedRankCovariance>(m_kernel_);
             m_reduced_rank_kernel_ = rank_reduced_kernel != nullptr;
             if (m_reduced_rank_kernel_) { rank_reduced_kernel->BuildSpectralDensities(); }
         }
     }
-
 }  // namespace erl::gaussian_process

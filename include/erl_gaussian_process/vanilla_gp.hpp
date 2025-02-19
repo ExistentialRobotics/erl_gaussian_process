@@ -1,6 +1,7 @@
 #pragma once
 
 #include "erl_covariance/covariance.hpp"
+#include "erl_covariance/reduced_rank_covariance.hpp"
 
 #include <memory>
 
@@ -9,42 +10,56 @@ namespace erl::gaussian_process {
     /**
      * VanillaGaussianProcess implements the standard Gaussian Process
      */
+    template<typename Dtype>
     class VanillaGaussianProcess {
-
     public:
+        using Covariance = covariance::Covariance<Dtype>;
+        using ReducedRankCovariance = covariance::ReducedRankCovariance<Dtype>;
+        using Matrix = Eigen::MatrixX<Dtype>;
+        using Vector = Eigen::VectorX<Dtype>;
+
         // structure for holding the parameters
-        struct Setting : public common::Yamlable<Setting> {
-            std::string kernel_type = "erl::covariance::OrnsteinUhlenbeck<2l>";
-            std::string kernel_setting_type = "erl::covariance::Covariance::Setting";
-            std::shared_ptr<covariance::Covariance::Setting> kernel = []() -> std::shared_ptr<covariance::Covariance::Setting> {
-                auto setting = std::make_shared<covariance::Covariance::Setting>();
+        struct Setting : common::Yamlable<Setting> {
+            std::string kernel_type = fmt::format("erl::covariance::OrnsteinUhlenbeck<2, {}>", type_name<Dtype>());
+            std::string kernel_setting_type = fmt::format("erl::covariance::Covariance<{}>::Setting", type_name<Dtype>());
+            std::shared_ptr<typename Covariance::Setting> kernel = []() -> std::shared_ptr<typename Covariance::Setting> {
+                auto setting = std::make_shared<typename Covariance::Setting>();
                 setting->x_dim = 2;
-                setting->alpha = 1.;
+                setting->alpha = 1.0;
                 setting->scale = 0.5;
-                setting->scale_mix = 1.;
+                setting->scale_mix = 1.0;
                 return setting;
             }();
             long max_num_samples = 256;
+
+            struct YamlConvertImpl {
+                static YAML::Node
+                encode(const Setting &setting);
+
+                static bool
+                decode(const YAML::Node &node, Setting &setting);
+            };
         };
 
-        inline static const volatile bool kSettingRegistered = common::YamlableBase::Register<Setting>();
+    private:
+        inline static const std::string kFileHeader = fmt::format("# erl::gaussian_process::VanillaGaussianProcess<{}>", type_name<Dtype>());
 
     protected:
-        long m_x_dim_ = 0;                                            // dimension of x
-        long m_num_train_samples_ = 0;                                // number of training samples
-        bool m_trained_ = true;                                       // true if the GP is trained
-        bool m_trained_once_ = false;                                 // true if the GP is trained at least once
-        bool m_k_train_updated_ = false;                              // true if Ktrain is updated
-        long m_k_train_rows_ = 0;                                     // number of rows of Ktrain
-        long m_k_train_cols_ = 0;                                     // number of columns of Ktrain
-        std::shared_ptr<Setting> m_setting_ = nullptr;                // setting
-        std::shared_ptr<covariance::Covariance> m_kernel_ = nullptr;  // kernel
-        bool m_reduced_rank_kernel_ = false;                          // whether the kernel is rank reduced or not
-        Eigen::MatrixXd m_mat_k_train_ = {};                          // Ktrain, avoid reallocation
-        Eigen::MatrixXd m_mat_x_train_ = {};                          // x1, ..., xn
-        Eigen::MatrixXd m_mat_l_ = {};                                // lower triangular matrix of the Cholesky decomposition of Ktrain
-        Eigen::VectorXd m_vec_alpha_ = {};                            // h(x1)..h(xn), dh(x1)/dx1_1 .. dh(xn)/dxn_1 .. dh(x1)/dx1_dim .. dh(xn)/dxn_dim
-        Eigen::VectorXd m_vec_var_h_ = {};                            // variance of y1 ... yn
+        long m_x_dim_ = 0;                                // dimension of x
+        long m_num_train_samples_ = 0;                    // number of training samples
+        bool m_trained_ = true;                           // true if the GP is trained
+        bool m_trained_once_ = false;                     // true if the GP is trained at least once
+        bool m_k_train_updated_ = false;                  // true if Ktrain is updated
+        long m_k_train_rows_ = 0;                         // number of rows of Ktrain
+        long m_k_train_cols_ = 0;                         // number of columns of Ktrain
+        std::shared_ptr<Setting> m_setting_ = nullptr;    // setting
+        std::shared_ptr<Covariance> m_kernel_ = nullptr;  // kernel
+        bool m_reduced_rank_kernel_ = false;              // whether the kernel is rank reduced or not
+        Matrix m_mat_k_train_ = {};                       // Ktrain, avoid reallocation
+        Matrix m_mat_x_train_ = {};                       // x1, ..., xn
+        Matrix m_mat_l_ = {};                             // lower triangular matrix of the Cholesky decomposition of Ktrain
+        Vector m_vec_alpha_ = {};                         // h(x1)..h(xn), dh(x1)/dx1_1 .. dh(xn)/dxn_1 .. dh(x1)/dx1_dim .. dh(xn)/dxn_dim
+        Vector m_vec_var_h_ = {};                         // variance of y1 ... yn
 
     public:
         VanillaGaussianProcess()
@@ -60,12 +75,9 @@ namespace erl::gaussian_process {
         }
 
         VanillaGaussianProcess(const VanillaGaussianProcess &other);
-
         VanillaGaussianProcess(VanillaGaussianProcess &&other) = default;
-
         VanillaGaussianProcess &
         operator=(const VanillaGaussianProcess &other);
-
         VanillaGaussianProcess &
         operator=(VanillaGaussianProcess &&other) = default;
 
@@ -86,11 +98,11 @@ namespace erl::gaussian_process {
             return m_reduced_rank_kernel_;
         }
 
-        [[nodiscard]] Eigen::VectorXd
+        [[nodiscard]] Vector
         GetKernelCoordOrigin() const;
 
         void
-        SetKernelCoordOrigin(const Eigen::VectorXd &coord_origin) const;
+        SetKernelCoordOrigin(const Vector &coord_origin) const;
 
         /**
          * @brief reset the model: update flags, kernel, and allocate memory if necessary, etc.
@@ -105,27 +117,27 @@ namespace erl::gaussian_process {
             return m_num_train_samples_;
         }
 
-        [[nodiscard]] Eigen::MatrixXd &
+        [[nodiscard]] Matrix &
         GetTrainInputSamplesBuffer() {
             return m_mat_x_train_;
         }
 
-        [[nodiscard]] Eigen::VectorXd &
+        [[nodiscard]] Vector &
         GetTrainOutputSamplesBuffer() {
             return m_vec_alpha_;
         }
 
-        [[nodiscard]] Eigen::VectorXd &
+        [[nodiscard]] Vector &
         GetTrainOutputSamplesVarianceBuffer() {
             return m_vec_var_h_;
         }
 
-        [[nodiscard]] Eigen::MatrixXd
+        [[nodiscard]] Matrix
         GetKtrain() const {
             return m_mat_k_train_;
         }
 
-        [[nodiscard]] Eigen::MatrixXd
+        [[nodiscard]] Matrix
         GetCholeskyDecomposition() const {
             return m_mat_l_;
         }
@@ -140,7 +152,7 @@ namespace erl::gaussian_process {
         Train(long num_train_samples);
 
         [[nodiscard]] virtual bool
-        Test(const Eigen::Ref<const Eigen::MatrixXd> &mat_x_test, Eigen::Ref<Eigen::VectorXd> vec_f_out, Eigen::Ref<Eigen::VectorXd> vec_var_out) const;
+        Test(const Eigen::Ref<const Matrix> &mat_x_test, Eigen::Ref<Vector> vec_f_out, Eigen::Ref<Vector> vec_var_out) const;
 
         [[nodiscard]] bool
         operator==(const VanillaGaussianProcess &other) const;
@@ -169,28 +181,15 @@ namespace erl::gaussian_process {
         void
         InitKernel();
     };
+
+    using VanillaGaussianProcess_d = VanillaGaussianProcess<double>;
+    using VanillaGaussianProcess_f = VanillaGaussianProcess<float>;
 }  // namespace erl::gaussian_process
 
-template<>
-struct YAML::convert<erl::gaussian_process::VanillaGaussianProcess::Setting> {
-    static Node
-    encode(const erl::gaussian_process::VanillaGaussianProcess::Setting &setting) {
-        Node node;
-        node["kernel_type"] = setting.kernel_type;
-        node["kernel_setting_type"] = setting.kernel_setting_type;
-        node["kernel"] = setting.kernel->AsYamlNode();
-        node["max_num_samples"] = setting.max_num_samples;
-        return node;
-    }
+#include "vanilla_gp.tpp"
 
-    static bool
-    decode(const Node &node, erl::gaussian_process::VanillaGaussianProcess::Setting &setting) {
-        if (!node.IsMap()) { return false; }
-        setting.kernel_type = node["kernel_type"].as<std::string>();
-        setting.kernel_setting_type = node["kernel_setting_type"].as<std::string>();
-        setting.kernel = erl::common::YamlableBase::Create<erl::covariance::Covariance::Setting>(setting.kernel_setting_type);
-        if (!setting.kernel->FromYamlNode(node["kernel"])) { return false; }
-        setting.max_num_samples = node["max_num_samples"].as<long>();
-        return true;
-    }
-};  // namespace YAML
+template<>
+struct YAML::convert<erl::gaussian_process::VanillaGaussianProcess_d::Setting> : erl::gaussian_process::VanillaGaussianProcess_d::Setting::YamlConvertImpl {};
+
+template<>
+struct YAML::convert<erl::gaussian_process::VanillaGaussianProcess_f::Setting> : erl::gaussian_process::VanillaGaussianProcess_f::Setting::YamlConvertImpl {};

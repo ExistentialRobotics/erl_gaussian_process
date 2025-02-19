@@ -15,10 +15,10 @@ constexpr double kKernelScale = 0.5;
 constexpr double kNoiseVar = 0.01;
 
 TEST(ERL_GAUSSIAN_PROCESS, VanillaGaussianProcess) {
-    auto setting = std::make_shared<VanillaGaussianProcess::Setting>();
+    auto setting = std::make_shared<VanillaGaussianProcess_d::Setting>();
     setting->kernel->alpha = kKernelAlpha;
     setting->kernel->scale = kKernelScale;
-    VanillaGaussianProcess vanilla_gp(setting);
+    VanillaGaussianProcess_d vanilla_gp(setting);
     GPou gp_ou;
 
     int d = 2, n = 10, m = 10;
@@ -33,12 +33,12 @@ TEST(ERL_GAUSSIAN_PROCESS, VanillaGaussianProcess) {
         vanilla_gp.GetTrainInputSamplesBuffer() = mat_x_train;
         vanilla_gp.GetTrainOutputSamplesBuffer() = y;
         vanilla_gp.GetTrainOutputSamplesVarianceBuffer().setConstant(kNoiseVar);
-        vanilla_gp.Train(n);
+        ASSERT_TRUE(vanilla_gp.Train(n));
     });
     ReportTime<std::chrono::microseconds>("gt", 10, false, [&]() -> void { gp_ou.Train(mat_x_train, y); });
 
     std::cout << "test:" << std::endl;
-    ReportTime<std::chrono::microseconds>("ans", 10, false, [&]() -> void { vanilla_gp.Test(mat_x_test, ans_f, ans_var); });
+    ReportTime<std::chrono::microseconds>("ans", 10, false, [&]() -> void { ASSERT_TRUE(vanilla_gp.Test(mat_x_test, ans_f, ans_var)); });
     ReportTime<std::chrono::microseconds>("gt", 10, false, [&]() -> void { gp_ou.Test(mat_x_test, gt_f, gt_var); });
 
     EXPECT_TRUE(ans_f.isApprox(gt_f, 1e-10));

@@ -19,11 +19,10 @@
  */
 
 #include "obs_gp.h"
-#include "cov_fnc.h"
-#include <Eigen/Cholesky>
-#include <thread>
 
-using namespace Eigen;
+#include "cov_fnc.h"
+
+#include <Eigen/Cholesky>
 
 ///////////////////////////////////////////////////////////
 // GPou
@@ -31,8 +30,8 @@ using namespace Eigen;
 
 void
 GPou::Train(const EMatrixX &xt, const EVectorX &f) {
-    //    int dim = xt.rows();
-    int n = (int)xt.cols();
+    // int dim = xt.rows();
+    int n = static_cast<int>(xt.cols());
 
     if (n > 0) {
         m_x_ = xt;
@@ -40,21 +39,20 @@ GPou::Train(const EMatrixX &xt, const EVectorX &f) {
         // GPIS paper: eq(10)
         m_l_ = k.llt().matrixL();
         m_alpha_ = f;
-        m_l_.template triangularView<Lower>().solveInPlace(m_alpha_);
-        m_l_.transpose().template triangularView<Upper>().solveInPlace(m_alpha_);
+        m_l_.triangularView<Eigen::Lower>().solveInPlace(m_alpha_);
+        m_l_.transpose().triangularView<Eigen::Upper>().solveInPlace(m_alpha_);
 
         m_trained_ = true;
     }
 }
 
 void
-GPou::Test(const EMatrixX &xt, EVectorX &f, EVectorX &var)
-{
+GPou::Test(const EMatrixX &xt, EVectorX &f, EVectorX &var) {
 
     EMatrixX k = OrnsteinUhlenbeck(m_x_, xt, m_scale_);
     f = k.transpose() * m_alpha_;
     // calculate m_l_.inv() * k
-    m_l_.template triangularView<Lower>().solveInPlace(k);
+    m_l_.triangularView<Eigen::Lower>().solveInPlace(k);
     // calculate k.transpose() * m_l_.inv().transpose() * m_l_.inv() * k
     k = k.array().pow(2);
     EVectorX v = k.colwise().sum();
@@ -100,8 +98,8 @@ ObsGp1D::Train(double xt[], double f_out[], int n[]) {
 
                 m_range_.push_back(xt[i2 - m_param_.overlap / 2]);
 
-                Map<ERowVectorX> x(xt + i1, m_param_.group_size + m_param_.overlap);
-                Map<EVectorX> f(f_out + i1, m_param_.group_size + m_param_.overlap);
+                Eigen::Map<ERowVectorX> x(xt + i1, m_param_.group_size + m_param_.overlap);
+                Eigen::Map<EVectorX> f(f_out + i1, m_param_.group_size + m_param_.overlap);
                 // Train each gp group
                 std::shared_ptr<GPou> g(new GPou());
                 g->Train(x, f);
@@ -114,8 +112,8 @@ ObsGp1D::Train(double xt[], double f_out[], int n[]) {
                 int i2 = i1 + (m_n_samples_ - i1 + m_param_.overlap) / 2;
                 m_range_.push_back(xt[i2 - m_param_.overlap / 2]);
 
-                Map<ERowVectorX> x(xt + i1, i2 - i1);
-                Map<EVectorX> f(f_out + i1, i2 - i1);
+                Eigen::Map<ERowVectorX> x(xt + i1, i2 - i1);
+                Eigen::Map<EVectorX> f(f_out + i1, i2 - i1);
                 std::shared_ptr<GPou> g(new GPou());
                 g->Train(x, f);
                 m_gps_.push_back(std::move(g));
@@ -125,8 +123,8 @@ ObsGp1D::Train(double xt[], double f_out[], int n[]) {
                 i1 = i1 + (m_n_samples_ - i1 - m_param_.overlap) / 2;
                 i2 = m_n_samples_ - 1;
                 m_range_.push_back(xt[i2]);
-                new (&x) Map<ERowVectorX>(xt + i1, i2 - i1 + 1);
-                new (&f) Map<EVectorX>(f_out + i1, i2 - i1 + 1);
+                new (&x) Eigen::Map<ERowVectorX>(xt + i1, i2 - i1 + 1);
+                new (&f) Eigen::Map<EVectorX>(f_out + i1, i2 - i1 + 1);
 
                 std::shared_ptr<GPou> gp_last(new GPou());
                 gp_last->Train(x, f);
@@ -157,7 +155,7 @@ ObsGp1D::Test(const EMatrixX &xt, EVectorX &val, EVectorX &var) {
             // find the corresponding group
             if (xt(0, k) >= lim_l && xt(0, k) <= lim_r) {  // in-between
                 int j = 0;
-                for (auto it = (m_range_.begin() + 1); it != m_range_.end(); it++, j++) {
+                for (auto it = (m_range_.begin() + 1); it != m_range_.end(); ++it, j++) {
                     if (xt(0, k) >= *(it - 1) && xt(0, k) <= *it) {
                         // and test
                         if (m_gps_[j]->IsTrained()) {
