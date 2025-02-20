@@ -1,5 +1,6 @@
 #pragma once
 
+#include "init.hpp"
 #include "mapping.hpp"
 #include "vanilla_gp.hpp"
 

@@ -1,5 +1,7 @@
 #pragma once
 
+#include "init.hpp"
+
 #include "erl_common/yaml.hpp"
 
 #include <functional>

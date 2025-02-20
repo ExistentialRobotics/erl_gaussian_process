@@ -1,5 +1,7 @@
 #pragma once
 
+#include "init.hpp"
+
 #include "erl_covariance/covariance.hpp"
 #include "erl_covariance/reduced_rank_covariance.hpp"
 
