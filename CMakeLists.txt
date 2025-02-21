@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.24)
+cmake_minimum_required(VERSION 3.16)
 
 project(erl_gaussian_process
         LANGUAGES CXX
@@ -21,6 +21,15 @@ erl_catkin_package(
         CATKIN_DEPENDS ${${PROJECT_NAME}_CATKIN_DEPENDS}
         DEPENDS ${${PROJECT_NAME}_DEPENDS})
 
+if (NOT TARGET Open3D::Open3D)
+        message(STATUS "Adding Open3D in erl_gaussian_process")
+        erl_find_package(
+                PACKAGE Open3D
+                REQUIRED
+                COMMANDS GENERAL "visit http://www.open3d.org/"
+                COMMANDS ARCH_LINUX "try `paru -S open3d`"
+        )
+endif()
 # ######################################################################################################################
 # BUILD
 # ######################################################################################################################
