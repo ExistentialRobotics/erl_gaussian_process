@@ -70,15 +70,15 @@ namespace erl::gaussian_process {
     }
 
     template<typename Dtype>
-    typename VanillaGaussianProcess<Dtype>::Vector
+    typename VanillaGaussianProcess<Dtype>::VectorX
     VanillaGaussianProcess<Dtype>::GetKernelCoordOrigin() const {
         if (m_reduced_rank_kernel_) { return std::reinterpret_pointer_cast<ReducedRankCovariance>(m_kernel_)->GetCoordOrigin(); }
-        return Vector::Zero(m_x_dim_);
+        return VectorX::Zero(m_x_dim_);
     }
 
     template<typename Dtype>
     void
-    VanillaGaussianProcess<Dtype>::SetKernelCoordOrigin(const Vector &coord_origin) const {
+    VanillaGaussianProcess<Dtype>::SetKernelCoordOrigin(const VectorX &coord_origin) const {
         if (m_reduced_rank_kernel_) { std::reinterpret_pointer_cast<ReducedRankCovariance>(m_kernel_)->SetCoordOrigin(coord_origin); }
     }
 
@@ -151,7 +151,7 @@ namespace erl::gaussian_process {
 
     template<typename Dtype>
     bool
-    VanillaGaussianProcess<Dtype>::Test(const Eigen::Ref<const Matrix> &mat_x_test, Eigen::Ref<Vector> vec_f_out, Eigen::Ref<Vector> vec_var_out) const {
+    VanillaGaussianProcess<Dtype>::Test(const Eigen::Ref<const MatrixX> &mat_x_test, Eigen::Ref<VectorX> vec_f_out, Eigen::Ref<VectorX> vec_var_out) const {
 
         if (!m_trained_) { return false; }
 
@@ -160,7 +160,7 @@ namespace erl::gaussian_process {
         ERL_DEBUG_ASSERT(mat_x_test.rows() == m_x_dim_, "mat_x_test.rows() = {}, it should be {}.", mat_x_test.rows(), m_x_dim_);
         ERL_DEBUG_ASSERT(vec_f_out.size() >= n, "vec_f_out size = {}, it should be >= {}.", vec_f_out.size(), n);
         const auto [ktest_rows, ktest_cols] = m_kernel_->GetMinimumKtestSize(m_num_train_samples_, 0, m_x_dim_, n, false);
-        Matrix ktest(ktest_rows, ktest_cols);
+        MatrixX ktest(ktest_rows, ktest_cols);
         const auto [output_rows, output_cols] = m_kernel_->ComputeKtest(m_mat_x_train_, m_num_train_samples_, mat_x_test, n, ktest);
         ERL_DEBUG_ASSERT(
             (output_rows == ktest_rows && output_cols == ktest_cols),

@@ -4,15 +4,16 @@
 using namespace erl::common;
 using namespace erl::gaussian_process;
 
+template<typename Dtype>
 void
-BindRangeSensorGaussianProcess3D(const py::module &m) {
+BindRangeSensorGaussianProcess3DImpl(const py::module &m, const char *name) {
 
-    using T = RangeSensorGaussianProcess3D;
+    using T = RangeSensorGaussianProcess3D<Dtype>;
 
-    auto py_range_sensor_gp_3d = py::class_<T, std::shared_ptr<T>>(m, "RangeSensorGaussianProcess3D");
+    auto py_range_sensor_gp_3d = py::class_<T, std::shared_ptr<T>>(m, name);
 
     // Setting
-    py::class_<T::Setting, YamlableBase, std::shared_ptr<T::Setting>>(py_range_sensor_gp_3d, "Setting")
+    py::class_<typename T::Setting, YamlableBase, std::shared_ptr<typename T::Setting>>(py_range_sensor_gp_3d, "Setting")
         .def(py::init<>())
         .def_readwrite("row_group_size", &T::Setting::row_group_size)
         .def_readwrite("row_overlap_size", &T::Setting::row_overlap_size)
@@ -29,7 +30,7 @@ BindRangeSensorGaussianProcess3D(const py::module &m) {
         .def_readwrite("gp", &T::Setting::gp)
         .def_readwrite("mapping", &T::Setting::mapping);
 
-    py_range_sensor_gp_3d.def(py::init<std::shared_ptr<T::Setting>>(), py::arg("setting").none(false))
+    py_range_sensor_gp_3d.def(py::init<std::shared_ptr<typename T::Setting>>(), py::arg("setting").none(false))
         .def_property_readonly("is_trained", &T::IsTrained)
         .def_property_readonly("setting", &T::GetSetting)
         .def_property_readonly(
@@ -58,12 +59,18 @@ BindRangeSensorGaussianProcess3D(const py::module &m) {
         .def("train", &T::Train, py::arg("rotation"), py::arg("translation"), py::arg("ranges"))
         .def(
             "test",
-            [](const T &gp, const Eigen::Ref<const Eigen::Matrix3Xd> &directions, const bool directions_are_local, const bool un_map) {
-                Eigen::VectorXd fs(directions.cols()), vars(directions.cols());
+            [](const T &gp, const Eigen::Ref<const Eigen::Matrix3X<Dtype>> &directions, const bool directions_are_local, const bool un_map) {
+                Eigen::VectorX<Dtype> fs(directions.cols()), vars(directions.cols());
                 bool success = gp.Test(directions, directions_are_local, fs, vars, un_map);
                 return py::make_tuple(success, fs, vars);
             },
             py::arg("directions"),
             py::arg("directions_are_local"),
             py::arg("un_map"));
+}
+
+void
+BindRangeSensorGaussianProcess3D(const py::module &m) {
+    BindRangeSensorGaussianProcess3DImpl<double>(m, "RangeSensorGaussianProcess3Dd");
+    BindRangeSensorGaussianProcess3DImpl<float>(m, "RangeSensorGaussianProcess3Df");
 }

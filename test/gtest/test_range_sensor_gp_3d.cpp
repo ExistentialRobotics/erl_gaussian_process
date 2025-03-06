@@ -19,8 +19,8 @@ using RangeSensorGaussianProcess3D =
 using Matrix3 = Eigen::Matrix3<Dtype>;
 using Vector3 = Eigen::Vector3<Dtype>;
 using Matrix3X = Eigen::Matrix<Dtype, 3, Eigen::Dynamic>;
-using Matrix = Eigen::Matrix<Dtype, Eigen::Dynamic, Eigen::Dynamic>;
-using Vector = Eigen::Matrix<Dtype, Eigen::Dynamic, 1>;
+using MatrixX = Eigen::MatrixX<Dtype>;
+using VectorX = Eigen::MatrixX<Dtype>;
 using LidarFrame = erl::geometry::LidarFrame3D<Dtype>;
 using Lidar = erl::geometry::Lidar3D<Dtype>;
 using DepthFrame = erl::geometry::DepthFrame3D<Dtype>;
@@ -70,7 +70,7 @@ TEST(RangeSensorGp3D, Lidar) {
     const Vector3 translation = mesh->GetCenter().cast<Dtype>();
 
     // generate training data
-    Matrix ranges;
+    MatrixX ranges;
     {
         erl::common::BlockTimer<std::chrono::milliseconds> timer("lidar.Scan");
         (void) timer;
@@ -86,8 +86,8 @@ TEST(RangeSensorGp3D, Lidar) {
 
     // test
     constexpr long n_test = 10000;
-    const Vector test_azimuths = (Vector::Random(n_test).array() * 2.0 - 1.0) * M_PI;
-    const Vector test_elevations = (Vector::Random(n_test).array() * 2.0 - 1.0) * M_PI / 2;
+    const VectorX test_azimuths = (VectorX::Random(n_test).array() * 2.0 - 1.0) * M_PI;
+    const VectorX test_elevations = (VectorX::Random(n_test).array() * 2.0 - 1.0) * M_PI / 2;
     Matrix3X directions_world(3, test_azimuths.size());
     open3d::t::geometry::RaycastingScene scene;
     scene.AddTriangles(open3d::t::geometry::TriangleMesh::FromLegacy(*mesh));
@@ -102,9 +102,9 @@ TEST(RangeSensorGp3D, Lidar) {
         rays[i][5] = directions_world(2, i);
     }
     auto result = scene.CastRays(rays);
-    const Vector vec_ranges_gt = Eigen::Map<Eigen::VectorXf>(result["t_hit"].GetDataPtr<float>(), test_azimuths.size()).cast<Dtype>();
-    Vector vec_ranges(test_azimuths.size());
-    Vector vec_ranges_var(test_azimuths.size());
+    const VectorX vec_ranges_gt = Eigen::Map<Eigen::VectorXf>(result["t_hit"].GetDataPtr<float>(), test_azimuths.size()).cast<Dtype>();
+    VectorX vec_ranges(test_azimuths.size());
+    VectorX vec_ranges_var(test_azimuths.size());
     {
         erl::common::BlockTimer<std::chrono::milliseconds> timer("gp.Test");
         (void) timer;
@@ -114,7 +114,7 @@ TEST(RangeSensorGp3D, Lidar) {
     // cast invalid test queries and compute mse
     double mse = 0;
     std::vector<long> invalid_indices;
-    Vector vec_ranges_invalid;
+    VectorX vec_ranges_invalid;
     if (long n_invalid = (vec_ranges_var.array() > 100).count(); n_invalid > 0) {
         open3d::core::Tensor rays_invalid({n_invalid, 6}, open3d::core::Dtype::Float32);
         auto *rays_invalid_ptr = rays_invalid.GetDataPtr<float>();
@@ -219,7 +219,7 @@ TEST(RangeSensorGp3D, Depth) {
     Vector3 cam_translation = mesh->GetCenter().cast<Dtype>();
 
     // generate training data
-    Matrix real_depths;
+    MatrixX real_depths;
     Matrix3 optical_rotation;
     Vector3 optical_translation;
     {
@@ -248,8 +248,8 @@ TEST(RangeSensorGp3D, Depth) {
 
     // test
     constexpr long n_test = 10000;
-    const Vector test_azimuths = (Vector::Random(n_test).array() * 2.0 - 1.0) * M_PI;
-    const Vector test_elevations = (Vector::Random(n_test).array() * 2.0 - 1.0) * M_PI_2;
+    const VectorX test_azimuths = (VectorX::Random(n_test).array() * 2.0 - 1.0) * M_PI;
+    const VectorX test_elevations = (VectorX::Random(n_test).array() * 2.0 - 1.0) * M_PI_2;
     Matrix3X directions_world(3, test_azimuths.size());
     open3d::t::geometry::RaycastingScene scene;
     scene.AddTriangles(open3d::t::geometry::TriangleMesh::FromLegacy(*mesh));
@@ -264,9 +264,9 @@ TEST(RangeSensorGp3D, Depth) {
         rays[i][5] = directions_world(2, i);
     }
     auto result = scene.CastRays(rays);
-    const Vector vec_ranges_gt = Eigen::Map<Eigen::VectorXf>(result["t_hit"].GetDataPtr<float>(), test_azimuths.size()).cast<Dtype>();
-    Vector vec_ranges(test_azimuths.size());
-    Vector vec_ranges_var(test_azimuths.size());
+    const VectorX vec_ranges_gt = Eigen::Map<Eigen::VectorXf>(result["t_hit"].GetDataPtr<float>(), test_azimuths.size()).cast<Dtype>();
+    VectorX vec_ranges(test_azimuths.size());
+    VectorX vec_ranges_var(test_azimuths.size());
     {
         erl::common::BlockTimer<std::chrono::milliseconds> timer("gp.Test");
         (void) timer;
@@ -276,7 +276,7 @@ TEST(RangeSensorGp3D, Depth) {
     // cast invalid test queries
     double mse = 0;
     std::vector<long> invalid_indices;
-    Vector vec_ranges_invalid;
+    VectorX vec_ranges_invalid;
     if (long n_invalid = (vec_ranges_var.array() > 100).count(); n_invalid > 0) {
         open3d::core::Tensor rays_invalid({n_invalid, 6}, open3d::core::Dtype::Float32);
         auto *rays_invalid_ptr = rays_invalid.GetDataPtr<float>();

@@ -18,8 +18,9 @@ namespace erl::gaussian_process {
         using Scalar = Eigen::Matrix<Dtype, 1, 1>;
         using Matrix2 = Eigen::Matrix2<Dtype>;
         using Vector2 = Eigen::Vector2<Dtype>;
-        using Matrix = Eigen::MatrixX<Dtype>;
-        using Vector = Eigen::VectorX<Dtype>;
+        using MatrixX = Eigen::MatrixX<Dtype>;
+        using VectorX = Eigen::VectorX<Dtype>;
+        using LidarFrame2D = geometry::LidarFrame2D<Dtype>;
 
         struct Setting : common::Yamlable<Setting> {
             long group_size = 26;             // number of points in each group, including the overlap ones.
@@ -29,7 +30,7 @@ namespace erl::gaussian_process {
             Dtype sensor_range_var = 0.01;    // variance of the sensor range measurement.
             Dtype max_valid_range_var = 0.1;  // if the distance variance is greater than this threshold, this prediction is invalid and should be discarded.
             Dtype occ_test_temperature = 30;  // OCC Test is a tanh function, this controls the slope around 0.
-            std::shared_ptr<geometry::LidarFrame2D::Setting> lidar_frame = std::make_shared<geometry::LidarFrame2D::Setting>();  // parameters of lidar frame
+            std::shared_ptr<typename LidarFrame2D::Setting> lidar_frame = std::make_shared<typename LidarFrame2D::Setting>();  // parameters of lidar frame
             std::shared_ptr<typename Gp::Setting> gp = std::make_shared<typename Gp::Setting>();  // parameters of local GP regression
             std::shared_ptr<typename MappingDtype::Setting> mapping = []() -> std::shared_ptr<typename MappingDtype::Setting> {
                 auto mapping_setting = std::make_shared<typename MappingDtype::Setting>();
@@ -49,16 +50,16 @@ namespace erl::gaussian_process {
 
     private:
         inline static const volatile bool kSettingRegistered = common::YamlableBase::Register<Setting>();
-        inline static const std::string kFileHeader = "# erl::gaussian_process::LidarGaussianProcess2D<Dtype>";
+        inline static const std::string kFileHeader = fmt::format("# {}", type_name<LidarGaussianProcess2D>());
 
     protected:
         bool m_trained_ = false;
         std::shared_ptr<Setting> m_setting_ = nullptr;
         std::vector<std::shared_ptr<Gp>> m_gps_;
         std::vector<std::tuple<long, long, Dtype, Dtype>> m_angle_partitions_;
-        std::shared_ptr<geometry::LidarFrame2D> m_lidar_frame_ = nullptr;
+        std::shared_ptr<LidarFrame2D> m_lidar_frame_ = nullptr;
         std::shared_ptr<MappingDtype> m_mapping_ = nullptr;
-        Vector m_mapped_distances_ = {};
+        VectorX m_mapped_distances_ = {};
 
     public:
         explicit LidarGaussianProcess2D(std::shared_ptr<Setting> setting);
@@ -83,7 +84,7 @@ namespace erl::gaussian_process {
             return m_angle_partitions_;
         }
 
-        [[nodiscard]] std::shared_ptr<const geometry::LidarFrame2D>
+        [[nodiscard]] std::shared_ptr<const LidarFrame2D>
         GetLidarFrame() const {
             return m_lidar_frame_;
         }
@@ -112,13 +113,13 @@ namespace erl::gaussian_process {
         Reset();
 
         [[nodiscard]] bool
-        StoreData(const Matrix2 &rotation, const Vector2 &translation, Vector ranges);
+        StoreData(const Matrix2 &rotation, const Vector2 &translation, VectorX ranges);
 
         [[nodiscard]] bool
-        Train(const Matrix2 &rotation, const Vector2 &translation, Vector ranges, bool repartition_on_hit_rays);
+        Train(const Matrix2 &rotation, const Vector2 &translation, VectorX ranges, bool repartition_on_hit_rays);
 
         [[nodiscard]] bool
-        Test(const Eigen::Ref<const Vector> &angles, bool angles_are_local, Eigen::Ref<Vector> vec_ranges, Eigen::Ref<Vector> vec_ranges_var, bool un_map)
+        Test(const Eigen::Ref<const VectorX> &angles, bool angles_are_local, Eigen::Ref<VectorX> vec_ranges, Eigen::Ref<VectorX> vec_ranges_var, bool un_map)
             const;
 
         [[nodiscard]] bool
@@ -152,12 +153,12 @@ namespace erl::gaussian_process {
 
 #include "lidar_gp_2d.tpp"
 
-    using LidarGaussianProcess2D_d = LidarGaussianProcess2D<double>;
-    using LidarGaussianProcess2D_f = LidarGaussianProcess2D<float>;
+    using LidarGaussianProcess2Dd = LidarGaussianProcess2D<double>;
+    using LidarGaussianProcess2Df = LidarGaussianProcess2D<float>;
 }  // namespace erl::gaussian_process
 
 template<>
-struct YAML::convert<erl::gaussian_process::LidarGaussianProcess2D_d::Setting> : erl::gaussian_process::LidarGaussianProcess2D_d::Setting::YamlConvertImpl {};
+struct YAML::convert<erl::gaussian_process::LidarGaussianProcess2Dd::Setting> : erl::gaussian_process::LidarGaussianProcess2Dd::Setting::YamlConvertImpl {};
 
 template<>
-struct YAML::convert<erl::gaussian_process::LidarGaussianProcess2D_f::Setting> : erl::gaussian_process::LidarGaussianProcess2D_f::Setting::YamlConvertImpl {};
+struct YAML::convert<erl::gaussian_process::LidarGaussianProcess2Df::Setting> : erl::gaussian_process::LidarGaussianProcess2Df::Setting::YamlConvertImpl {};

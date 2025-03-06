@@ -84,15 +84,15 @@ NoisyInputGaussianProcess<Dtype>::operator=(const NoisyInputGaussianProcess &oth
 }
 
 template<typename Dtype>
-typename NoisyInputGaussianProcess<Dtype>::Vector
+typename NoisyInputGaussianProcess<Dtype>::VectorX
 NoisyInputGaussianProcess<Dtype>::GetKernelCoordOrigin() const {
     if (m_reduced_rank_kernel_) { return std::reinterpret_pointer_cast<ReducedRankCovariance>(m_kernel_)->GetCoordOrigin(); }
-    return Vector::Zero(m_x_dim_);
+    return VectorX::Zero(m_x_dim_);
 }
 
 template<typename Dtype>
 void
-NoisyInputGaussianProcess<Dtype>::SetKernelCoordOrigin(const Vector &coord_origin) const {
+NoisyInputGaussianProcess<Dtype>::SetKernelCoordOrigin(const VectorX &coord_origin) const {
     if (m_reduced_rank_kernel_) { std::reinterpret_pointer_cast<ReducedRankCovariance>(m_kernel_)->SetCoordOrigin(coord_origin); }
 }
 
@@ -205,10 +205,10 @@ NoisyInputGaussianProcess<Dtype>::Train(const long num_train_samples) {
 template<typename Dtype>
 bool
 NoisyInputGaussianProcess<Dtype>::Test(
-    const Eigen::Ref<const Matrix> &mat_x_test,
-    Eigen::Ref<Matrix> mat_f_out,
-    Eigen::Ref<Matrix> mat_var_out,
-    Eigen::Ref<Matrix> mat_cov_out) const {
+    const Eigen::Ref<const MatrixX> &mat_x_test,
+    Eigen::Ref<MatrixX> mat_f_out,
+    Eigen::Ref<MatrixX> mat_var_out,
+    Eigen::Ref<MatrixX> mat_cov_out) const {
 
     if (!m_trained_) {
         ERL_WARN("The model has not been trained.");
@@ -224,7 +224,7 @@ NoisyInputGaussianProcess<Dtype>::Test(
     ERL_ASSERTM(mat_f_out.cols() >= n, "mat_f_out.cols() = {}, not enough for {} test queries.", mat_f_out.cols(), n);
 
     const auto [ktest_rows, ktest_cols] = m_kernel_->GetMinimumKtestSize(m_num_train_samples_, m_num_train_samples_with_grad_, dim, n, true);
-    Matrix ktest(ktest_rows, ktest_cols);  // (dim of train samples, dim of test queries)
+    MatrixX ktest(ktest_rows, ktest_cols);  // (dim of train samples, dim of test queries)
     const auto [output_rows, output_cols] =
         m_kernel_->ComputeKtestWithGradient(m_mat_x_train_, m_num_train_samples_, m_vec_grad_flag_, mat_x_test, n, true, ktest);
     (void) output_rows;

@@ -21,16 +21,16 @@ namespace erl::gaussian_process {
         if (!covariance::Init()) { return false; }
         if (!geometry::Init()) { return false; }
 
-        REGISTER(NoisyInputGaussianProcess_d::Setting);
-        REGISTER(NoisyInputGaussianProcess_f::Setting);
+        REGISTER(NoisyInputGaussianProcessD::Setting);
+        REGISTER(NoisyInputGaussianProcessF::Setting);
         REGISTER(RangeSensorGaussianProcess3Dd::Setting);
         REGISTER(RangeSensorGaussianProcess3Df::Setting);
-        REGISTER(VanillaGaussianProcess_d::Setting);
-        REGISTER(VanillaGaussianProcess_f::Setting);
-        REGISTER(LidarGaussianProcess2D_d::Setting);
-        REGISTER(LidarGaussianProcess2D_f::Setting);
-        REGISTER(Mapping_d::Setting);
-        REGISTER(Mapping_f::Setting);
+        REGISTER(VanillaGaussianProcessD::Setting);
+        REGISTER(VanillaGaussianProcessF::Setting);
+        REGISTER(LidarGaussianProcess2Dd::Setting);
+        REGISTER(LidarGaussianProcess2Df::Setting);
+        REGISTER(MappingD::Setting);
+        REGISTER(MappingF::Setting);
 
         ERL_INFO("erl_gaussian_process initialized");
         initialized = true;

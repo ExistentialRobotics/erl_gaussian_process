@@ -28,7 +28,7 @@ LidarGaussianProcess2D<Dtype>::Setting::YamlConvertImpl::decode(const YAML::Node
     setting.sensor_range_var = node["sensor_range_var"].as<Dtype>();
     setting.max_valid_range_var = node["max_valid_range_var"].as<Dtype>();
     setting.occ_test_temperature = node["occ_test_temperature"].as<Dtype>();
-    setting.lidar_frame = node["lidar_frame"].as<std::shared_ptr<geometry::LidarFrame2D::Setting>>();
+    setting.lidar_frame = node["lidar_frame"].as<std::shared_ptr<typename LidarFrame2D::Setting>>();
     setting.gp = node["gp"].as<std::shared_ptr<typename Gp::Setting>>();
     setting.mapping = node["mapping"].as<std::shared_ptr<typename MappingDtype::Setting>>();
     return true;
@@ -38,9 +38,9 @@ template<typename Dtype>
 LidarGaussianProcess2D<Dtype>::LidarGaussianProcess2D(std::shared_ptr<Setting> setting)
     : m_setting_(std::move(setting)),
       m_mapping_(MappingDtype::Create(m_setting_->mapping)) {
-    m_lidar_frame_ = std::make_shared<geometry::LidarFrame2D>(m_setting_->lidar_frame);
+    m_lidar_frame_ = std::make_shared<LidarFrame2D>(m_setting_->lidar_frame);
 
-    const Vector &angles = m_lidar_frame_->GetAnglesInFrame();
+    const VectorX &angles = m_lidar_frame_->GetAnglesInFrame();
     const long n = angles.rows();
     const long gs = m_setting_->group_size;
     const long step = m_setting_->group_size - m_setting_->overlap_size;
@@ -80,7 +80,7 @@ LidarGaussianProcess2D<Dtype>::Reset() {
 
 template<typename Dtype>
 bool
-LidarGaussianProcess2D<Dtype>::StoreData(const Matrix2 &rotation, const Vector2 &translation, Vector ranges) {
+LidarGaussianProcess2D<Dtype>::StoreData(const Matrix2 &rotation, const Vector2 &translation, VectorX ranges) {
     m_lidar_frame_->UpdateRanges(rotation, translation, std::move(ranges), false);
     m_mapped_distances_ = m_lidar_frame_->GetRanges().unaryExpr(m_mapping_->map);
     return m_lidar_frame_->IsValid();
@@ -88,7 +88,7 @@ LidarGaussianProcess2D<Dtype>::StoreData(const Matrix2 &rotation, const Vector2 
 
 template<typename Dtype>
 bool
-LidarGaussianProcess2D<Dtype>::Train(const Matrix2 &rotation, const Vector2 &translation, Vector ranges, const bool repartition_on_hit_rays) {
+LidarGaussianProcess2D<Dtype>::Train(const Matrix2 &rotation, const Vector2 &translation, VectorX ranges, const bool repartition_on_hit_rays) {
 
     Reset();
 
@@ -109,7 +109,7 @@ LidarGaussianProcess2D<Dtype>::Train(const Matrix2 &rotation, const Vector2 &tra
         m_angle_partitions_.reserve(num_groups);
 
         const std::vector<long> &hit_ray_indices = m_lidar_frame_->GetHitRayIndices();
-        const Vector &angles_frame = m_lidar_frame_->GetAnglesInFrame();
+        const VectorX &angles_frame = m_lidar_frame_->GetAnglesInFrame();
         for (int i = 0; i < num_groups - 2; ++i) {
             long index_left = i * s;                                 // lower bound, included
             long index_right = index_left + m_setting_->group_size;  // upper bound, not included
@@ -141,11 +141,11 @@ LidarGaussianProcess2D<Dtype>::Train(const Matrix2 &rotation, const Vector2 &tra
         if (gp == nullptr) { gp = std::make_shared<Gp>(m_setting_->gp); }
         gp->Reset(m_setting_->gp->max_num_samples, 1);
         long cnt = 0;
-        Matrix &train_input_samples = gp->GetTrainInputSamplesBuffer();
-        Vector &train_output_samples = gp->GetTrainOutputSamplesBuffer();
-        Vector &train_output_samples_variance = gp->GetTrainOutputSamplesVarianceBuffer();
+        MatrixX &train_input_samples = gp->GetTrainInputSamplesBuffer();
+        VectorX &train_output_samples = gp->GetTrainOutputSamplesBuffer();
+        VectorX &train_output_samples_variance = gp->GetTrainOutputSamplesVarianceBuffer();
         const Eigen::VectorXb &mask_hit = m_lidar_frame_->GetHitMask();
-        const Vector &angles = m_lidar_frame_->GetAnglesInFrame();
+        const VectorX &angles = m_lidar_frame_->GetAnglesInFrame();
         for (long j = index_left; j < index_right; ++j) {
             if (!mask_hit[j]) { continue; }
             train_input_samples(0, cnt) = angles[j];
@@ -163,10 +163,10 @@ LidarGaussianProcess2D<Dtype>::Train(const Matrix2 &rotation, const Vector2 &tra
 template<typename Dtype>
 bool
 LidarGaussianProcess2D<Dtype>::Test(
-    const Eigen::Ref<const Vector> &angles,
+    const Eigen::Ref<const VectorX> &angles,
     const bool angles_are_local,
-    Eigen::Ref<Vector> vec_ranges,
-    Eigen::Ref<Vector> vec_ranges_var,
+    Eigen::Ref<VectorX> vec_ranges,
+    Eigen::Ref<VectorX> vec_ranges_var,
     const bool un_map) const {
 
     if (!m_trained_) { return false; }
@@ -414,7 +414,7 @@ LidarGaussianProcess2D<Dtype>::Read(std::istream &s) {
             }
             case 4: {  // lidar_frame
                 skip_line();
-                m_lidar_frame_ = std::make_shared<geometry::LidarFrame2D>(m_setting_->lidar_frame);
+                m_lidar_frame_ = std::make_shared<LidarFrame2D>(m_setting_->lidar_frame);
                 if (!m_lidar_frame_->Read(s)) {
                     ERL_WARN("Failed to read lidar_frame.");
                     return false;

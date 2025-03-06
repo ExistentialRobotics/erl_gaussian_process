@@ -15,10 +15,10 @@ constexpr double kKernelScale = 0.5;
 constexpr double kNoiseVar = 0.01;
 
 TEST(ERL_GAUSSIAN_PROCESS, VanillaGaussianProcess) {
-    auto setting = std::make_shared<VanillaGaussianProcess_d::Setting>();
+    auto setting = std::make_shared<VanillaGaussianProcessD::Setting>();
     setting->kernel->alpha = kKernelAlpha;
     setting->kernel->scale = kKernelScale;
-    VanillaGaussianProcess_d vanilla_gp(setting);
+    VanillaGaussianProcessD vanilla_gp(setting);
     GPou gp_ou;
 
     int d = 2, n = 10, m = 10;

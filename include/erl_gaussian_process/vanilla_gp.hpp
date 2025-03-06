@@ -17,8 +17,8 @@ namespace erl::gaussian_process {
     public:
         using Covariance = covariance::Covariance<Dtype>;
         using ReducedRankCovariance = covariance::ReducedRankCovariance<Dtype>;
-        using Matrix = Eigen::MatrixX<Dtype>;
-        using Vector = Eigen::VectorX<Dtype>;
+        using MatrixX = Eigen::MatrixX<Dtype>;
+        using VectorX = Eigen::VectorX<Dtype>;
 
         // structure for holding the parameters
         struct Setting : common::Yamlable<Setting> {
@@ -57,11 +57,11 @@ namespace erl::gaussian_process {
         std::shared_ptr<Setting> m_setting_ = nullptr;    // setting
         std::shared_ptr<Covariance> m_kernel_ = nullptr;  // kernel
         bool m_reduced_rank_kernel_ = false;              // whether the kernel is rank reduced or not
-        Matrix m_mat_k_train_ = {};                       // Ktrain, avoid reallocation
-        Matrix m_mat_x_train_ = {};                       // x1, ..., xn
-        Matrix m_mat_l_ = {};                             // lower triangular matrix of the Cholesky decomposition of Ktrain
-        Vector m_vec_alpha_ = {};                         // h(x1)..h(xn), dh(x1)/dx1_1 .. dh(xn)/dxn_1 .. dh(x1)/dx1_dim .. dh(xn)/dxn_dim
-        Vector m_vec_var_h_ = {};                         // variance of y1 ... yn
+        MatrixX m_mat_k_train_ = {};                      // Ktrain, avoid reallocation
+        MatrixX m_mat_x_train_ = {};                      // x1, ..., xn
+        MatrixX m_mat_l_ = {};                            // lower triangular matrix of the Cholesky decomposition of Ktrain
+        VectorX m_vec_alpha_ = {};                        // h(x1)..h(xn), dh(x1)/dx1_1 .. dh(xn)/dxn_1 .. dh(x1)/dx1_dim .. dh(xn)/dxn_dim
+        VectorX m_vec_var_h_ = {};                        // variance of y1 ... yn
 
     public:
         VanillaGaussianProcess()
@@ -100,11 +100,11 @@ namespace erl::gaussian_process {
             return m_reduced_rank_kernel_;
         }
 
-        [[nodiscard]] Vector
+        [[nodiscard]] VectorX
         GetKernelCoordOrigin() const;
 
         void
-        SetKernelCoordOrigin(const Vector &coord_origin) const;
+        SetKernelCoordOrigin(const VectorX &coord_origin) const;
 
         /**
          * @brief reset the model: update flags, kernel, and allocate memory if necessary, etc.
@@ -119,27 +119,27 @@ namespace erl::gaussian_process {
             return m_num_train_samples_;
         }
 
-        [[nodiscard]] Matrix &
+        [[nodiscard]] MatrixX &
         GetTrainInputSamplesBuffer() {
             return m_mat_x_train_;
         }
 
-        [[nodiscard]] Vector &
+        [[nodiscard]] VectorX &
         GetTrainOutputSamplesBuffer() {
             return m_vec_alpha_;
         }
 
-        [[nodiscard]] Vector &
+        [[nodiscard]] VectorX &
         GetTrainOutputSamplesVarianceBuffer() {
             return m_vec_var_h_;
         }
 
-        [[nodiscard]] Matrix
+        [[nodiscard]] MatrixX
         GetKtrain() const {
             return m_mat_k_train_;
         }
 
-        [[nodiscard]] Matrix
+        [[nodiscard]] MatrixX
         GetCholeskyDecomposition() const {
             return m_mat_l_;
         }
@@ -154,7 +154,7 @@ namespace erl::gaussian_process {
         Train(long num_train_samples);
 
         [[nodiscard]] virtual bool
-        Test(const Eigen::Ref<const Matrix> &mat_x_test, Eigen::Ref<Vector> vec_f_out, Eigen::Ref<Vector> vec_var_out) const;
+        Test(const Eigen::Ref<const MatrixX> &mat_x_test, Eigen::Ref<VectorX> vec_f_out, Eigen::Ref<VectorX> vec_var_out) const;
 
         [[nodiscard]] bool
         operator==(const VanillaGaussianProcess &other) const;
@@ -184,14 +184,14 @@ namespace erl::gaussian_process {
         InitKernel();
     };
 
-    using VanillaGaussianProcess_d = VanillaGaussianProcess<double>;
-    using VanillaGaussianProcess_f = VanillaGaussianProcess<float>;
+    using VanillaGaussianProcessD = VanillaGaussianProcess<double>;
+    using VanillaGaussianProcessF = VanillaGaussianProcess<float>;
 }  // namespace erl::gaussian_process
 
 #include "vanilla_gp.tpp"
 
 template<>
-struct YAML::convert<erl::gaussian_process::VanillaGaussianProcess_d::Setting> : erl::gaussian_process::VanillaGaussianProcess_d::Setting::YamlConvertImpl {};
+struct YAML::convert<erl::gaussian_process::VanillaGaussianProcessD::Setting> : erl::gaussian_process::VanillaGaussianProcessD::Setting::YamlConvertImpl {};
 
 template<>
-struct YAML::convert<erl::gaussian_process::VanillaGaussianProcess_f::Setting> : erl::gaussian_process::VanillaGaussianProcess_f::Setting::YamlConvertImpl {};
+struct YAML::convert<erl::gaussian_process::VanillaGaussianProcessF::Setting> : erl::gaussian_process::VanillaGaussianProcessF::Setting::YamlConvertImpl {};

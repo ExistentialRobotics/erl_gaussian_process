@@ -14,8 +14,8 @@ namespace erl::gaussian_process {
     public:
         using Covariance = covariance::Covariance<Dtype>;
         using ReducedRankCovariance = covariance::ReducedRankCovariance<Dtype>;
-        using Matrix = Eigen::MatrixX<Dtype>;
-        using Vector = Eigen::VectorX<Dtype>;
+        using MatrixX = Eigen::MatrixX<Dtype>;
+        using VectorX = Eigen::VectorX<Dtype>;
 
         struct Setting : common::Yamlable<Setting> {
             std::string kernel_type = fmt::format("erl::covariance::Matern32<2, {}>", type_name<Dtype>());
@@ -49,16 +49,16 @@ namespace erl::gaussian_process {
         std::shared_ptr<Setting> m_setting_ = nullptr;    // setting
         std::shared_ptr<Covariance> m_kernel_ = nullptr;  // kernel
         bool m_reduced_rank_kernel_ = false;              // whether the kernel is rank reduced or not
-        Matrix m_mat_x_train_ = {};                       // x1, ..., xn
-        Vector m_vec_y_train_ = {};                       // h(x1), ..., h(xn)
-        Matrix m_mat_grad_train_ = {};                    // dh(x_j)/dx_ij for index (i, j)
-        Matrix m_mat_k_train_ = {};                       // Ktrain, avoid reallocation
-        Matrix m_mat_l_ = {};                             // lower triangular matrix of the Cholesky decomposition of Ktrain
+        MatrixX m_mat_x_train_ = {};                      // x1, ..., xn
+        VectorX m_vec_y_train_ = {};                      // h(x1), ..., h(xn)
+        MatrixX m_mat_grad_train_ = {};                   // dh(x_j)/dx_ij for index (i, j)
+        MatrixX m_mat_k_train_ = {};                      // Ktrain, avoid reallocation
+        MatrixX m_mat_l_ = {};                            // lower triangular matrix of the Cholesky decomposition of Ktrain
         Eigen::VectorXl m_vec_grad_flag_ = {};            // true if the corresponding training sample has gradient
-        Vector m_vec_alpha_ = {};                         // h(x1)..h(xn), dh(x1)/dx1_1 .. dh(xn)/dxn_1 .. dh(x1)/dx1_dim .. dh(xn)/dxn_dim
-        Vector m_vec_var_x_ = {};                         // variance of x1 ... xn
-        Vector m_vec_var_h_ = {};                         // variance of h(x1)..h(xn)
-        Vector m_vec_var_grad_ = {};                      // variance of dh(x1)/dx1_1 .. dh(xn)/dxn_1 .. dh(x1)/dx1_dim .. dh(xn)/dxn_dim
+        VectorX m_vec_alpha_ = {};                        // h(x1)..h(xn), dh(x1)/dx1_1 .. dh(xn)/dxn_1 .. dh(x1)/dx1_dim .. dh(xn)/dxn_dim
+        VectorX m_vec_var_x_ = {};                        // variance of x1 ... xn
+        VectorX m_vec_var_h_ = {};                        // variance of h(x1)..h(xn)
+        VectorX m_vec_var_grad_ = {};                     // variance of dh(x1)/dx1_1 .. dh(xn)/dxn_1 .. dh(x1)/dx1_dim .. dh(xn)/dxn_dim
 
     public:
         explicit NoisyInputGaussianProcess(std::shared_ptr<Setting> setting)
@@ -98,11 +98,11 @@ namespace erl::gaussian_process {
             return m_reduced_rank_kernel_;
         }
 
-        [[nodiscard]] Vector
+        [[nodiscard]] VectorX
         GetKernelCoordOrigin() const;
 
         void
-        SetKernelCoordOrigin(const Vector &coord_origin) const;
+        SetKernelCoordOrigin(const VectorX &coord_origin) const;
 
         void
         Reset(long max_num_samples, long x_dim);
@@ -122,17 +122,17 @@ namespace erl::gaussian_process {
             return m_kernel_;
         }
 
-        [[nodiscard]] Matrix &
+        [[nodiscard]] MatrixX &
         GetTrainInputSamplesBuffer() {
             return m_mat_x_train_;
         }
 
-        [[nodiscard]] Vector &
+        [[nodiscard]] VectorX &
         GetTrainOutputSamplesBuffer() {
             return m_vec_y_train_;
         }
 
-        [[nodiscard]] Matrix &
+        [[nodiscard]] MatrixX &
         GetTrainOutputGradientSamplesBuffer() {
             return m_mat_grad_train_;
         }
@@ -142,32 +142,32 @@ namespace erl::gaussian_process {
             return m_vec_grad_flag_;
         }
 
-        [[nodiscard]] Vector &
+        [[nodiscard]] VectorX &
         GetTrainInputSamplesVarianceBuffer() {
             return m_vec_var_x_;
         }
 
-        [[nodiscard]] Vector &
+        [[nodiscard]] VectorX &
         GetTrainOutputValueSamplesVarianceBuffer() {
             return m_vec_var_h_;
         }
 
-        [[nodiscard]] Vector &
+        [[nodiscard]] VectorX &
         GetTrainOutputGradientSamplesVarianceBuffer() {
             return m_vec_var_grad_;
         }
 
-        [[nodiscard]] Matrix
+        [[nodiscard]] MatrixX
         GetKtrain() {
             return m_mat_k_train_;
         }
 
-        [[nodiscard]] Vector
+        [[nodiscard]] VectorX
         GetAlpha() {
             return m_vec_alpha_;
         }
 
-        [[nodiscard]] Matrix
+        [[nodiscard]] MatrixX
         GetCholeskyDecomposition() {
             return m_mat_l_;
         }
@@ -182,7 +182,8 @@ namespace erl::gaussian_process {
         Train(long num_train_samples);
 
         [[nodiscard]] virtual bool
-        Test(const Eigen::Ref<const Matrix> &mat_x_test, Eigen::Ref<Matrix> mat_f_out, Eigen::Ref<Matrix> mat_var_out, Eigen::Ref<Matrix> mat_cov_out) const;
+        Test(const Eigen::Ref<const MatrixX> &mat_x_test, Eigen::Ref<MatrixX> mat_f_out, Eigen::Ref<MatrixX> mat_var_out, Eigen::Ref<MatrixX> mat_cov_out)
+            const;
 
         [[nodiscard]] bool
         operator==(const NoisyInputGaussianProcess &other) const;
@@ -214,14 +215,14 @@ namespace erl::gaussian_process {
 
 #include "noisy_input_gp.tpp"
 
-    using NoisyInputGaussianProcess_d = NoisyInputGaussianProcess<double>;
-    using NoisyInputGaussianProcess_f = NoisyInputGaussianProcess<float>;
+    using NoisyInputGaussianProcessD = NoisyInputGaussianProcess<double>;
+    using NoisyInputGaussianProcessF = NoisyInputGaussianProcess<float>;
 }  // namespace erl::gaussian_process
 
 template<>
-struct YAML::convert<erl::gaussian_process::NoisyInputGaussianProcess_d::Setting>
-    : erl::gaussian_process::NoisyInputGaussianProcess_d::Setting::YamlConvertImpl {};
+struct YAML::convert<erl::gaussian_process::NoisyInputGaussianProcessD::Setting> : erl::gaussian_process::NoisyInputGaussianProcessD::Setting::YamlConvertImpl {
+};
 
 template<>
-struct YAML::convert<erl::gaussian_process::NoisyInputGaussianProcess_f::Setting>
-    : erl::gaussian_process::NoisyInputGaussianProcess_f::Setting::YamlConvertImpl {};
+struct YAML::convert<erl::gaussian_process::NoisyInputGaussianProcessF::Setting> : erl::gaussian_process::NoisyInputGaussianProcessF::Setting::YamlConvertImpl {
+};

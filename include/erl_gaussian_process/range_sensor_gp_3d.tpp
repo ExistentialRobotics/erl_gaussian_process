@@ -132,7 +132,7 @@ namespace erl::gaussian_process {
 
     template<typename Dtype>
     bool
-    RangeSensorGaussianProcess3D<Dtype>::StoreData(const Matrix3 &rotation, const Vector3 &translation, Matrix ranges) {
+    RangeSensorGaussianProcess3D<Dtype>::StoreData(const Matrix3 &rotation, const Vector3 &translation, MatrixX ranges) {
         m_range_sensor_frame_->UpdateRanges(rotation, translation, std::move(ranges), false);
         m_mapped_distances_ = m_range_sensor_frame_->GetRanges().unaryExpr(m_mapping_->map);
         return m_range_sensor_frame_->IsValid();
@@ -140,7 +140,7 @@ namespace erl::gaussian_process {
 
     template<typename Dtype>
     bool
-    RangeSensorGaussianProcess3D<Dtype>::Train(const Matrix3 &rotation, const Vector3 &translation, Matrix ranges) {
+    RangeSensorGaussianProcess3D<Dtype>::Train(const Matrix3 &rotation, const Vector3 &translation, MatrixX ranges) {
         ERL_BLOCK_TIMER();
         Reset();
 
@@ -158,9 +158,9 @@ namespace erl::gaussian_process {
                 if (gp == nullptr) { gp = std::make_shared<Gp>(m_setting_->gp); }
                 gp->Reset(m_setting_->gp->max_num_samples, 2);
                 long cnt = 0;
-                Matrix &train_input_samples = gp->GetTrainInputSamplesBuffer();
-                Vector &train_output_samples = gp->GetTrainOutputSamplesBuffer();
-                Vector &train_output_samples_variance = gp->GetTrainOutputSamplesVarianceBuffer();
+                MatrixX &train_input_samples = gp->GetTrainInputSamplesBuffer();
+                VectorX &train_output_samples = gp->GetTrainOutputSamplesBuffer();
+                VectorX &train_output_samples_variance = gp->GetTrainOutputSamplesVarianceBuffer();
                 const Eigen::MatrixXb &mask_hit = m_range_sensor_frame_->GetHitMask();
                 const Eigen::MatrixX<Vector2> &frame_coords = m_range_sensor_frame_->GetFrameCoords();
                 for (long c = col_index_left; c < col_index_right; ++c) {
@@ -187,8 +187,8 @@ namespace erl::gaussian_process {
     RangeSensorGaussianProcess3D<Dtype>::Test(
         const Eigen::Ref<const Matrix3X> &directions,
         const bool directions_are_local,
-        Eigen::Ref<Vector> vec_ranges,
-        Eigen::Ref<Vector> vec_ranges_var,
+        Eigen::Ref<VectorX> vec_ranges,
+        Eigen::Ref<VectorX> vec_ranges_var,
         const bool un_map) const {
 
         if (!m_trained_) { return false; }

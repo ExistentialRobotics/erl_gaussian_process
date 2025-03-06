@@ -68,12 +68,12 @@ namespace erl::gaussian_process {
 
 #include "mapping.tpp"
 
-    using Mapping_d = Mapping<double>;
-    using Mapping_f = Mapping<float>;
+    using MappingD = Mapping<double>;
+    using MappingF = Mapping<float>;
 }  // namespace erl::gaussian_process
 
 template<>
-struct YAML::convert<erl::gaussian_process::Mapping_d::Setting> : erl::gaussian_process::Mapping_d::Setting::YamlConvertImpl {};
+struct YAML::convert<erl::gaussian_process::MappingD::Setting> : erl::gaussian_process::MappingD::Setting::YamlConvertImpl {};
 
 template<>
-struct YAML::convert<erl::gaussian_process::Mapping_f::Setting> : erl::gaussian_process::Mapping_f::Setting::YamlConvertImpl {};
+struct YAML::convert<erl::gaussian_process::MappingF::Setting> : erl::gaussian_process::MappingF::Setting::YamlConvertImpl {};

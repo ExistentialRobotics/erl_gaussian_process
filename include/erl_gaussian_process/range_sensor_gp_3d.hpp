@@ -25,8 +25,8 @@ namespace erl::gaussian_process {
         using Matrix3X = Eigen::Matrix3X<Dtype>;
         using Vector2 = Eigen::Vector2<Dtype>;
         using Vector3 = Eigen::Vector3<Dtype>;
-        using Matrix = Eigen::MatrixX<Dtype>;
-        using Vector = Eigen::VectorX<Dtype>;
+        using MatrixX = Eigen::MatrixX<Dtype>;
+        using VectorX = Eigen::VectorX<Dtype>;
 
         struct Setting : common::Yamlable<Setting> {
             long row_group_size = 24;   // number of points in each group for each row, including the overlap ones
@@ -60,7 +60,7 @@ namespace erl::gaussian_process {
         };
 
     private:
-        inline static const std::string kFileHeader = fmt::format("# erl::gaussian_process::RangeSensorGaussianProcess3D<{}>", type_name<Dtype>());
+        inline static const std::string kFileHeader = fmt::format("# {}", type_name<RangeSensorGaussianProcess3D>());
 
     protected:
         bool m_trained_ = false;
@@ -70,7 +70,7 @@ namespace erl::gaussian_process {
         std::vector<std::tuple<long, long, Dtype, Dtype>> m_col_partitions_ = {};
         std::shared_ptr<RangeSensorFrame> m_range_sensor_frame_ = nullptr;
         std::shared_ptr<MappingDtype> m_mapping_ = nullptr;
-        Matrix m_mapped_distances_ = {};
+        MatrixX m_mapped_distances_ = {};
 
     public:
         explicit RangeSensorGaussianProcess3D(std::shared_ptr<Setting> setting);
@@ -130,7 +130,7 @@ namespace erl::gaussian_process {
             return m_range_sensor_frame_->FrameToWorldSe3(xyz_local);
         }
 
-        [[nodiscard]] Eigen::Vector2d
+        [[nodiscard]] Vector2
         ComputeFrameCoords(const Vector3 &xyz_frame) const {
             return m_range_sensor_frame_->ComputeFrameCoords(xyz_frame);
         }
@@ -139,17 +139,17 @@ namespace erl::gaussian_process {
         Reset();
 
         bool
-        StoreData(const Matrix3 &rotation, const Vector3 &translation, Matrix ranges);
+        StoreData(const Matrix3 &rotation, const Vector3 &translation, MatrixX ranges);
 
         [[nodiscard]] bool
-        Train(const Matrix3 &rotation, const Vector3 &translation, Matrix ranges);
+        Train(const Matrix3 &rotation, const Vector3 &translation, MatrixX ranges);
 
         [[nodiscard]] bool
         Test(
             const Eigen::Ref<const Matrix3X> &directions,
             bool directions_are_local,
-            Eigen::Ref<Vector> vec_ranges,
-            Eigen::Ref<Vector> vec_ranges_var,
+            Eigen::Ref<VectorX> vec_ranges,
+            Eigen::Ref<VectorX> vec_ranges_var,
             bool un_map) const;
 
         bool
