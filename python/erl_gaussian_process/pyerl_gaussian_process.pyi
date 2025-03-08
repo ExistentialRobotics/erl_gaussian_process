@@ -76,7 +76,7 @@ class LidarGaussianProcess2D:
         sensor_range_var: float
         max_valid_range_var: float
         occ_test_temperature: float
-        lidar_frame: LidarFrame2D.Setting
+        sensor_frame: LidarFrame2D.Setting
         gp: VanillaGaussianProcess.Setting
         mapping: Mapping.Setting
 
@@ -92,7 +92,7 @@ class LidarGaussianProcess2D:
     @property
     def angle_partitions(self: LidarGaussianProcess2D) -> list[Tuple[int, int, float, float]]: ...
     @property
-    def lidar_frame(self: LidarGaussianProcess2D) -> LidarFrame2D: ...
+    def sensor_frame(self: LidarGaussianProcess2D) -> LidarFrame2D: ...
     def global_to_local_so2(
         self: LidarGaussianProcess2D, dir_global: npt.NDArray[np.float64]
     ) -> npt.NDArray[np.float64]: ...
@@ -191,7 +191,7 @@ class RangeSensorGaussianProcess3D:
         sensor_range_var: float
         max_valid_range_var: float
         occ_test_temperature: float
-        range_sensor_frame_type: str
+        sensor_frame_type: str
         range_sensor_frame: RangeSensorFrame3D.Setting
         gp: VanillaGaussianProcess.Setting
         mapping: Mapping.Setting

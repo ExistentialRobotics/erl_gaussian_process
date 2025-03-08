@@ -25,8 +25,8 @@ BindRangeSensorGaussianProcess3DImpl(const py::module &m, const char *name) {
         .def_readwrite("sensor_range_var", &T::Setting::sensor_range_var)
         .def_readwrite("max_valid_range_var", &T::Setting::max_valid_range_var)
         .def_readwrite("occ_test_temperature", &T::Setting::occ_test_temperature)
-        .def_readwrite("range_sensor_frame_type", &T::Setting::range_sensor_frame_type)
-        .def_readwrite("range_sensor_frame", &T::Setting::range_sensor_frame)
+        .def_readwrite("sensor_frame_type", &T::Setting::sensor_frame_type)
+        .def_readwrite("sensor_frame", &T::Setting::sensor_frame)
         .def_readwrite("gp", &T::Setting::gp)
         .def_readwrite("mapping", &T::Setting::mapping);
 
@@ -47,7 +47,7 @@ BindRangeSensorGaussianProcess3DImpl(const py::module &m, const char *name) {
             })
         .def_property_readonly("row_partitions", &T::GetRowPartitions)
         .def_property_readonly("col_partitions", &T::GetColPartitions)
-        .def_property_readonly("range_sensor_frame", &T::GetRangeSensorFrame)
+        .def_property_readonly("sensor_frame", &T::GetSensorFrame)
         .def_property_readonly("mapping", &T::GetMapping)
         .def("global_to_local_so3", &T::GlobalToLocalSo3, py::arg("dir_global"))
         .def("local_to_global_so3", &T::LocalToGlobalSo3, py::arg("dir_local"))

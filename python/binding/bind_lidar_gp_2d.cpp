@@ -31,7 +31,7 @@ BindLidarGaussianProcess2DImpl(const py::module &m, const char *name) {
         .def_property_readonly("setting", &T::GetSetting)
         .def_property_readonly("gps", &T::GetGps)
         .def_property_readonly("angle_partitions", &T::GetAnglePartitions)
-        .def_property_readonly("lidar_frame", &T::GetLidarFrame)
+        .def_property_readonly("sensor_frame", &T::GetSensorFrame)
         .def("global_to_local_so2", &T::GlobalToLocalSo2, py::arg("dir_global"))
         .def("local_to_global_so2", &T::LocalToGlobalSo2, py::arg("dir_local"))
         .def("global_to_local_se2", &T::GlobalToLocalSe2, py::arg("xy_global"))

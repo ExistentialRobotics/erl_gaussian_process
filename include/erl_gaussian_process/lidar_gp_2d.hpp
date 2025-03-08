@@ -30,7 +30,7 @@ namespace erl::gaussian_process {
             Dtype sensor_range_var = 0.01;    // variance of the sensor range measurement.
             Dtype max_valid_range_var = 0.1;  // if the distance variance is greater than this threshold, this prediction is invalid and should be discarded.
             Dtype occ_test_temperature = 30;  // OCC Test is a tanh function, this controls the slope around 0.
-            std::shared_ptr<typename LidarFrame2D::Setting> lidar_frame = std::make_shared<typename LidarFrame2D::Setting>();  // parameters of lidar frame
+            std::shared_ptr<typename LidarFrame2D::Setting> sensor_frame = std::make_shared<typename LidarFrame2D::Setting>();  // parameters of lidar frame
             std::shared_ptr<typename Gp::Setting> gp = std::make_shared<typename Gp::Setting>();  // parameters of local GP regression
             std::shared_ptr<typename MappingDtype::Setting> mapping = []() -> std::shared_ptr<typename MappingDtype::Setting> {
                 auto mapping_setting = std::make_shared<typename MappingDtype::Setting>();
@@ -57,7 +57,7 @@ namespace erl::gaussian_process {
         std::shared_ptr<Setting> m_setting_ = nullptr;
         std::vector<std::shared_ptr<Gp>> m_gps_;
         std::vector<std::tuple<long, long, Dtype, Dtype>> m_angle_partitions_;
-        std::shared_ptr<LidarFrame2D> m_lidar_frame_ = nullptr;
+        std::shared_ptr<LidarFrame2D> m_sensor_frame_ = nullptr;
         std::shared_ptr<MappingDtype> m_mapping_ = nullptr;
         VectorX m_mapped_distances_ = {};
 
@@ -85,28 +85,28 @@ namespace erl::gaussian_process {
         }
 
         [[nodiscard]] std::shared_ptr<const LidarFrame2D>
-        GetLidarFrame() const {
-            return m_lidar_frame_;
+        GetSensorFrame() const {
+            return m_sensor_frame_;
         }
 
         [[nodiscard]] Vector2
         GlobalToLocalSo2(const Vector2 &dir_global) const {
-            return m_lidar_frame_->WorldToFrameSo2(dir_global);
+            return m_sensor_frame_->DirWorldToFrame(dir_global);
         }
 
         [[nodiscard]] Vector2
         LocalToGlobalSo2(const Vector2 &dir_local) const {
-            return m_lidar_frame_->FrameToWorldSo2(dir_local);
+            return m_sensor_frame_->DirFrameToWorld(dir_local);
         }
 
         [[nodiscard]] Vector2
         GlobalToLocalSe2(const Vector2 &xy_global) const {
-            return m_lidar_frame_->WorldToFrameSe2(xy_global);
+            return m_sensor_frame_->PosWorldToFrame(xy_global);
         }
 
         [[nodiscard]] Vector2
         LocalToGlobalSe2(const Vector2 &xy_local) const {
-            return m_lidar_frame_->FrameToWorldSe2(xy_local);
+            return m_sensor_frame_->PosFrameToWorld(xy_local);
         }
 
         void
@@ -115,8 +115,11 @@ namespace erl::gaussian_process {
         [[nodiscard]] bool
         StoreData(const Matrix2 &rotation, const Vector2 &translation, VectorX ranges);
 
+        void
+        RepartitionOnHitRays();
+
         [[nodiscard]] bool
-        Train(const Matrix2 &rotation, const Vector2 &translation, VectorX ranges, bool repartition_on_hit_rays);
+        Train(const Matrix2 &rotation, const Vector2 &translation, VectorX ranges);
 
         [[nodiscard]] bool
         Test(const Eigen::Ref<const VectorX> &angles, bool angles_are_local, Eigen::Ref<VectorX> vec_ranges, Eigen::Ref<VectorX> vec_ranges_var, bool un_map)
@@ -124,7 +127,7 @@ namespace erl::gaussian_process {
 
         [[nodiscard]] bool
         ComputeOcc(
-            const Eigen::Ref<const Scalar> &angle,
+            const Eigen::Ref<const Scalar> &angle_local,
             Dtype r,
             Eigen::Ref<Scalar> range_pred,
             Eigen::Ref<Scalar> range_pred_var,
@@ -134,9 +137,7 @@ namespace erl::gaussian_process {
         operator==(const LidarGaussianProcess2D &other) const;
 
         [[nodiscard]] bool
-        operator!=(const LidarGaussianProcess2D &other) const {
-            return !(*this == other);
-        }
+        operator!=(const LidarGaussianProcess2D &other) const;
 
         [[nodiscard]] bool
         Write(const std::string &filename) const;
@@ -151,11 +152,11 @@ namespace erl::gaussian_process {
         Read(std::istream &s);
     };
 
-#include "lidar_gp_2d.tpp"
-
     using LidarGaussianProcess2Dd = LidarGaussianProcess2D<double>;
     using LidarGaussianProcess2Df = LidarGaussianProcess2D<float>;
 }  // namespace erl::gaussian_process
+
+#include "lidar_gp_2d.tpp"
 
 template<>
 struct YAML::convert<erl::gaussian_process::LidarGaussianProcess2Dd::Setting> : erl::gaussian_process::LidarGaussianProcess2Dd::Setting::YamlConvertImpl {};

@@ -18,20 +18,9 @@ namespace erl::gaussian_process {
         node["sensor_range_var"] = setting.sensor_range_var;
         node["max_valid_range_var"] = setting.max_valid_range_var;
         node["occ_test_temperature"] = setting.occ_test_temperature;
-        node["range_sensor_frame_type"] = setting.range_sensor_frame_type;
-
-        using LidarFrame = geometry::LidarFrame3D<Dtype>;
-        using DepthFrame = geometry::DepthFrame3D<Dtype>;
-
-        if (setting.range_sensor_frame_type == demangle(typeid(LidarFrame).name())) {
-            node["range_sensor_frame"] = std::dynamic_pointer_cast<typename LidarFrame::Setting>(setting.range_sensor_frame);
-        } else if (setting.range_sensor_frame_type == demangle(typeid(DepthFrame).name())) {
-            node["range_sensor_frame"] = std::dynamic_pointer_cast<typename DepthFrame::Setting>(setting.range_sensor_frame);
-        } else {
-            ERL_FATAL("Unknown range_sensor_frame_type: {}", setting.range_sensor_frame_type);
-        }
-        node["row_margin"] = setting.row_margin;
-        node["col_margin"] = setting.col_margin;
+        node["sensor_frame_type"] = setting.sensor_frame_type;
+        node["sensor_frame_setting_type"] = setting.sensor_frame_setting_type;
+        node["sensor_frame"] = setting.sensor_frame->AsYamlNode();  // polymorphic pointer
         node["gp"] = setting.gp;
         node["mapping"] = setting.mapping;
         return node;
@@ -51,13 +40,10 @@ namespace erl::gaussian_process {
         setting.sensor_range_var = node["sensor_range_var"].as<Dtype>();
         setting.max_valid_range_var = node["max_valid_range_var"].as<Dtype>();
         setting.occ_test_temperature = node["occ_test_temperature"].as<Dtype>();
-        setting.range_sensor_frame_type = node["range_sensor_frame_type"].as<std::string>();
-        setting.range_sensor_frame_setting_type = node["range_sensor_frame_setting_type"].as<std::string>();
-        setting.range_sensor_frame =
-            common::YamlableBase::Create<typename geometry::RangeSensorFrame3D<Dtype>::Setting>(setting.range_sensor_frame_setting_type);
-        if (!setting.range_sensor_frame->FromYamlNode(node["range_sensor_frame"])) { return false; }
-        setting.row_margin = node["row_margin"].as<long>();
-        setting.col_margin = node["col_margin"].as<long>();
+        setting.sensor_frame_type = node["sensor_frame_type"].as<std::string>();
+        setting.sensor_frame_setting_type = node["sensor_frame_setting_type"].as<std::string>();
+        setting.sensor_frame = common::YamlableBase::Create<typename geometry::RangeSensorFrame3D<Dtype>::Setting>(setting.sensor_frame_setting_type);
+        if (!setting.sensor_frame->FromYamlNode(node["sensor_frame"])) { return false; }
         setting.gp = node["gp"].as<std::shared_ptr<typename Gp::Setting>>();
         setting.mapping = node["mapping"].as<std::shared_ptr<typename MappingDtype::Setting>>();
         return true;
@@ -67,9 +53,9 @@ namespace erl::gaussian_process {
     RangeSensorGaussianProcess3D<Dtype>::RangeSensorGaussianProcess3D(std::shared_ptr<Setting> setting)
         : m_setting_(std::move(setting)),
           m_mapping_(MappingDtype::Create(m_setting_->mapping)) {
-        m_range_sensor_frame_ = geometry::RangeSensorFrame3D<Dtype>::Create(m_setting_->range_sensor_frame_type, m_setting_->range_sensor_frame);
+        m_sensor_frame_ = geometry::RangeSensorFrame3D<Dtype>::Create(m_setting_->sensor_frame_type, m_setting_->sensor_frame);
 
-        const Eigen::MatrixX<Vector2> &frame_coords = m_range_sensor_frame_->GetFrameCoords();
+        const Eigen::MatrixX<Vector2> &frame_coords = m_sensor_frame_->GetFrameCoords();
         const long num_rows = frame_coords.rows();
         const long row_gs = m_setting_->row_group_size;
         const long row_step = m_setting_->row_group_size - m_setting_->row_overlap_size;
@@ -133,9 +119,9 @@ namespace erl::gaussian_process {
     template<typename Dtype>
     bool
     RangeSensorGaussianProcess3D<Dtype>::StoreData(const Matrix3 &rotation, const Vector3 &translation, MatrixX ranges) {
-        m_range_sensor_frame_->UpdateRanges(rotation, translation, std::move(ranges), false);
-        m_mapped_distances_ = m_range_sensor_frame_->GetRanges().unaryExpr(m_mapping_->map);
-        return m_range_sensor_frame_->IsValid();
+        m_sensor_frame_->UpdateRanges(rotation, translation, std::move(ranges), false);
+        m_mapped_distances_ = m_sensor_frame_->GetRanges().unaryExpr(m_mapping_->map);
+        return m_sensor_frame_->IsValid();
     }
 
     template<typename Dtype>
@@ -161,8 +147,8 @@ namespace erl::gaussian_process {
                 MatrixX &train_input_samples = gp->GetTrainInputSamplesBuffer();
                 VectorX &train_output_samples = gp->GetTrainOutputSamplesBuffer();
                 VectorX &train_output_samples_variance = gp->GetTrainOutputSamplesVarianceBuffer();
-                const Eigen::MatrixXb &mask_hit = m_range_sensor_frame_->GetHitMask();
-                const Eigen::MatrixX<Vector2> &frame_coords = m_range_sensor_frame_->GetFrameCoords();
+                const Eigen::MatrixXb &mask_hit = m_sensor_frame_->GetHitMask();
+                const Eigen::MatrixX<Vector2> &frame_coords = m_sensor_frame_->GetFrameCoords();
                 for (long c = col_index_left; c < col_index_right; ++c) {
                     for (long r = row_index_left; r < row_index_right; ++r) {
                         if (!mask_hit(r, c)) { continue; }
@@ -203,9 +189,9 @@ namespace erl::gaussian_process {
 
         for (long i = 0; i < n; ++i) {
             Vector3 direction_local = directions.col(i);
-            if (!directions_are_local) { direction_local = m_range_sensor_frame_->WorldToFrameSo3(direction_local); }
-            if (!m_range_sensor_frame_->PointIsInFrame(direction_local)) { continue; }
-            const Vector2 frame_coords = m_range_sensor_frame_->ComputeFrameCoords(direction_local);
+            if (!directions_are_local) { direction_local = m_sensor_frame_->DirWorldToFrame(direction_local); }
+            if (!m_sensor_frame_->PointIsInFrame(direction_local)) { continue; }
+            const Vector2 frame_coords = m_sensor_frame_->ComputeFrameCoords(direction_local);
 
             // search for the partition
             // row
@@ -271,10 +257,8 @@ namespace erl::gaussian_process {
         }
         if (m_row_partitions_ != other.m_row_partitions_) { return false; }
         if (m_col_partitions_ != other.m_col_partitions_) { return false; }
-        if (m_range_sensor_frame_ == nullptr && other.m_range_sensor_frame_ != nullptr) { return false; }
-        if (m_range_sensor_frame_ != nullptr && (other.m_range_sensor_frame_ == nullptr || *m_range_sensor_frame_ != *other.m_range_sensor_frame_)) {
-            return false;
-        }
+        if (m_sensor_frame_ == nullptr && other.m_sensor_frame_ != nullptr) { return false; }
+        if (m_sensor_frame_ != nullptr && (other.m_sensor_frame_ == nullptr || *m_sensor_frame_ != *other.m_sensor_frame_)) { return false; }
         if (m_mapped_distances_.rows() != other.m_mapped_distances_.rows() || m_mapped_distances_.cols() != other.m_mapped_distances_.cols() ||
             std::memcmp(m_mapped_distances_.data(), other.m_mapped_distances_.data(), m_mapped_distances_.size() * sizeof(Dtype)) != 0) {
             return false;
@@ -338,7 +322,7 @@ namespace erl::gaussian_process {
             s.write(reinterpret_cast<const char *>(&coord_right), sizeof(coord_right));
         }
         s << "range_sensor_frame" << std::endl;
-        if (!m_range_sensor_frame_->Write(s)) {
+        if (!m_sensor_frame_->Write(s)) {
             ERL_WARN("Failed to write range_sensor_frame.");
             return false;
         }
@@ -477,7 +461,7 @@ namespace erl::gaussian_process {
                 }
                 case 5: {  // range_sensor_frame
                     skip_line();
-                    if (!m_range_sensor_frame_->Read(s)) {
+                    if (!m_sensor_frame_->Read(s)) {
                         ERL_WARN("Failed to read lidar_frame.");
                         return false;
                     }

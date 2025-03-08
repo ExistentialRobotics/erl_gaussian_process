@@ -39,9 +39,9 @@ namespace erl::gaussian_process {
             Dtype sensor_range_var = 0.01;    // variance of the sensor range measurement
             Dtype max_valid_range_var = 0.1;  // if the distance variance is greater than this threshold, the prediction is invalid and should be discarded
             Dtype occ_test_temperature = 30;  // OCC test is a tanh function, this controls the slope around 0
-            std::string range_sensor_frame_type = type_name<LidarFrame>();                            // type of the range sensor frame
-            std::string range_sensor_frame_setting_type = type_name<typename LidarFrame::Setting>();  // type of the range sensor frame setting
-            std::shared_ptr<typename RangeSensorFrame::Setting> range_sensor_frame = std::make_shared<typename LidarFrame::Setting>();
+            std::string sensor_frame_type = type_name<LidarFrame>();                            // type of the range sensor frame
+            std::string sensor_frame_setting_type = type_name<typename LidarFrame::Setting>();  // type of the range sensor frame setting
+            std::shared_ptr<typename RangeSensorFrame::Setting> sensor_frame = std::make_shared<typename LidarFrame::Setting>();
             std::shared_ptr<typename Gp::Setting> gp = std::make_shared<typename Gp::Setting>();
             std::shared_ptr<typename MappingDtype::Setting> mapping = []() {
                 auto mapping_setting = std::make_shared<typename MappingDtype::Setting>();
@@ -68,7 +68,7 @@ namespace erl::gaussian_process {
         Eigen::MatrixX<std::shared_ptr<Gp>> m_gps_ = {};
         std::vector<std::tuple<long, long, Dtype, Dtype>> m_row_partitions_ = {};
         std::vector<std::tuple<long, long, Dtype, Dtype>> m_col_partitions_ = {};
-        std::shared_ptr<RangeSensorFrame> m_range_sensor_frame_ = nullptr;
+        std::shared_ptr<RangeSensorFrame> m_sensor_frame_ = nullptr;
         std::shared_ptr<MappingDtype> m_mapping_ = nullptr;
         MatrixX m_mapped_distances_ = {};
 
@@ -101,8 +101,8 @@ namespace erl::gaussian_process {
         }
 
         [[nodiscard]] std::shared_ptr<const RangeSensorFrame>
-        GetRangeSensorFrame() const {
-            return m_range_sensor_frame_;
+        GetSensorFrame() const {
+            return m_sensor_frame_;
         }
 
         [[nodiscard]] std::shared_ptr<const MappingDtype>
@@ -112,27 +112,27 @@ namespace erl::gaussian_process {
 
         [[nodiscard]] Vector3
         GlobalToLocalSo3(const Vector3 &dir_global) const {
-            return m_range_sensor_frame_->WorldToFrameSo3(dir_global);
+            return m_sensor_frame_->DirWorldToFrame(dir_global);
         }
 
         [[nodiscard]] Vector3
         LocalToGlobalSo3(const Vector3 &dir_local) const {
-            return m_range_sensor_frame_->FrameToWorldSo3(dir_local);
+            return m_sensor_frame_->DirFrameToWorld(dir_local);
         }
 
         [[nodiscard]] Vector3
         GlobalToLocalSe3(const Vector3 &xyz_global) const {
-            return m_range_sensor_frame_->WorldToFrameSe3(xyz_global);
+            return m_sensor_frame_->PosWorldToFrame(xyz_global);
         }
 
         [[nodiscard]] Vector3
         LocalToGlobalSe3(const Vector3 &xyz_local) const {
-            return m_range_sensor_frame_->FrameToWorldSe3(xyz_local);
+            return m_sensor_frame_->PosFrameToWorld(xyz_local);
         }
 
         [[nodiscard]] Vector2
         ComputeFrameCoords(const Vector3 &xyz_frame) const {
-            return m_range_sensor_frame_->ComputeFrameCoords(xyz_frame);
+            return m_sensor_frame_->ComputeFrameCoords(xyz_frame);
         }
 
         void

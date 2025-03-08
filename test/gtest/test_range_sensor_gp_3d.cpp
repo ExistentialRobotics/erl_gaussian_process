@@ -36,9 +36,9 @@ TEST(RangeSensorGp3D, Lidar) {
     lidar_frame_setting->elevation_min = -M_PI / 2;
     lidar_frame_setting->elevation_max = M_PI / 2;
     lidar_frame_setting->num_elevation_lines = 91;
-    gp_setting->range_sensor_frame_type = type_name<LidarFrame>();
-    gp_setting->range_sensor_frame_setting_type = type_name<LidarFrame::Setting>();
-    gp_setting->range_sensor_frame = lidar_frame_setting;
+    gp_setting->sensor_frame_type = type_name<LidarFrame>();
+    gp_setting->sensor_frame_setting_type = type_name<LidarFrame::Setting>();
+    gp_setting->sensor_frame = lidar_frame_setting;
     gp_setting->row_group_size = 10;
     gp_setting->row_overlap_size = 3;
     gp_setting->row_margin = 0;
@@ -46,7 +46,7 @@ TEST(RangeSensorGp3D, Lidar) {
     gp_setting->col_overlap_size = 3;
     gp_setting->col_margin = 0;
     RangeSensorGaussianProcess3D gp(gp_setting);
-    const auto lidar_frame = std::dynamic_pointer_cast<const LidarFrame>(gp.GetRangeSensorFrame());
+    const auto lidar_frame = std::dynamic_pointer_cast<const LidarFrame>(gp.GetSensorFrame());
 
     const std::string mesh_file = gtest_src_dir / "replica-office-1.ply";
     const auto mesh = open3d::io::CreateMeshFromFile(gtest_src_dir / "replica-office-1.ply");
@@ -187,9 +187,9 @@ TEST(RangeSensorGp3D, Depth) {
 
     const auto gp_setting = std::make_shared<RangeSensorGaussianProcess3D::Setting>();
     const auto depth_frame_setting = std::make_shared<DepthFrame::Setting>();
-    gp_setting->range_sensor_frame_type = type_name<DepthFrame>();
-    gp_setting->range_sensor_frame_setting_type = type_name<DepthFrame::Setting>();
-    gp_setting->range_sensor_frame = depth_frame_setting;
+    gp_setting->sensor_frame_type = type_name<DepthFrame>();
+    gp_setting->sensor_frame_setting_type = type_name<DepthFrame::Setting>();
+    gp_setting->sensor_frame = depth_frame_setting;
     gp_setting->row_group_size = 10;
     gp_setting->row_overlap_size = 3;
     gp_setting->row_margin = 0;
@@ -300,7 +300,7 @@ TEST(RangeSensorGp3D, Depth) {
     ERL_INFO("mse: {}", mse);
 
     // visualize
-    const auto depth_frame = std::dynamic_pointer_cast<const DepthFrame>(gp.GetRangeSensorFrame());
+    const auto depth_frame = std::dynamic_pointer_cast<const DepthFrame>(gp.GetSensorFrame());
     const long image_height = depth_frame->GetImageHeight();
     const long image_width = depth_frame->GetImageWidth();
     if (!gp.IsTrained()) { std::const_pointer_cast<DepthFrame>(depth_frame)->UpdateRanges(optical_rotation, optical_translation, real_depths, false); }
