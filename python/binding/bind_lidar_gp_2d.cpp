@@ -22,7 +22,7 @@ BindLidarGaussianProcess2DImpl(const py::module &m, const char *name) {
         .def_readwrite("sensor_range_var", &T::Setting::sensor_range_var)
         .def_readwrite("max_valid_range_var", &T::Setting::max_valid_range_var)
         .def_readwrite("occ_test_temperature", &T::Setting::occ_test_temperature)
-        .def_readwrite("lidar_frame", &T::Setting::lidar_frame)
+        .def_readwrite("sensor_frame", &T::Setting::sensor_frame)
         .def_readwrite("gp", &T::Setting::gp)
         .def_readwrite("mapping", &T::Setting::mapping);
 
@@ -38,7 +38,8 @@ BindLidarGaussianProcess2DImpl(const py::module &m, const char *name) {
         .def("local_to_global_se2", &T::LocalToGlobalSe2, py::arg("xy_local"))
         .def("reset", &T::Reset)
         .def("store_data", &T::StoreData, py::arg("rotation"), py::arg("translation"), py::arg("ranges"))
-        .def("train", &T::Train, py::arg("rotation"), py::arg("translation"), py::arg("ranges"), py::arg("repartition_on_hit_rays"))
+        .def("repartition_on_hit_rays", &T::RepartitionOnHitRays)
+        .def("train", &T::Train, py::arg("rotation"), py::arg("translation"), py::arg("ranges"))
         .def(
             "test",
             [](const T &gp, const Eigen::Ref<const Eigen::VectorX<Dtype>> &angles, const bool angles_are_local, const bool un_map) {

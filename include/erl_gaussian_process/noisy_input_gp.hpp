@@ -34,7 +34,7 @@ namespace erl::gaussian_process {
         };
 
     private:
-        inline static const std::string kFileHeader = fmt::format("# erl::gaussian_process::NoisyInputGaussianProcess<{}>", type_name<Dtype>());
+        inline static const std::string kFileHeader = fmt::format("# {}", type_name<NoisyInputGaussianProcess>());
 
     protected:
         long m_x_dim_ = 0;                                // dimension of x

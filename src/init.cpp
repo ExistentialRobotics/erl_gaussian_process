@@ -12,11 +12,14 @@ namespace erl::gaussian_process {
 
 #define REGISTER(x) (void) x::Register<x>()
 
-    bool initialized = false;
+    bool initialized = Init();
 
     bool
     Init() {
-        if (initialized) { return true; }
+
+        static bool initialized_ = false;
+
+        if (initialized_) { return true; }
 
         if (!covariance::Init()) { return false; }
         if (!geometry::Init()) { return false; }
@@ -33,7 +36,7 @@ namespace erl::gaussian_process {
         REGISTER(MappingF::Setting);
 
         ERL_INFO("erl_gaussian_process initialized");
-        initialized = true;
+        initialized_ = true;
 
         return true;
     }
