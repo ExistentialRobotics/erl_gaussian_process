@@ -6,7 +6,7 @@ NoisyInputGaussianProcess<Dtype>::Setting::YamlConvertImpl::encode(const Setting
     YAML::Node node;
     node["kernel_type"] = setting.kernel_type;
     node["kernel_setting_type"] = setting.kernel_setting_type;
-    node["kernel"] = setting.kernel->AsYamlNode();
+    node["kernel"] = setting.kernel;
     node["max_num_samples"] = setting.max_num_samples;
     node["no_gradient_observation"] = setting.no_gradient_observation;
     return node;
@@ -208,7 +208,8 @@ NoisyInputGaussianProcess<Dtype>::Test(
     const Eigen::Ref<const MatrixX> &mat_x_test,
     Eigen::Ref<MatrixX> mat_f_out,
     Eigen::Ref<MatrixX> mat_var_out,
-    Eigen::Ref<MatrixX> mat_cov_out) const {
+    Eigen::Ref<MatrixX> mat_cov_out,
+    const bool predict_gradient) const {
 
     if (!m_trained_) {
         ERL_WARN("The model has not been trained.");
@@ -220,13 +221,17 @@ NoisyInputGaussianProcess<Dtype>::Test(
     if (n == 0) { return false; }
 
     // compute mean and gradient of the test queries
-    ERL_ASSERTM(mat_f_out.rows() >= dim + 1, "mat_f_out.rows() = {}, it should be >= Dim + 1 = {}.", mat_f_out.rows(), dim + 1);
+    ERL_ASSERTM(
+        mat_f_out.rows() >= (predict_gradient ? dim + 1 : 1),
+        "mat_f_out.rows() = {}, it should be >= {}.",
+        mat_f_out.rows(),
+        predict_gradient ? dim + 1 : 1);
     ERL_ASSERTM(mat_f_out.cols() >= n, "mat_f_out.cols() = {}, not enough for {} test queries.", mat_f_out.cols(), n);
 
-    const auto [ktest_rows, ktest_cols] = m_kernel_->GetMinimumKtestSize(m_num_train_samples_, m_num_train_samples_with_grad_, dim, n, true);
+    const auto [ktest_rows, ktest_cols] = m_kernel_->GetMinimumKtestSize(m_num_train_samples_, m_num_train_samples_with_grad_, dim, n, predict_gradient);
     MatrixX ktest(ktest_rows, ktest_cols);  // (dim of train samples, dim of test queries)
     const auto [output_rows, output_cols] =
-        m_kernel_->ComputeKtestWithGradient(m_mat_x_train_, m_num_train_samples_, m_vec_grad_flag_, mat_x_test, n, true, ktest);
+        m_kernel_->ComputeKtestWithGradient(m_mat_x_train_, m_num_train_samples_, m_vec_grad_flag_, mat_x_test, n, predict_gradient, ktest);
     (void) output_rows;
     (void) output_cols;
     ERL_DEBUG_ASSERT(
@@ -242,8 +247,10 @@ NoisyInputGaussianProcess<Dtype>::Test(
     auto vec_alpha = m_vec_alpha_.head(ktest_rows);
     for (long i = 0; i < n; ++i) {
         Dtype *f = mat_f_out.col(i).data();
-        f[0] = ktest.col(i).dot(vec_alpha);                                                            // h(x)
-        for (long j = 1, jj = i + n; j <= dim; ++j, jj += n) { f[j] = ktest.col(jj).dot(vec_alpha); }  // dh(x)/dx_j
+        f[0] = ktest.col(i).dot(vec_alpha);  // h(x)
+        if (predict_gradient) {              // dh(x)/dx_j
+            for (long j = 1, jj = i + n; j <= dim; ++j, jj += n) { f[j] = ktest.col(jj).dot(vec_alpha); }
+        }
     }
     const bool compute_var = mat_var_out.size() > 0;
     const bool compute_cov = mat_cov_out.size() > 0;
@@ -252,7 +259,7 @@ NoisyInputGaussianProcess<Dtype>::Test(
     // compute (co)variance of the test queries
     m_mat_l_.topLeftCorner(ktest_rows, ktest_rows).template triangularView<Eigen::Lower>().solveInPlace(ktest);
     if (compute_var) {
-        ERL_ASSERTM(mat_var_out.rows() >= dim + 1, "mat_var_out.rows() = {}, it should be >= {} for variance.", mat_var_out.rows(), dim + 1);
+        ERL_ASSERTM(mat_var_out.rows() >= mat_f_out.rows(), "mat_var_out.rows() = {}, it should be >= {} for variance.", mat_var_out.rows(), mat_f_out.rows());
         ERL_ASSERTM(mat_var_out.cols() >= n, "mat_var_out.cols() = {}, not enough for {} test queries.", mat_var_out.cols(), n);
     }
     if (!compute_cov) {  // compute variance only
@@ -260,23 +267,23 @@ NoisyInputGaussianProcess<Dtype>::Test(
         if (m_reduced_rank_kernel_) {
             for (long i = 0; i < n; ++i) {
                 Dtype *var = mat_var_out.col(i).data();
-                var[0] = ktest.col(i).squaredNorm();                    // variance of h(x)
-                for (long j = 1, jj = i + n; j <= dim; ++j, jj += n) {  // variance of dh(x)/dx_j
-                    var[j] = ktest.col(jj).squaredNorm();
+                var[0] = ktest.col(i).squaredNorm();  // variance of h(x)
+                if (predict_gradient) {               // variance of dh(x)/dx_j
+                    for (long j = 1, jj = i + n; j <= dim; ++j, jj += n) { var[j] = ktest.col(jj).squaredNorm(); }
                 }
             }
         } else {
             const Dtype alpha = m_setting_->kernel->alpha;
             for (long i = 0; i < n; ++i) {
                 Dtype *var = mat_var_out.col(i).data();
-                var[0] = alpha - ktest.col(i).squaredNorm();            // variance of h(x)
-                for (long j = 1, jj = i + n; j <= dim; ++j, jj += n) {  // variance of dh(x)/dx_j
-                    var[j] = m_three_over_scale_square_ - ktest.col(jj).squaredNorm();
+                var[0] = alpha - ktest.col(i).squaredNorm();  // variance of h(x)
+                if (predict_gradient) {                       // variance of dh(x)/dx_j
+                    for (long j = 1, jj = i + n; j <= dim; ++j, jj += n) { var[j] = m_three_over_scale_square_ - ktest.col(jj).squaredNorm(); }
                 }
             }
         }
-    } else {  // compute covariance
-        long min_n_rows = (dim + 1) * dim / 2;
+    } else if (predict_gradient) {  // compute covariance, but only when predict_gradient is true
+        const long min_n_rows = (dim + 1) * dim / 2;
         ERL_ASSERTM(mat_cov_out.rows() >= min_n_rows, "mat_cov_out.rows() = {}, it should be >= {} for covariance.", mat_cov_out.rows(), min_n_rows);
         ERL_ASSERTM(mat_cov_out.cols() >= n, "mat_cov_out.cols() = {}, not enough for {} test queries.", mat_cov_out.cols(), n);
         // each column of mat_cov_out is the lower triangular part of the covariance matrix of the corresponding test query
@@ -376,7 +383,7 @@ NoisyInputGaussianProcess<Dtype>::operator==(const NoisyInputGaussianProcess &ot
 template<typename Dtype>
 bool
 NoisyInputGaussianProcess<Dtype>::Write(const std::string &filename) const {
-    ERL_INFO("Writing NoisyInputGaussianProcess to file: {}", filename);
+    ERL_INFO("Writing {} to file: {}", demangle(typeid(*this).name()), filename);
     std::filesystem::create_directories(std::filesystem::path(filename).parent_path());
     std::ofstream file(filename, std::ios_base::out | std::ios_base::binary);
     if (!file.is_open()) {
@@ -392,7 +399,7 @@ NoisyInputGaussianProcess<Dtype>::Write(const std::string &filename) const {
 template<typename Dtype>
 bool
 NoisyInputGaussianProcess<Dtype>::Write(std::ostream &s) const {
-    s << kFileHeader << std::endl  //
+    s << "# " << demangle(typeid(*this).name()) << std::endl  //
       << "# (feel free to add / change comments, but leave the first line as it is!)" << std::endl
       << "setting" << std::endl;
     // write setting
@@ -474,10 +481,10 @@ NoisyInputGaussianProcess<Dtype>::Write(std::ostream &s) const {
 template<typename Dtype>
 bool
 NoisyInputGaussianProcess<Dtype>::Read(const std::string &filename) {
-    ERL_INFO("Reading NoisyInputGaussianProcess from file: {}", std::filesystem::absolute(filename));
-    std::ifstream file(filename.c_str(), std::ios_base::in | std::ios_base::binary);
+    ERL_INFO("Reading {} from file: {}", demangle(typeid(*this).name()), filename);
+    std::ifstream file(filename, std::ios_base::in | std::ios_base::binary);
     if (!file.is_open()) {
-        ERL_WARN("Failed to open file: {}", filename.c_str());
+        ERL_WARN("Failed to open file: {}", filename);
         return false;
     }
 
@@ -497,8 +504,9 @@ NoisyInputGaussianProcess<Dtype>::Read(std::istream &s) {
     // check if the first line is valid
     std::string line;
     std::getline(s, line);
-    if (line.compare(0, kFileHeader.length(), kFileHeader) != 0) {  // check if the first line is valid
-        ERL_WARN("Header does not start with \"{}\"", kFileHeader.c_str());
+    if (std::string file_header = fmt::format("# {}", demangle(typeid(*this).name()));
+        line.compare(0, file_header.length(), file_header) != 0) {  // check if the first line is valid
+        ERL_WARN("Header does not start with \"{}\"", file_header);
         return false;
     }
 

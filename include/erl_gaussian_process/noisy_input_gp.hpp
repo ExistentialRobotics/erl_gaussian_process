@@ -1,7 +1,5 @@
 #pragma once
 
-#include "init.hpp"
-
 #include "erl_covariance/covariance.hpp"
 #include "erl_covariance/reduced_rank_covariance.hpp"
 
@@ -18,8 +16,8 @@ namespace erl::gaussian_process {
         using VectorX = Eigen::VectorX<Dtype>;
 
         struct Setting : common::Yamlable<Setting> {
-            std::string kernel_type = fmt::format("erl::covariance::Matern32<2, {}>", type_name<Dtype>());
-            std::string kernel_setting_type = fmt::format("erl::covariance::Covariance<{}>::Setting", type_name<Dtype>());
+            std::string kernel_type = type_name<Covariance>();
+            std::string kernel_setting_type = type_name<typename Covariance::Setting>();
             std::shared_ptr<typename Covariance::Setting> kernel = std::make_shared<typename Covariance::Setting>();
             long max_num_samples = -1;  // maximum number of training samples, -1 means no limit
             bool no_gradient_observation = false;
@@ -32,9 +30,6 @@ namespace erl::gaussian_process {
                 decode(const YAML::Node &node, Setting &setting);
             };
         };
-
-    private:
-        inline static const std::string kFileHeader = fmt::format("# {}", type_name<NoisyInputGaussianProcess>());
 
     protected:
         long m_x_dim_ = 0;                                // dimension of x
@@ -182,8 +177,12 @@ namespace erl::gaussian_process {
         Train(long num_train_samples);
 
         [[nodiscard]] virtual bool
-        Test(const Eigen::Ref<const MatrixX> &mat_x_test, Eigen::Ref<MatrixX> mat_f_out, Eigen::Ref<MatrixX> mat_var_out, Eigen::Ref<MatrixX> mat_cov_out)
-            const;
+        Test(
+            const Eigen::Ref<const MatrixX> &mat_x_test,
+            Eigen::Ref<MatrixX> mat_f_out,
+            Eigen::Ref<MatrixX> mat_var_out,
+            Eigen::Ref<MatrixX> mat_cov_out,
+            bool predict_gradient = true) const;
 
         [[nodiscard]] bool
         operator==(const NoisyInputGaussianProcess &other) const;
@@ -193,13 +192,13 @@ namespace erl::gaussian_process {
             return !(*this == other);
         }
 
-        [[nodiscard]] virtual bool
+        [[nodiscard]] bool
         Write(const std::string &filename) const;
 
         [[nodiscard]] virtual bool
         Write(std::ostream &s) const;
 
-        [[nodiscard]] virtual bool
+        [[nodiscard]] bool
         Read(const std::string &filename);
 
         [[nodiscard]] virtual bool
