@@ -49,7 +49,7 @@ namespace erl::gaussian_process {
         MatrixX m_mat_grad_train_ = {};                   // dh(x_j)/dx_ij for index (i, j)
         MatrixX m_mat_k_train_ = {};                      // Ktrain, avoid reallocation
         MatrixX m_mat_l_ = {};                            // lower triangular matrix of the Cholesky decomposition of Ktrain
-        Eigen::VectorXl m_vec_grad_flag_ = {};            // true if the corresponding training sample has gradient
+        Eigen::VectorXl m_vec_grad_flag_ = {};            // true if the corresponding training sample has a gradient
         VectorX m_vec_alpha_ = {};                        // h(x1)..h(xn), dh(x1)/dx1_1 .. dh(xn)/dxn_1 .. dh(x1)/dx1_dim .. dh(xn)/dxn_dim
         VectorX m_vec_var_x_ = {};                        // variance of x1 ... xn
         VectorX m_vec_var_h_ = {};                        // variance of h(x1)..h(xn)
@@ -182,7 +182,7 @@ namespace erl::gaussian_process {
             Eigen::Ref<MatrixX> mat_f_out,
             Eigen::Ref<MatrixX> mat_var_out,
             Eigen::Ref<MatrixX> mat_cov_out,
-            bool predict_gradient = true) const;
+            bool predict_gradient) const;
 
         [[nodiscard]] bool
         operator==(const NoisyInputGaussianProcess &other) const;
@@ -210,6 +210,18 @@ namespace erl::gaussian_process {
 
         void
         InitKernel();
+
+        void
+        ComputeValuePrediction(const MatrixX &ktest, long dim, long n_test, long predict_gradient, Eigen::Ref<MatrixX> mat_f_out) const;
+
+        void
+        ComputeCovPrediction(
+            const MatrixX &ktest,
+            long dim,
+            long n_test,
+            bool predict_gradient,
+            Eigen::Ref<MatrixX> mat_var_out,
+            Eigen::Ref<MatrixX> mat_cov_out) const;
     };
 
 #include "noisy_input_gp.tpp"

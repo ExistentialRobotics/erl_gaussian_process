@@ -242,86 +242,8 @@ NoisyInputGaussianProcess<Dtype>::Test(
         ktest_rows,
         ktest_cols);
 
-    // compute value prediction
-    /// ktest.T * m_vec_alpha_ = [h(x1),...,h(xn),dh(x1)/dx_1,...,dh(xn)/dx_1,...,dh(x1)/dx_dim,...,dh(xn)/dx_dim]
-    auto vec_alpha = m_vec_alpha_.head(ktest_rows);
-    for (long i = 0; i < n; ++i) {
-        Dtype *f = mat_f_out.col(i).data();
-        f[0] = ktest.col(i).dot(vec_alpha);  // h(x)
-        if (predict_gradient) {              // dh(x)/dx_j
-            for (long j = 1, jj = i + n; j <= dim; ++j, jj += n) { f[j] = ktest.col(jj).dot(vec_alpha); }
-        }
-    }
-    const bool compute_var = mat_var_out.size() > 0;
-    const bool compute_cov = mat_cov_out.size() > 0;
-    if (!compute_var && !compute_cov) { return true; }  // only compute mean
-
-    // compute (co)variance of the test queries
-    m_mat_l_.topLeftCorner(ktest_rows, ktest_rows).template triangularView<Eigen::Lower>().solveInPlace(ktest);
-    if (compute_var) {
-        ERL_ASSERTM(mat_var_out.rows() >= mat_f_out.rows(), "mat_var_out.rows() = {}, it should be >= {} for variance.", mat_var_out.rows(), mat_f_out.rows());
-        ERL_ASSERTM(mat_var_out.cols() >= n, "mat_var_out.cols() = {}, not enough for {} test queries.", mat_var_out.cols(), n);
-    }
-    if (!compute_cov) {  // compute variance only
-        // column-wise square sum of ktest = var([h(x1),...,h(xn),dh(x1)/dx_1,...,dh(xn)/dx_1,...,dh(x1)/dx_dim,...,dh(xn)/dx_dim])
-        if (m_reduced_rank_kernel_) {
-            for (long i = 0; i < n; ++i) {
-                Dtype *var = mat_var_out.col(i).data();
-                var[0] = ktest.col(i).squaredNorm();  // variance of h(x)
-                if (predict_gradient) {               // variance of dh(x)/dx_j
-                    for (long j = 1, jj = i + n; j <= dim; ++j, jj += n) { var[j] = ktest.col(jj).squaredNorm(); }
-                }
-            }
-        } else {
-            const Dtype alpha = m_setting_->kernel->alpha;
-            for (long i = 0; i < n; ++i) {
-                Dtype *var = mat_var_out.col(i).data();
-                var[0] = alpha - ktest.col(i).squaredNorm();  // variance of h(x)
-                if (predict_gradient) {                       // variance of dh(x)/dx_j
-                    for (long j = 1, jj = i + n; j <= dim; ++j, jj += n) { var[j] = m_three_over_scale_square_ - ktest.col(jj).squaredNorm(); }
-                }
-            }
-        }
-    } else if (predict_gradient) {  // compute covariance, but only when predict_gradient is true
-        const long min_n_rows = (dim + 1) * dim / 2;
-        ERL_ASSERTM(mat_cov_out.rows() >= min_n_rows, "mat_cov_out.rows() = {}, it should be >= {} for covariance.", mat_cov_out.rows(), min_n_rows);
-        ERL_ASSERTM(mat_cov_out.cols() >= n, "mat_cov_out.cols() = {}, not enough for {} test queries.", mat_cov_out.cols(), n);
-        // each column of mat_cov_out is the lower triangular part of the covariance matrix of the corresponding test query
-        if (m_reduced_rank_kernel_) {
-            for (long i = 0; i < n; ++i) {
-                Dtype *var = nullptr;
-                if (compute_var) {
-                    var = mat_var_out.col(i).data();
-                    var[0] = ktest.col(i).squaredNorm();  // var(h(x))
-                }
-                Dtype *cov = mat_cov_out.col(i).data();
-                long index = 0;
-                for (long j = 1, jj = i + n; j <= dim; ++j, jj += n) {
-                    const auto &col_jj = ktest.col(jj);
-                    cov[index++] = col_jj.dot(ktest.col(i));                                                         // cov(dh(x)/dx_j, h(x))
-                    for (long k = 1, kk = i + n; k < j; ++k, kk += n) { cov[index++] = col_jj.dot(ktest.col(kk)); }  // cov(dh(x)/dx_j, dh(x)/dx_k)
-                    if (var != nullptr) { var[j] = col_jj.squaredNorm(); }                                           // var(dh(x)/dx_j)
-                }
-            }
-        } else {
-            const Dtype alpha = m_setting_->kernel->alpha;
-            for (long i = 0; i < n; ++i) {
-                Dtype *var = nullptr;
-                if (compute_var) {
-                    var = mat_var_out.col(i).data();
-                    var[0] = alpha - ktest.col(i).squaredNorm();  // var(h(x))
-                }
-                Dtype *cov = mat_cov_out.col(i).data();
-                long index = 0;
-                for (long j = 1, jj = i + n; j <= dim; ++j, jj += n) {
-                    const auto &col_jj = ktest.col(jj);
-                    cov[index++] = -col_jj.dot(ktest.col(i));                                                         // cov(dh(x)/dx_j, h(x))
-                    for (long k = 1, kk = i + n; k < j; ++k, kk += n) { cov[index++] = -col_jj.dot(ktest.col(kk)); }  // cov(dh(x)/dx_j, dh(x)/dx_k)
-                    if (var != nullptr) { var[j] = m_three_over_scale_square_ - col_jj.squaredNorm(); }               // var(dh(x)/dx_j)
-                }
-            }
-        }
-    }
+    ComputeValuePrediction(ktest, dim, n, predict_gradient, mat_f_out);
+    ComputeCovPrediction(ktest, dim, n, predict_gradient, mat_var_out, mat_cov_out);
     return true;
 }
 
@@ -730,7 +652,7 @@ NoisyInputGaussianProcess<Dtype>::AllocateMemory(const long max_num_samples, con
         if (m_vec_var_x_.size() < max_num_samples) { m_vec_var_x_.resize(max_num_samples); }
         if (m_vec_var_h_.size() < max_num_samples) { m_vec_var_h_.resize(max_num_samples); }
         // m_mat_grad_train_, m_vec_var_grad_ are not used
-        // to save memory, they are not allocated
+        // to save memory; they are not allocated
     } else {
         const auto [rows, cols] = m_kernel_->GetMinimumKtrainSize(max_num_samples, max_num_samples, x_dim);
         if (m_mat_k_train_.rows() < rows || m_mat_k_train_.cols() < cols) { m_mat_k_train_.resize(rows, cols); }
@@ -756,5 +678,118 @@ NoisyInputGaussianProcess<Dtype>::InitKernel() {
         const auto rank_reduced_kernel = std::dynamic_pointer_cast<ReducedRankCovariance>(m_kernel_);
         m_reduced_rank_kernel_ = rank_reduced_kernel != nullptr;
         if (m_reduced_rank_kernel_) { rank_reduced_kernel->BuildSpectralDensities(); }
+    }
+}
+
+template<typename Dtype>
+void
+NoisyInputGaussianProcess<Dtype>::ComputeValuePrediction(
+    const MatrixX &ktest,
+    const long dim,
+    const long n_test,
+    const long predict_gradient,
+    Eigen::Ref<MatrixX> mat_f_out) const {
+    // compute value prediction
+    /// ktest.T * m_vec_alpha_ = [h(x1),...,h(xn),dh(x1)/dx_1,...,dh(xn)/dx_1,...,dh(x1)/dx_dim,...,dh(xn)/dx_dim]
+    auto vec_alpha = m_vec_alpha_.head(m_num_train_samples_);
+    if (predict_gradient) {
+        for (long i = 0; i < n_test; ++i) {
+            Dtype *f = mat_f_out.col(i).data();
+            f[0] = ktest.col(i).dot(vec_alpha);                                                                      // h(x)
+            for (long j = 1, jj = i + n_test; j <= dim; ++j, jj += n_test) { f[j] = ktest.col(jj).dot(vec_alpha); }  // dh(x)/dx_j
+        }
+        return;
+    }
+    for (long i = 0; i < n_test; ++i) { mat_f_out(0, i) = ktest.col(i).dot(vec_alpha); }  // h(x)
+}
+
+template<typename Dtype>
+void
+NoisyInputGaussianProcess<Dtype>::ComputeCovPrediction(
+    const MatrixX &ktest,
+    const long dim,
+    const long n_test,
+    const bool predict_gradient,
+    Eigen::Ref<MatrixX> mat_var_out,
+    Eigen::Ref<MatrixX> mat_cov_out) const {
+
+    const bool compute_var = mat_var_out.size() > 0;
+    const bool compute_cov = mat_cov_out.size() > 0;
+    if (!compute_var && !compute_cov) { return; }  // only compute mean
+
+    const long ktest_rows = ktest.rows();
+
+    // compute (co)variance of the test queries
+    m_mat_l_.topLeftCorner(ktest_rows, ktest_rows).template triangularView<Eigen::Lower>().solveInPlace(ktest);
+    if (compute_var) {
+        ERL_DEBUG_ASSERT(
+            mat_var_out.rows() >= (predict_gradient ? 1 + dim : 1),
+            "mat_var_out.rows() = {}, it should be >= {} for variance.",
+            mat_var_out.rows(),
+            predict_gradient ? 1 + dim : 1);
+        ERL_DEBUG_ASSERT(mat_var_out.cols() >= n_test, "mat_var_out.cols() = {}, not enough for {} test queries.", mat_var_out.cols(), n_test);
+    }
+    if (!compute_cov) {  // compute variance only
+        // column-wise square sum of ktest = var([h(x1),...,h(xn),dh(x1)/dx_1,...,dh(xn)/dx_1,...,dh(x1)/dx_dim,...,dh(xn)/dx_dim])
+        if (m_reduced_rank_kernel_) {
+            for (long i = 0; i < n_test; ++i) {
+                Dtype *var = mat_var_out.col(i).data();
+                var[0] = ktest.col(i).squaredNorm();  // variance of h(x)
+                if (predict_gradient) {               // variance of dh(x)/dx_j
+                    for (long j = 1, jj = i + n_test; j <= dim; ++j, jj += n_test) { var[j] = ktest.col(jj).squaredNorm(); }
+                }
+            }
+        } else {
+            const Dtype alpha = m_setting_->kernel->alpha;
+            for (long i = 0; i < n_test; ++i) {
+                Dtype *var = mat_var_out.col(i).data();
+                var[0] = alpha - ktest.col(i).squaredNorm();  // variance of h(x)
+                if (predict_gradient) {                       // variance of dh(x)/dx_j
+                    for (long j = 1, jj = i + n_test; j <= dim; ++j, jj += n_test) { var[j] = m_three_over_scale_square_ - ktest.col(jj).squaredNorm(); }
+                }
+            }
+        }
+    } else if (predict_gradient) {  // compute covariance, but only when predict_gradient is true
+        ERL_DEBUG_ASSERT(
+            mat_cov_out.rows() >= (dim + 1) * dim / 2,
+            "mat_cov_out.rows() = {}, it should be >= {} for covariance.",
+            mat_cov_out.rows(),
+            (dim + 1) * dim / 2);
+        ERL_DEBUG_ASSERT(mat_cov_out.cols() >= n_test, "mat_cov_out.cols() = {}, not enough for {} test queries.", mat_cov_out.cols(), n_test);
+        // each column of mat_cov_out is the lower triangular part of the covariance matrix of the corresponding test query
+        if (m_reduced_rank_kernel_) {
+            for (long i = 0; i < n_test; ++i) {
+                Dtype *var = nullptr;
+                if (compute_var) {
+                    var = mat_var_out.col(i).data();
+                    var[0] = ktest.col(i).squaredNorm();  // var(h(x))
+                }
+                Dtype *cov = mat_cov_out.col(i).data();
+                long index = 0;
+                for (long j = 1, jj = i + n_test; j <= dim; ++j, jj += n_test) {
+                    const auto &col_jj = ktest.col(jj);
+                    cov[index++] = col_jj.dot(ktest.col(i));                                                                   // cov(dh(x)/dx_j, h(x))
+                    for (long k = 1, kk = i + n_test; k < j; ++k, kk += n_test) { cov[index++] = col_jj.dot(ktest.col(kk)); }  // cov(dh(x)/dx_j, dh(x)/dx_k)
+                    if (var != nullptr) { var[j] = col_jj.squaredNorm(); }                                                     // var(dh(x)/dx_j)
+                }
+            }
+        } else {
+            const Dtype alpha = m_setting_->kernel->alpha;
+            for (long i = 0; i < n_test; ++i) {
+                Dtype *var = nullptr;
+                if (compute_var) {
+                    var = mat_var_out.col(i).data();
+                    var[0] = alpha - ktest.col(i).squaredNorm();  // var(h(x))
+                }
+                Dtype *cov = mat_cov_out.col(i).data();
+                long index = 0;
+                for (long j = 1, jj = i + n_test; j <= dim; ++j, jj += n_test) {
+                    const auto &col_jj = ktest.col(jj);
+                    cov[index++] = -col_jj.dot(ktest.col(i));                                                                   // cov(dh(x)/dx_j, h(x))
+                    for (long k = 1, kk = i + n_test; k < j; ++k, kk += n_test) { cov[index++] = -col_jj.dot(ktest.col(kk)); }  // cov(dh(x)/dx_j, dh(x)/dx_k)
+                    if (var != nullptr) { var[j] = m_three_over_scale_square_ - col_jj.squaredNorm(); }                         // var(dh(x)/dx_j)
+                }
+            }
+        }
     }
 }
