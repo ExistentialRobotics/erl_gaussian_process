@@ -1,10 +1,14 @@
 #pragma once
 
+#include "erl_common/serialization.hpp"
+
 namespace erl::gaussian_process {
     template<typename Dtype>
     YAML::Node
     LidarGaussianProcess2D<Dtype>::Setting::YamlConvertImpl::encode(const Setting &setting) {
         YAML::Node node;
+        node["partition_on_hit_rays"] = setting.partition_on_hit_rays;
+        node["symmetric_partitions"] = setting.symmetric_partitions;
         node["group_size"] = setting.group_size;
         node["overlap_size"] = setting.overlap_size;
         node["margin"] = setting.margin;
@@ -22,6 +26,8 @@ namespace erl::gaussian_process {
     bool
     LidarGaussianProcess2D<Dtype>::Setting::YamlConvertImpl::decode(const YAML::Node &node, Setting &setting) {
         if (!node.IsMap()) { return false; }
+        setting.partition_on_hit_rays = node["partition_on_hit_rays"].as<bool>();
+        setting.symmetric_partitions = node["symmetric_partitions"].as<bool>();
         setting.group_size = node["group_size"].as<long>();
         setting.overlap_size = node["overlap_size"].as<long>();
         setting.margin = node["margin"].as<long>();
@@ -43,34 +49,66 @@ namespace erl::gaussian_process {
 
         const VectorX &angles = m_sensor_frame_->GetAnglesInFrame();
         const long n = angles.rows();
-        const long gs = m_setting_->group_size;
-        const long step = m_setting_->group_size - m_setting_->overlap_size;
-        const long half_overlap = m_setting_->overlap_size / 2;
-        const long num_groups = std::max(1l, n / step) + 1;
-        const long gs2 = (n - (num_groups - 2) * step) / 2;
-
         if (n <= m_setting_->overlap_size) {
             ERL_DEBUG("LidarGaussianProcess2D: no enough samples to perform partition.");
             return;
         }
 
-        m_setting_->gp->max_num_samples = m_setting_->group_size;  // adjust the max_num_samples
-        m_setting_->gp->kernel->x_dim = 1;                         // adjust the x_dim
-        m_gps_.resize(num_groups);
+        if (!m_setting_->partition_on_hit_rays) { PartitionOnAngles(); }
+    }
 
-        m_angle_partitions_.reserve(num_groups + 1);
-        // first partition
-        m_angle_partitions_.emplace_back(0, gs2 + half_overlap, angles[m_setting_->margin], angles[gs2]);
-        // middle partitions
-        for (long i = 0; i < num_groups - 2; ++i) {
-            const long index_left = i * step + gs2 - half_overlap;
-            const long index_right = index_left + gs;
-            const Dtype coord_left = angles[index_left + half_overlap];
-            const Dtype coord_right = angles[index_right - half_overlap];
-            m_angle_partitions_.emplace_back(index_left, index_right, coord_left, coord_right);
-        }
-        // last partition
-        m_angle_partitions_.emplace_back(n - gs2 - half_overlap, n, angles[n - 1 - gs2], angles[n - 1 - m_setting_->margin]);
+    template<typename Dtype>
+    bool
+    LidarGaussianProcess2D<Dtype>::IsTrained() const {
+        return m_trained_;
+    }
+
+    template<typename Dtype>
+    std::shared_ptr<typename LidarGaussianProcess2D<Dtype>::Setting>
+    LidarGaussianProcess2D<Dtype>::GetSetting() const {
+        return m_setting_;
+    }
+
+    template<typename Dtype>
+    const std::vector<std::shared_ptr<typename LidarGaussianProcess2D<Dtype>::Gp>> &
+    LidarGaussianProcess2D<Dtype>::GetGps() const {
+        return m_gps_;
+    }
+
+    template<typename Dtype>
+    const std::vector<std::tuple<long, long, Dtype, Dtype>> &
+    LidarGaussianProcess2D<Dtype>::GetAnglePartitions() const {
+        return m_angle_partitions_;
+    }
+
+    template<typename Dtype>
+    std::shared_ptr<const typename LidarGaussianProcess2D<Dtype>::LidarFrame2D>
+    LidarGaussianProcess2D<Dtype>::GetSensorFrame() const {
+        return m_sensor_frame_;
+    }
+
+    template<typename Dtype>
+    typename LidarGaussianProcess2D<Dtype>::Vector2
+    LidarGaussianProcess2D<Dtype>::GlobalToLocalSo2(const Vector2 &dir_global) const {
+        return m_sensor_frame_->DirWorldToFrame(dir_global);
+    }
+
+    template<typename Dtype>
+    typename LidarGaussianProcess2D<Dtype>::Vector2
+    LidarGaussianProcess2D<Dtype>::LocalToGlobalSo2(const Vector2 &dir_local) const {
+        return m_sensor_frame_->DirFrameToWorld(dir_local);
+    }
+
+    template<typename Dtype>
+    typename LidarGaussianProcess2D<Dtype>::Vector2
+    LidarGaussianProcess2D<Dtype>::GlobalToLocalSe2(const Vector2 &xy_global) const {
+        return m_sensor_frame_->PosWorldToFrame(xy_global);
+    }
+
+    template<typename Dtype>
+    typename LidarGaussianProcess2D<Dtype>::Vector2
+    LidarGaussianProcess2D<Dtype>::LocalToGlobalSe2(const Vector2 &xy_local) const {
+        return m_sensor_frame_->PosFrameToWorld(xy_local);
     }
 
     template<typename Dtype>
@@ -89,41 +127,92 @@ namespace erl::gaussian_process {
 
     template<typename Dtype>
     void
-    LidarGaussianProcess2D<Dtype>::RepartitionOnHitRays() {
-        m_angle_partitions_.clear();
-        const long n = m_sensor_frame_->GetNumHitRays();
-        const long s = m_setting_->group_size - m_setting_->overlap_size;
-        const auto num_groups = std::max(1l, n / s) + 1;
+    LidarGaussianProcess2D<Dtype>::PartitionOnAngles() {
+        const VectorX &angles = m_sensor_frame_->GetAnglesInFrame();
+        const long n = angles.size();
+        const long gs = m_setting_->group_size;
+        const long step = m_setting_->group_size - m_setting_->overlap_size;
+        const long num_groups = std::max(1l, n / step) + 1;
+        const long gs2 = (n - (num_groups - 2) * step) / 2;
+        const long half_overlap = m_setting_->overlap_size / 2;
 
         m_setting_->gp->max_num_samples = m_setting_->group_size;  // adjust the max_num_samples
         m_setting_->gp->kernel->x_dim = 1;                         // adjust the x_dim
         m_gps_.resize(num_groups);
+        m_angle_partitions_.clear();
         m_angle_partitions_.reserve(num_groups);
 
-        const std::vector<long> &hit_ray_indices = m_sensor_frame_->GetHitRayIndices();
-        const VectorX &angles_frame = m_sensor_frame_->GetAnglesInFrame();
-        for (int i = 0; i < num_groups - 2; ++i) {
-            long index_left = i * s;                                 // lower bound, included
-            long index_right = index_left + m_setting_->group_size;  // upper bound, not included
+        if (m_setting_->symmetric_partitions) {
+            // first partition
+            m_angle_partitions_.emplace_back(0, gs2 + half_overlap, angles[m_setting_->margin], angles[gs2]);
+            // middle partitions
+            for (long i = 0; i < num_groups - 2; ++i) {
+                const long index_left = i * step + gs2 - half_overlap;
+                const long index_right = index_left + gs;
+                const Dtype coord_left = angles[index_left + half_overlap];
+                const Dtype coord_right = angles[index_right - half_overlap];
+                m_angle_partitions_.emplace_back(index_left, index_right, coord_left, coord_right);
+            }
+            // last partition
+            m_angle_partitions_.emplace_back(n - gs2 - half_overlap, n, angles[n - 1 - gs2], angles[n - 1 - m_setting_->margin]);
+            return;
+        }
 
+        for (int i = 0; i < num_groups - 2; ++i) {
+            long index_left = i * step;                              // lower bound, included
+            long index_right = index_left + m_setting_->group_size;  // upper bound, not included
+            m_angle_partitions_.emplace_back(index_left, index_right, angles[index_left], angles[index_right - half_overlap]);
+        }
+        // the last two groups
+        long index_left = (num_groups - 2) * step;
+        long index_right = index_left + (n - index_left + m_setting_->overlap_size) / 2;
+        m_angle_partitions_.emplace_back(index_left, index_right, angles[index_left], angles[index_right - half_overlap]);
+        index_left = index_left + (n - index_left - m_setting_->overlap_size) / 2;
+        index_right = n;
+        m_angle_partitions_.emplace_back(index_left, index_right, angles[index_left], angles[index_right - 1]);
+    }
+
+    template<typename Dtype>
+    void
+    LidarGaussianProcess2D<Dtype>::PartitionOnHitRays() {
+        const VectorX &angles = m_sensor_frame_->GetAnglesInFrame();
+        const long n = m_sensor_frame_->GetNumHitRays();
+        if (n == 0) {
+            ERL_WARN("No hit rays are stored.");
+            return;
+        }
+        const long step = m_setting_->group_size - m_setting_->overlap_size;
+        const long num_groups = std::max(1l, n / step) + 1;
+        const std::vector<long> &hit_ray_indices = m_sensor_frame_->GetHitRayIndices();
+
+        m_setting_->gp->max_num_samples = m_setting_->group_size;  // adjust the max_num_samples
+        m_setting_->gp->kernel->x_dim = 1;                         // adjust the x_dim
+        m_gps_.resize(num_groups);
+        m_angle_partitions_.clear();
+        m_angle_partitions_.reserve(num_groups);
+
+        if (m_setting_->symmetric_partitions) { ERL_WARN("Symmetric partition is not implemented yet. Asymmetric partition is used."); }
+
+        for (int i = 0; i < num_groups - 2; ++i) {
+            long index_left = i * step;                              // lower bound, included
+            long index_right = index_left + m_setting_->group_size;  // upper bound, not included
             // hit ray indices to original ray indices
             index_left = hit_ray_indices[index_left];
             index_right = hit_ray_indices[index_right];
-
-            m_angle_partitions_.emplace_back(index_left, index_right, angles_frame[index_left], angles_frame[index_right]);
+            m_angle_partitions_.emplace_back(index_left, index_right, angles[index_left], angles[index_right]);
         }
 
         // the last two groups
-        long index_left = (num_groups - 2) * s;
+        long index_left = (num_groups - 2) * step;
         long index_right = index_left + (n - index_left + m_setting_->overlap_size) / 2;
         index_left = hit_ray_indices[index_left];
         index_right = hit_ray_indices[index_right];
-        m_angle_partitions_.emplace_back(index_left, index_right, angles_frame[index_left], angles_frame[index_right]);
+        m_angle_partitions_.emplace_back(index_left, index_right, angles[index_left], angles[index_right]);
 
         index_left = index_left + (n - index_left - m_setting_->overlap_size) / 2;
         index_left = hit_ray_indices[index_left];
-        index_right = hit_ray_indices[n - 1];
-        m_angle_partitions_.emplace_back(index_left, index_right, angles_frame[index_left], angles_frame[index_right]);
+        index_right = hit_ray_indices[n - 1] + 1;  // upper bound, not included
+        m_angle_partitions_.emplace_back(index_left, index_right, angles[index_left], angles[index_right]);
     }
 
     template<typename Dtype>
@@ -137,26 +226,27 @@ namespace erl::gaussian_process {
             return false;
         }
 
+        if (m_setting_->partition_on_hit_rays) { PartitionOnHitRays(); }
+
 #pragma omp parallel for default(none)
         for (long i = 0; i < static_cast<long>(m_angle_partitions_.size()); ++i) {
             const auto &[index_left, index_right, coord_left, coord_right] = m_angle_partitions_[i];
             std::shared_ptr<Gp> &gp = m_gps_[i];
             if (gp == nullptr) { gp = std::make_shared<Gp>(m_setting_->gp); }
-            gp->Reset(m_setting_->gp->max_num_samples, 1);
+            gp->Reset(m_setting_->gp->max_num_samples, 1, 1);
             long cnt = 0;
-            MatrixX &train_input_samples = gp->GetTrainInputSamplesBuffer();
-            VectorX &train_output_samples = gp->GetTrainOutputSamplesBuffer();
-            VectorX &train_output_samples_variance = gp->GetTrainOutputSamplesVarianceBuffer();
+            auto &train_set = gp->GetTrainSet();
             const Eigen::VectorXb &mask_hit = m_sensor_frame_->GetHitMask();
             const VectorX &angles = m_sensor_frame_->GetAnglesInFrame();
             for (long j = index_left; j < index_right; ++j) {
                 if (!mask_hit[j]) { continue; }
-                train_input_samples(0, cnt) = angles[j];
-                train_output_samples[cnt] = m_mapped_distances_[j];
-                train_output_samples_variance(cnt) = m_setting_->sensor_range_var;
+                train_set.x(0, cnt) = angles[j];
+                train_set.y.col(0)[cnt] = m_mapped_distances_[j];
+                train_set.var[cnt] = m_setting_->sensor_range_var;
                 ++cnt;
             }
-            if (cnt > 0) { (void) gp->Train(cnt); }
+            train_set.num_samples = cnt;
+            if (cnt > 0) { (void) gp->Train(); }
         }
 
         m_trained_ = true;
@@ -175,11 +265,14 @@ namespace erl::gaussian_process {
         if (!m_trained_) { return false; }
 
         const long n = angles.size();
-        ERL_ASSERTM(vec_ranges.size() >= n, "vec_ranges size = {}, it should be >= {}.", vec_ranges.size(), n);
-        ERL_ASSERTM(vec_ranges_var.size() >= n, "vec_ranges_var size = {}, it should be >= {}.", vec_ranges_var.size(), n);
+        ERL_DEBUG_ASSERT(vec_ranges.size() >= n, "vec_ranges size = {}, it should be >= {}.", vec_ranges.size(), n);
 
         vec_ranges.setZero();
-        vec_ranges_var.setConstant(m_setting_->init_variance);
+        const bool compute_var = vec_ranges_var.size() > 0;
+        if (compute_var) {
+            ERL_DEBUG_ASSERT(vec_ranges_var.size() >= n, "vec_ranges_var size = {}, it should be >= {}.", vec_ranges_var.size(), n);
+            vec_ranges_var.setConstant(m_setting_->init_variance);
+        }
 
         for (int i = 0; i < angles.size(); ++i) {
             Scalar angle_local;
@@ -200,9 +293,9 @@ namespace erl::gaussian_process {
             const auto gp = m_gps_[partition_index];
             if (!gp->IsTrained()) { continue; }
             Scalar f, var;
-            if (!gp->Test(angle_local, f, var)) { continue; }
+            if (VectorX no_var; compute_var ? !gp->Test(angle_local, {0}, f, var) : !gp->Test(angle_local, {0}, f, no_var)) { continue; }
             vec_ranges[i] = un_map ? m_mapping_->inv(f[0]) : f[0];
-            vec_ranges_var[i] = var[0];
+            if (compute_var) { vec_ranges_var[i] = var[0]; }
         }
         return true;
     }
@@ -274,51 +367,87 @@ namespace erl::gaussian_process {
     template<typename Dtype>
     bool
     LidarGaussianProcess2D<Dtype>::Write(std::ostream &s) const {
-        s << kFileHeader << std::endl  //
-          << "# (feel free to add / change comments, but leave the first line as it is!)" << std::endl
-          << "setting" << std::endl;
-        // write setting
-        if (!m_setting_->Write(s)) {
-            ERL_WARN("Failed to write setting.");
-            return false;
-        }
-        s << "trained " << m_trained_ << std::endl;
-        s << "gps " << m_gps_.size() << std::endl;
-        for (const auto &gp: m_gps_) {
-            auto has_gp = static_cast<char>(gp != nullptr);
-            s.write(&has_gp, sizeof(char));
-            if (has_gp) {
-                if (!gp->Write(s)) {
-                    ERL_WARN("Failed to write gp.");
-                    return false;
-                }
-            }
-        }
-        s << "angle_partitions " << m_angle_partitions_.size() << std::endl;
-        for (const auto &[index_left, index_right, coord_left, coord_right]: m_angle_partitions_) {
-            s.write(reinterpret_cast<const char *>(&index_left), sizeof(index_left));
-            s.write(reinterpret_cast<const char *>(&index_right), sizeof(index_right));
-            s.write(reinterpret_cast<const char *>(&coord_left), sizeof(coord_left));
-            s.write(reinterpret_cast<const char *>(&coord_right), sizeof(coord_right));
-        }
-        s << "lidar_frame" << std::endl;
-        if (!m_sensor_frame_->Write(s)) {
-            ERL_WARN("Failed to write lidar_frame.");
-            return false;
-        }
-        s << "mapped_distances" << std::endl;
-        if (!common::SaveEigenMatrixToBinaryStream(s, m_mapped_distances_)) {
-            ERL_WARN("Failed to write mapped_distances.");
-            return false;
-        }
-        s << "end_of_LidarGaussianProcess2D" << std::endl;
-        return s.good();
+        s << "# " << type_name(*this) << "\n# (feel free to add / change comments, but leave the first line as it is!)\n";
+
+        static const std::vector<std::pair<const char *, std::function<bool(const LidarGaussianProcess2D *, std::ostream &)>>> token_function_pairs = {
+            {
+                "setting",
+                [](const LidarGaussianProcess2D *gp, std::ostream &stream) {
+                    if (!gp->m_setting_->Write(stream)) {
+                        ERL_WARN("Failed to write setting.");
+                        return false;
+                    }
+                    return true;
+                },
+            },
+            {
+                "trained",
+                [](const LidarGaussianProcess2D *gp, std::ostream &stream) {
+                    stream << gp->m_trained_;
+                    return true;
+                },
+            },
+            {
+                "gps",
+                [](const LidarGaussianProcess2D *gp, std::ostream &stream) {
+                    stream << gp->m_gps_.size() << '\n';
+                    for (const auto &g: gp->m_gps_) {
+                        char has_gp = static_cast<char>(g != nullptr);
+                        stream.write(&has_gp, sizeof(char));
+                        if (!has_gp) { continue; }
+                        if (!g->Write(stream)) {
+                            ERL_WARN("Failed to write gp.");
+                            return false;
+                        }
+                    }
+                    return true;
+                },
+            },
+            {
+                "angle_partitions",
+                [](const LidarGaussianProcess2D *gp, std::ostream &stream) {
+                    stream << gp->m_angle_partitions_.size() << '\n';
+                    for (const auto &[index_left, index_right, coord_left, coord_right]: gp->m_angle_partitions_) {
+                        stream.write(reinterpret_cast<const char *>(&index_left), sizeof(index_left));
+                        stream.write(reinterpret_cast<const char *>(&index_right), sizeof(index_right));
+                        stream.write(reinterpret_cast<const char *>(&coord_left), sizeof(coord_left));
+                        stream.write(reinterpret_cast<const char *>(&coord_right), sizeof(coord_right));
+                    }
+                    return true;
+                },
+            },
+            {
+                "lidar_frame",
+                [](const LidarGaussianProcess2D *gp, std::ostream &stream) {
+                    if (!gp->m_sensor_frame_->Write(stream)) {
+                        ERL_WARN("Failed to write lidar_frame.");
+                        return false;
+                    }
+                    return true;
+                },
+            },
+            {
+                "mapped_distances",
+                [](const LidarGaussianProcess2D *gp, std::ostream &stream) {
+                    if (!common::SaveEigenMatrixToBinaryStream(stream, gp->m_mapped_distances_)) {
+                        ERL_WARN("Failed to write mapped_distances.");
+                        return false;
+                    }
+                    return true;
+                },
+            },
+            {
+                "end_of_LidarGaussianProcess2D",
+                [](const LidarGaussianProcess2D *, std::ostream &) { return true; },
+            },
+        };
+        return common::WriteTokens(s, this, token_function_pairs);
     }
 
     template<typename Dtype>
     bool
     LidarGaussianProcess2D<Dtype>::Read(const std::string &filename) {
-        ERL_INFO("Reading LidarGaussianProcess2D from file: {}", std::filesystem::absolute(filename));
+        ERL_INFO("Reading {} from file: {}", type_name(*this), filename);
         std::ifstream file(filename.c_str(), std::ios_base::in | std::ios_base::binary);
         if (!file.is_open()) {
             ERL_WARN("Failed to open file: {}", filename.c_str());
@@ -341,115 +470,99 @@ namespace erl::gaussian_process {
         // check if the first line is valid
         std::string line;
         std::getline(s, line);
-        if (line.compare(0, kFileHeader.length(), kFileHeader) != 0) {  // check if the first line is valid
-            ERL_WARN("Header does not start with \"{}\"", kFileHeader.c_str());
+        if (std::string file_header = fmt::format("# {}", type_name(*this));
+            line.compare(0, file_header.length(), file_header) != 0) {  // check if the first line is valid
+            ERL_WARN("Header does not start with \"{}\"", file_header);
             return false;
         }
 
-        auto skip_line = [&s]() {
-            char c;
-            do { c = static_cast<char>(s.get()); } while (s.good() && c != '\n');
-        };
-
-        static const char *tokens[] = {
-            "setting",
-            "trained",
-            "gps",
-            "angle_partitions",
-            "lidar_frame",
-            "mapped_distances",
-            "end_of_LidarGaussianProcess2D",
-        };
-
-        // read data
-        std::string token;
-        int token_idx = 0;
-        while (s.good()) {
-            s >> token;
-            if (token.compare(0, 1, "#") == 0) {
-                skip_line();  // comment line, skip forward until end of line
-                continue;
-            }
-            // non-comment line
-            if (token != tokens[token_idx]) {
-                ERL_WARN("Expected token {}, got {}.", tokens[token_idx], token);  // check token
-                return false;
-            }
-            // reading state machine
-            switch (token_idx) {
-                case 0: {  // setting
-                    skip_line();
-                    if (!m_setting_->Read(s)) {
+        static const std::vector<std::pair<const char *, std::function<bool(LidarGaussianProcess2D *, std::istream &)>>> token_function_pairs = {
+            {
+                "setting",
+                [](LidarGaussianProcess2D *gp, std::istream &stream) -> bool {
+                    if (!gp->m_setting_->Read(stream)) {
                         ERL_WARN("Failed to read setting.");
                         return false;
                     }
-                    break;
-                }
-                case 1: {  // trained
-                    s >> m_trained_;
-                    break;
-                }
-                case 2: {  // gps
+                    return true;
+                },
+            },
+            {
+                "trained",
+                [](LidarGaussianProcess2D *gp, std::istream &stream) -> bool {
+                    stream >> gp->m_trained_;
+                    return true;
+                },
+            },
+            {
+                "gps",
+                [](LidarGaussianProcess2D *gp, std::istream &stream) -> bool {
                     long num_gps;
-                    s >> num_gps;
-                    m_gps_.resize(num_gps, nullptr);
-                    skip_line();
+                    stream >> num_gps;
+                    gp->m_gps_.resize(num_gps, nullptr);
+                    common::SkipLine(stream);
+                    char has_gp;
                     for (long i = 0; i < num_gps; ++i) {
-                        char has_gp;
-                        s.read(&has_gp, sizeof(char));
-                        if (has_gp) {
-                            m_gps_[i] = std::make_shared<VanillaGaussianProcess<Dtype>>(m_setting_->gp);
-                            if (!m_gps_[i]->Read(s)) {
-                                ERL_WARN("Failed to read gp.");
-                                return false;
-                            }
+                        stream.read(&has_gp, sizeof(char));
+                        if (!has_gp) { continue; }
+                        gp->m_gps_[i] = std::make_shared<Gp>(gp->m_setting_->gp);
+                        if (!gp->m_gps_[i]->Read(stream)) {
+                            ERL_WARN("Failed to read gp.");
+                            return false;
                         }
                     }
-                    break;
-                }
-                case 3: {  // angle_partitions
+                    return true;
+                },
+            },
+            {
+                "angle_partitions",
+                [](LidarGaussianProcess2D *gp, std::istream &stream) -> bool {
                     long num_partitions;
-                    s >> num_partitions;
-                    m_angle_partitions_.resize(num_partitions);
-                    skip_line();
+                    stream >> num_partitions;
+                    gp->m_angle_partitions_.resize(num_partitions);
+                    common::SkipLine(stream);
                     for (long i = 0; i < num_partitions; ++i) {
-                        auto &[index_left, index_right, coord_left, coord_right] = m_angle_partitions_[i];
-                        s.read(reinterpret_cast<char *>(&index_left), sizeof(index_left));
-                        s.read(reinterpret_cast<char *>(&index_right), sizeof(index_right));
-                        s.read(reinterpret_cast<char *>(&coord_left), sizeof(coord_left));
-                        s.read(reinterpret_cast<char *>(&coord_right), sizeof(coord_right));
+                        auto &[index_left, index_right, coord_left, coord_right] = gp->m_angle_partitions_[i];
+                        stream.read(reinterpret_cast<char *>(&index_left), sizeof(index_left));
+                        stream.read(reinterpret_cast<char *>(&index_right), sizeof(index_right));
+                        stream.read(reinterpret_cast<char *>(&coord_left), sizeof(coord_left));
+                        stream.read(reinterpret_cast<char *>(&coord_right), sizeof(coord_right));
                     }
-                    break;
-                }
-                case 4: {  // lidar_frame
-                    skip_line();
-                    m_sensor_frame_ = std::make_shared<LidarFrame2D>(m_setting_->sensor_frame);
-                    if (!m_sensor_frame_->Read(s)) {
+                    return true;
+                },
+            },
+            {
+                "lidar_frame",
+                [](LidarGaussianProcess2D *gp, std::istream &stream) -> bool {
+                    common::SkipLine(stream);
+                    gp->m_sensor_frame_ = std::make_shared<LidarFrame2D>(gp->m_setting_->sensor_frame);
+                    if (!gp->m_sensor_frame_->Read(stream)) {
                         ERL_WARN("Failed to read lidar_frame.");
                         return false;
                     }
-                    break;
-                }
-                case 5: {  // mapped_distances
-                    skip_line();
-                    if (!common::LoadEigenMatrixFromBinaryStream(s, m_mapped_distances_)) {
+                    return true;
+                },
+            },
+            {
+                "mapped_distances",
+                [](LidarGaussianProcess2D *gp, std::istream &stream) -> bool {
+                    common::SkipLine(stream);
+                    if (!common::LoadEigenMatrixFromBinaryStream(stream, gp->m_mapped_distances_)) {
                         ERL_WARN("Failed to read mapped_distances.");
                         return false;
                     }
-                    break;
-                }
-                case 6: {  // end_of_LidarGaussianProcess2D
-                    skip_line();
-                    m_mapping_ = MappingDtype::Create(m_setting_->mapping);
                     return true;
-                }
-                default: {  // should not reach here
-                    ERL_FATAL("Internal error, should not reach here.");
-                }
-            }
-            ++token_idx;
-        }
-        ERL_WARN("Failed to read LidarGaussianProcess2D. Truncated file?");
-        return false;  // should not reach here
+                },
+            },
+            {
+                "end_of_LidarGaussianProcess2D",
+                [](LidarGaussianProcess2D *gp, std::istream &stream) -> bool {
+                    common::SkipLine(stream);
+                    gp->m_mapping_ = MappingDtype::Create(gp->m_setting_->mapping);
+                    return true;
+                },
+            },
+        };
+        return common::ReadTokens(s, this, token_function_pairs);
     }
 }  // namespace erl::gaussian_process

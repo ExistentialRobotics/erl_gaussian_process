@@ -31,67 +31,71 @@ namespace erl::gaussian_process {
             };
         };
 
+        struct TrainSet {
+            long x_dim = 0;                  // m = dimension of x
+            long y_dim = 0;                  // n = dimension of y
+            long num_samples = 0;            // N = number of training samples
+            long num_samples_with_grad = 0;  // number of training samples with gradient
+            MatrixX x;                       // input, x1, ..., xN
+            MatrixX y;                       // output, each column i: h_i(x1), ..., h_i(xN)
+            MatrixX grad;                    // gradient, each column i: dh_1(xi)/dx_1 .. dh_1(xi)/dx_m, dh_2(xi)/dx_1 .. dh_2(xi)/dx_m, ... dh_n(xi)/dx_m
+            VectorX var_x;                   // variance of x1 ... xN
+            VectorX var_y;                   // variance of y, assumed to be identical across dimensions of y.
+            VectorX var_grad;                // variance of gradient, assumed to be identical across dimensions of gradient.
+            Eigen::VectorXl grad_flag;       // true if the corresponding training sample has a gradient.
+
+            void
+            Reset(long max_num_samples, long x_dim, long y_dim, bool no_gradient_observation);
+
+            [[nodiscard]] bool
+            operator==(const TrainSet &other) const;
+
+            [[nodiscard]] bool
+            operator!=(const TrainSet &other) const;
+
+            [[nodiscard]] bool
+            Write(std::ostream &s) const;
+
+            [[nodiscard]] bool
+            Read(std::istream &s);
+        };
+
     protected:
-        long m_x_dim_ = 0;                                // dimension of x
-        long m_num_train_samples_ = 0;                    // number of training samples
-        long m_num_train_samples_with_grad_ = 0;          // number of training samples with gradient
+        std::shared_ptr<Setting> m_setting_ = nullptr;    // setting
         bool m_trained_ = false;                          // true if the GP is trained
         bool m_trained_once_ = false;                     // true if the GP is trained at least once
         bool m_k_train_updated_ = false;                  // true if Ktrain is updated
         long m_k_train_rows_ = 0;                         // number of rows of Ktrain
         long m_k_train_cols_ = 0;                         // number of columns of Ktrain
         Dtype m_three_over_scale_square_ = 0.;            // for computing normal variance
-        std::shared_ptr<Setting> m_setting_ = nullptr;    // setting
         std::shared_ptr<Covariance> m_kernel_ = nullptr;  // kernel
         bool m_reduced_rank_kernel_ = false;              // whether the kernel is rank reduced or not
-        MatrixX m_mat_x_train_ = {};                      // x1, ..., xn
-        VectorX m_vec_y_train_ = {};                      // h(x1), ..., h(xn)
-        MatrixX m_mat_grad_train_ = {};                   // dh(x_j)/dx_ij for index (i, j)
         MatrixX m_mat_k_train_ = {};                      // Ktrain, avoid reallocation
         MatrixX m_mat_l_ = {};                            // lower triangular matrix of the Cholesky decomposition of Ktrain
-        Eigen::VectorXl m_vec_grad_flag_ = {};            // true if the corresponding training sample has a gradient
-        VectorX m_vec_alpha_ = {};                        // h(x1)..h(xn), dh(x1)/dx1_1 .. dh(xn)/dxn_1 .. dh(x1)/dx1_dim .. dh(xn)/dxn_dim
-        VectorX m_vec_var_x_ = {};                        // variance of x1 ... xn
-        VectorX m_vec_var_h_ = {};                        // variance of h(x1)..h(xn)
-        VectorX m_vec_var_grad_ = {};                     // variance of dh(x1)/dx1_1 .. dh(xn)/dxn_1 .. dh(x1)/dx1_dim .. dh(xn)/dxn_dim
+        MatrixX m_mat_alpha_ = {};                        // col k: h_k(x1)..h_k(xn), dh_k(x1)/dx(1,1)..dh_k(xn)/dx(1,n) .. dh_k(x1)/dx(d,1)..dh_k(xn)/dx(d,n)
+        TrainSet m_train_set_;                            // the training set
 
     public:
-        explicit NoisyInputGaussianProcess(std::shared_ptr<Setting> setting)
-            : m_setting_(std::move(setting)) {
-            ERL_ASSERTM(m_setting_ != nullptr, "setting should not be nullptr.");
-            ERL_ASSERTM(m_setting_->kernel != nullptr, "setting->kernel should not be nullptr.");
-            if (m_setting_->max_num_samples > 0 && m_setting_->kernel->x_dim > 0) {
-                ERL_ASSERTM(AllocateMemory(m_setting_->max_num_samples, m_setting_->kernel->x_dim), "Failed to allocate memory.");
-            }
-        }
+        explicit NoisyInputGaussianProcess(std::shared_ptr<Setting> setting);
 
         NoisyInputGaussianProcess(const NoisyInputGaussianProcess &other);
-
         NoisyInputGaussianProcess(NoisyInputGaussianProcess &&other) = default;
-
         NoisyInputGaussianProcess &
         operator=(const NoisyInputGaussianProcess &other);
-
         NoisyInputGaussianProcess &
         operator=(NoisyInputGaussianProcess &&other) = default;
 
         virtual ~NoisyInputGaussianProcess() = default;
 
         template<typename T = Setting>
-        [[nodiscard]] std::shared_ptr<T>
-        GetSetting() const {
-            return std::dynamic_pointer_cast<T>(m_setting_);
-        }
+        [[nodiscard]] std::shared_ptr<const T>
+        GetSetting() const;
 
         [[nodiscard]] bool
-        IsTrained() const {
-            return m_trained_;
-        }
+        IsTrained() const;
 
         [[nodiscard]] bool
-        UsingReducedRankKernel() const {
-            return m_reduced_rank_kernel_;
-        }
+        UsingReducedRankKernel() const;
 
         [[nodiscard]] VectorX
         GetKernelCoordOrigin() const;
@@ -100,97 +104,48 @@ namespace erl::gaussian_process {
         SetKernelCoordOrigin(const VectorX &coord_origin) const;
 
         void
-        Reset(long max_num_samples, long x_dim);
-
-        [[nodiscard]] long
-        GetNumTrainSamples() const {
-            return m_num_train_samples_;
-        }
-
-        [[nodiscard]] long
-        GetNumTrainSamplesWithGrad() const {
-            return m_num_train_samples_with_grad_;
-        }
+        Reset(long max_num_samples, long x_dim, long y_dim);
 
         [[nodiscard]] std::shared_ptr<Covariance>
-        GetKernel() const {
-            return m_kernel_;
-        }
+        GetKernel() const;
 
-        [[nodiscard]] MatrixX &
-        GetTrainInputSamplesBuffer() {
-            return m_mat_x_train_;
-        }
+        [[nodiscard]] TrainSet &
+        GetTrainSet();
 
-        [[nodiscard]] VectorX &
-        GetTrainOutputSamplesBuffer() {
-            return m_vec_y_train_;
-        }
+        [[nodiscard]] const TrainSet &
+        GetTrainSet() const;
 
-        [[nodiscard]] MatrixX &
-        GetTrainOutputGradientSamplesBuffer() {
-            return m_mat_grad_train_;
-        }
+        [[nodiscard]] const MatrixX &
+        GetKtrain() const;
 
-        [[nodiscard]] Eigen::VectorXl &
-        GetTrainGradientFlagsBuffer() {
-            return m_vec_grad_flag_;
-        }
+        [[nodiscard]] const MatrixX &
+        GetAlpha();
 
-        [[nodiscard]] VectorX &
-        GetTrainInputSamplesVarianceBuffer() {
-            return m_vec_var_x_;
-        }
-
-        [[nodiscard]] VectorX &
-        GetTrainOutputValueSamplesVarianceBuffer() {
-            return m_vec_var_h_;
-        }
-
-        [[nodiscard]] VectorX &
-        GetTrainOutputGradientSamplesVarianceBuffer() {
-            return m_vec_var_grad_;
-        }
-
-        [[nodiscard]] MatrixX
-        GetKtrain() {
-            return m_mat_k_train_;
-        }
-
-        [[nodiscard]] VectorX
-        GetAlpha() {
-            return m_vec_alpha_;
-        }
-
-        [[nodiscard]] MatrixX
-        GetCholeskyDecomposition() {
-            return m_mat_l_;
-        }
+        [[nodiscard]] const MatrixX &
+        GetCholeskyDecomposition();
 
         [[nodiscard]] virtual std::size_t
         GetMemoryUsage() const;
 
         bool
-        UpdateKtrain(long num_train_samples);
+        UpdateKtrain();
 
-        virtual void
-        Train(long num_train_samples);
+        virtual bool
+        Train();
 
         [[nodiscard]] virtual bool
         Test(
             const Eigen::Ref<const MatrixX> &mat_x_test,
+            const std::vector<std::pair<long, bool>> &y_index_grad_pairs,
             Eigen::Ref<MatrixX> mat_f_out,
             Eigen::Ref<MatrixX> mat_var_out,
-            Eigen::Ref<MatrixX> mat_cov_out,
-            bool predict_gradient) const;
+            Eigen::Ref<MatrixX> mat_cov_out) const;
 
         [[nodiscard]] bool
         operator==(const NoisyInputGaussianProcess &other) const;
 
         [[nodiscard]] bool
-        operator!=(const NoisyInputGaussianProcess &other) const {
-            return !(*this == other);
-        }
+        operator!=(const NoisyInputGaussianProcess &other) const;
 
         [[nodiscard]] bool
         Write(const std::string &filename) const;
@@ -206,29 +161,24 @@ namespace erl::gaussian_process {
 
     protected:
         bool
-        AllocateMemory(long max_num_samples, long x_dim);
+        AllocateMemory(long max_num_samples, long x_dim, long y_dim);
 
         void
         InitKernel();
 
         void
-        ComputeValuePrediction(const MatrixX &ktest, long dim, long n_test, long predict_gradient, Eigen::Ref<MatrixX> mat_f_out) const;
+        ComputeValuePrediction(const MatrixX &ktest, long n_test, const std::vector<std::pair<long, bool>> &y_index_grad_pairs, Eigen::Ref<MatrixX> mat_f_out)
+            const;
 
         void
-        ComputeCovPrediction(
-            const MatrixX &ktest,
-            long dim,
-            long n_test,
-            bool predict_gradient,
-            Eigen::Ref<MatrixX> mat_var_out,
-            Eigen::Ref<MatrixX> mat_cov_out) const;
+        ComputeCovPrediction(MatrixX &ktest, long n_test, bool predict_gradient, Eigen::Ref<MatrixX> mat_var_out, Eigen::Ref<MatrixX> mat_cov_out) const;
     };
-
-#include "noisy_input_gp.tpp"
 
     using NoisyInputGaussianProcessD = NoisyInputGaussianProcess<double>;
     using NoisyInputGaussianProcessF = NoisyInputGaussianProcess<float>;
 }  // namespace erl::gaussian_process
+
+#include "noisy_input_gp.tpp"
 
 template<>
 struct YAML::convert<erl::gaussian_process::NoisyInputGaussianProcessD::Setting> : erl::gaussian_process::NoisyInputGaussianProcessD::Setting::YamlConvertImpl {

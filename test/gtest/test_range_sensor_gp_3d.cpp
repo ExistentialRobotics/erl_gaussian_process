@@ -20,7 +20,7 @@ using Matrix3 = Eigen::Matrix3<Dtype>;
 using Vector3 = Eigen::Vector3<Dtype>;
 using Matrix3X = Eigen::Matrix<Dtype, 3, Eigen::Dynamic>;
 using MatrixX = Eigen::MatrixX<Dtype>;
-using VectorX = Eigen::MatrixX<Dtype>;
+using VectorX = Eigen::VectorX<Dtype>;
 using LidarFrame = erl::geometry::LidarFrame3D<Dtype>;
 using Lidar = erl::geometry::Lidar3D<Dtype>;
 using DepthFrame = erl::geometry::DepthFrame3D<Dtype>;
@@ -93,7 +93,7 @@ TEST(RangeSensorGp3D, Lidar) {
     scene.AddTriangles(open3d::t::geometry::TriangleMesh::FromLegacy(*mesh));
     open3d::core::Tensor rays({test_azimuths.size(), 6}, open3d::core::Dtype::Float32);
     for (long i = 0; i < test_azimuths.size(); ++i) {
-        directions_world.col(i) = erl::common::AzimuthElevationToDirection(test_azimuths[i], test_elevations[i]);
+        directions_world.col(i) = erl::common::AzimuthElevationToDirection<Dtype>(test_azimuths[i], test_elevations[i]);
         rays[i][0] = translation[0];
         rays[i][1] = translation[1];
         rays[i][2] = translation[2];

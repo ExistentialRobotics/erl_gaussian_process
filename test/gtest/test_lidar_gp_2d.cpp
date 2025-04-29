@@ -1,12 +1,8 @@
-#include "../cov_fnc.cpp"
-#include "../obs_gp.cpp"
-#include "../obs_gp.h"
-
 #include "erl_common/binary_file.hpp"
+#include "erl_common/plplot_fig.hpp"
 #include "erl_common/test_helper.hpp"
+#include "erl_covariance/ornstein_uhlenbeck.hpp"
 #include "erl_gaussian_process/lidar_gp_2d.hpp"
-
-#include <gtest/gtest.h>
 
 #include <filesystem>
 #include <iostream>
@@ -120,81 +116,93 @@ public:
 #define DEFAULT_OBSGP_NOISE_PARAM double(0.01)
 #define DEFAULT_OBSGP_OVERLAP_SZ  6
 #define DEFAULT_OBSGP_GROUP_SZ    20
-#define DEFAULT_OBSGP_MARGIN      double(0.0175)
-#define GPISMAP_OBS_VAR_THRE      double(0.1)
+// #define DEFAULT_OBSGP_MARGIN      double(0.0175)
+#define GPISMAP_OBS_VAR_THRE double(0.1)
+#define ANGLE_MIN            double(-135.0 / 180.0 * M_PI)
+#define ANGLE_MAX            2.33874  // double(135.0 / 180.0 * M_PI)
 
-TEST(ERL_GAUSSIAN_PROCESS, LidarGaussianProcess2D) {
+TEST(LidarGaussianProcess2D, Build) {
     std::filesystem::path path = __FILE__;
     path = path.parent_path().parent_path();
     path /= "double/train.dat";
     auto train_data_loader = TrainDataLoader(path.string().c_str());
 
-    auto setting = std::make_shared<LidarGaussianProcess2D::Setting>();
+    auto df = train_data_loader[0];
+    auto n = static_cast<int>(df.x.size());
+
+    using LidarGp2D = LidarGaussianProcess2D<double>;
+    auto setting = std::make_shared<LidarGp2D::Setting>();
     setting->group_size = DEFAULT_OBSGP_GROUP_SZ + DEFAULT_OBSGP_OVERLAP_SZ;
     setting->overlap_size = DEFAULT_OBSGP_OVERLAP_SZ;
     setting->margin = 1;
-    setting->init_variance = 1.e6;
+    setting->init_variance = 1.0e6;
     setting->sensor_range_var = DEFAULT_OBSGP_NOISE_PARAM;
     setting->max_valid_range_var = GPISMAP_OBS_VAR_THRE;
-    setting->gp->kernel->alpha = 1.;
+    setting->sensor_frame->valid_range_min;
+    setting->sensor_frame->num_rays = n;
+    setting->sensor_frame->angle_min = df.angles[0];
+    setting->sensor_frame->angle_max = df.angles[n - 1];
+    setting->gp->kernel_type = type_name<erl::covariance::OrnsteinUhlenbeck1d>();
     setting->gp->kernel->scale = DEFAULT_OBSGP_SCALE_PARAM;
-    setting->mapping->type = Mapping::Type::kIdentity;
+    setting->mapping->type = MappingType::kIdentity;
+    setting->partition_on_hit_rays = false;
+    setting->symmetric_partitions = false;
     std::cout << *setting << std::endl;
 
-    auto lidar_gp = std::make_shared<LidarGaussianProcess2D>(setting);
-    ObsGp1D obs_gp;
-
-    auto df = train_data_loader[0];
-
+    auto lidar_gp = std::make_shared<LidarGp2D>(setting);
     Logging::Info("Train:");
-    auto n = static_cast<int>(df.x.size());
-    ReportTime<std::chrono::microseconds>("LidarGaussianProcess2D", 10, false, [&] { (void) lidar_gp->Train(df.rotation, df.position, df.distances, true); });
-    ReportTime<std::chrono::microseconds>("ObsGp1D", 10, false, [&] { obs_gp.Train(df.x.data(), df.y.data(), &n); });
+    ReportTime<std::chrono::microseconds>("LidarGaussianProcess2D", 1, false, [&] {
+        (void) lidar_gp->Train(Eigen::Matrix2d::Identity(), Eigen::Vector2d::Zero(), df.distances);
+    });
 
-    ASSERT_EQ(lidar_gp->GetAnglePartitions().size(), obs_gp.m_range_.size());
-    for (size_t i = 0; i < lidar_gp->GetAnglePartitions().size(); ++i) { ASSERT_EQ(std::get<2>(lidar_gp->GetAnglePartitions()[i]), obs_gp.m_range_[i]); }
+    Eigen::VectorXd distance_pred(df.distances.size()), distance_pred_var;
+    ReportTime<std::chrono::microseconds>("LidarGaussianProcess2D", 1, false, [&] {
+        (void) lidar_gp->Test(df.angles, false, distance_pred, distance_pred_var, true);
+    });
 
-    auto gps = lidar_gp->GetGps();
-    for (size_t i = 0; i < gps.size(); ++i) {
-        std::stringstream ss;
-        ss << "m_gps_[" << i << "]->m_x_:";
-        Eigen::MatrixXd mat_x_gt = obs_gp.m_gps_[i]->m_x_;
-        Eigen::MatrixXd mat_x_ans = gps[i]->GetTrainInputSamplesBuffer().topLeftCorner(mat_x_gt.rows(), mat_x_gt.cols());
-        ASSERT_EIGEN_MATRIX_EQUAL(ss.str().c_str(), mat_x_ans, mat_x_gt);
-    }
+    Eigen::VectorXd error = distance_pred - df.distances;
 
-    for (size_t i = 0; i < gps.size(); ++i) {
-        std::stringstream ss;
-        ss << "m_gps_[" << i << "]->m_l_:";
-        Eigen::MatrixXd mat_l_gt = obs_gp.m_gps_[i]->m_l_;
-        Eigen::MatrixXd mat_l_ans = gps[i]->GetCholeskyDecomposition().topLeftCorner(mat_l_gt.rows(), mat_l_gt.cols());
-        ASSERT_EIGEN_MATRIX_EQUAL(ss.str(), mat_l_ans, mat_l_gt);
-    }
+    PlplotFig fig(640, 480, true);
+    PlplotFig::LegendOpt legend_opt(3, {"train", "pred", "error"});
+    legend_opt.SetTextColors({PlplotFig::Color0::Red, PlplotFig::Color0::Green, PlplotFig::Color0::Yellow})
+        .SetStyles({PL_LEGEND_LINE, PL_LEGEND_LINE, PL_LEGEND_LINE})
+        .SetLineColors(legend_opt.text_colors)
+        .SetLineStyles({1, 1, 1})
+        .SetLineWidths({1.0, 1.0, 1.0})
+        .SetBoxStyle(PL_LEGEND_BOUNDING_BOX)
+        .SetBgColor0(PlplotFig::Color0::Gray)
+        .SetLegendBoxLineColor0(PlplotFig::Color0::White);
+    fig.Clear()
+        .SetMargin(0.15, 0.85, 0.15, 0.85)
+        .SetAxisLimits(
+            df.angles.minCoeff() - 0.1,
+            df.angles.maxCoeff() + 0.1,
+            std::min(df.distances.minCoeff(), distance_pred.minCoeff()) - 0.1,
+            std::max(df.distances.maxCoeff(), distance_pred.maxCoeff()) + 0.1)
+        .SetCurrentColor(PlplotFig::Color0::White)
+        .DrawAxesBox(PlplotFig::AxisOpt().DrawTopRightEdge(), PlplotFig::AxisOpt().DrawPerpendicularTickLabels())
+        .SetAxisLabelX("x")
+        .SetAxisLabelY("y")
+        .SetCurrentColor(PlplotFig::Color0::Red)
+        .SetLineStyle(1)
+        .DrawLine(n, df.angles.data(), df.distances.data())
+        .SetCurrentColor(PlplotFig::Color0::Green)
+        .DrawLine(n, df.angles.data(), distance_pred.data())
+        .SetAxisLimits(df.angles.minCoeff() - 0.1, df.angles.maxCoeff() + 0.1, error.minCoeff() - 0.1, error.maxCoeff() + 0.1)
+        .SetCurrentColor(PlplotFig::Color0::White)
+        .DrawAxesBox(
+            PlplotFig::AxisOpt::Off(),
+            PlplotFig::AxisOpt::Off().DrawTopRightEdge().DrawTopRightTickLabels().DrawTickMajor().DrawTickMinor().DrawPerpendicularTickLabels())
+        .SetAxisLabelY("error", true)
+        .SetCurrentColor(PlplotFig::Color0::Yellow)
+        .DrawLine(n, df.angles.data(), error.data())
+        .Legend(legend_opt);
 
-    for (size_t i = 0; i < gps.size(); ++i) {
-        std::stringstream ss;
-        ss << "m_gps_[" << i << "]->m_alpha_:";
-        Eigen::VectorXd alpha_gt = obs_gp.m_gps_[i]->m_alpha_;
-        Eigen::VectorXd alpha_ans = gps[i]->GetTrainOutputSamplesBuffer().head(alpha_gt.size());
-        ASSERT_EIGEN_VECTOR_EQUAL(ss.str(), alpha_ans, alpha_gt);
-    }
+    double mae = error.cwiseAbs().mean();
+    ERL_INFO("mean absolute error: {}", mae);
 
-    for (size_t i = 1; i < train_data_loader.Size(); ++i) {
-        df = train_data_loader[i];
-        Eigen::VectorXd ans_f, ans_var, gt_f, gt_var;
-        ans_f.resize(df.x.size());
-        ans_var.resize(df.x.size());
-        gt_f.setConstant(df.x.size(), 0.);
-        gt_var.setConstant(gt_f.size(), 0.);
-        Logging::Info("test[", i, "]:");
-        ReportTime<std::chrono::microseconds>("LidarGaussianProcess2D", 10, false, [&] { (void) lidar_gp->Test(df.x, false, ans_f, ans_var, true); });
-        ReportTime<std::chrono::microseconds>("ObsGp1D", 10, false, [&] { obs_gp.Test(df.x.transpose(), gt_f, gt_var); });
-#ifdef NDEBUG
-        ASSERT_EIGEN_VECTOR_NEAR("f", ans_f, gt_f, 1e-15);
-        ASSERT_EIGEN_VECTOR_NEAR("var", ans_var, gt_var, 1e-15);
-#else
-        ASSERT_EIGEN_VECTOR_EQUAL("f", ans_f, gt_f);
-        ASSERT_EIGEN_VECTOR_EQUAL("var", ans_var, gt_var);
-#endif
-    }
+    cv::imshow(test_info_->name(), fig.ToCvMat());
+    cv::waitKey(0);
+
+    ASSERT_TRUE(mae < 0.022);
 }

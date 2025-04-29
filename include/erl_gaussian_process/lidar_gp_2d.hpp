@@ -23,13 +23,15 @@ namespace erl::gaussian_process {
         using LidarFrame2D = geometry::LidarFrame2D<Dtype>;
 
         struct Setting : common::Yamlable<Setting> {
-            long group_size = 26;             // number of points in each group, including the overlap ones.
-            long overlap_size = 6;            // number of points in the overlap region.
-            long margin = 1;                  // points closed to margin will not be used for test because it is difficult to estimate gradient for them.
-            Dtype init_variance = 1e6;        // large value to initialize variance result in case of computation failure.
-            Dtype sensor_range_var = 0.01;    // variance of the sensor range measurement.
-            Dtype max_valid_range_var = 0.1;  // if the distance variance is greater than this threshold, this prediction is invalid and should be discarded.
-            Dtype occ_test_temperature = 30;  // OCC Test is a tanh function, this controls the slope around 0.
+            bool partition_on_hit_rays = false;  // if true, partitions are created based on hit rays. otherwise, partitions are created based on angles.
+            bool symmetric_partitions = true;    // if true, partitions are symmetric. otherwise, partitions are asymmetric.
+            long group_size = 26;                // number of points in each group, including the overlap ones.
+            long overlap_size = 6;               // number of points in the overlap region.
+            long margin = 1;                     // points closed to margin will not be used for test because it is challenging to estimate gradient for them.
+            Dtype init_variance = 1e6;           // large value to initialize the variance prediction in case of computation failure.
+            Dtype sensor_range_var = 0.01;       // variance of the sensor range measurement.
+            Dtype max_valid_range_var = 0.1;     // if the distance variance is greater than this threshold, the prediction is invalid and should be discarded.
+            Dtype occ_test_temperature = 30;     // OCC Test is a tanh function, this controls the slope around 0.
             std::shared_ptr<typename LidarFrame2D::Setting> sensor_frame = std::make_shared<typename LidarFrame2D::Setting>();  // parameters of lidar frame
             std::shared_ptr<typename Gp::Setting> gp = std::make_shared<typename Gp::Setting>();  // parameters of local GP regression
             std::shared_ptr<typename MappingDtype::Setting> mapping = []() -> std::shared_ptr<typename MappingDtype::Setting> {
@@ -48,10 +50,6 @@ namespace erl::gaussian_process {
             };
         };
 
-    private:
-        inline static const volatile bool kSettingRegistered = common::YamlableBase::Register<Setting>();
-        inline static const std::string kFileHeader = fmt::format("# {}", type_name<LidarGaussianProcess2D>());
-
     protected:
         bool m_trained_ = false;
         std::shared_ptr<Setting> m_setting_ = nullptr;
@@ -65,49 +63,31 @@ namespace erl::gaussian_process {
         explicit LidarGaussianProcess2D(std::shared_ptr<Setting> setting);
 
         [[nodiscard]] bool
-        IsTrained() const {
-            return m_trained_;
-        }
+        IsTrained() const;
 
         [[nodiscard]] std::shared_ptr<Setting>
-        GetSetting() const {
-            return m_setting_;
-        }
+        GetSetting() const;
 
         [[nodiscard]] const std::vector<std::shared_ptr<Gp>> &
-        GetGps() const {
-            return m_gps_;
-        }
+        GetGps() const;
 
         [[nodiscard]] const std::vector<std::tuple<long, long, Dtype, Dtype>> &
-        GetAnglePartitions() const {
-            return m_angle_partitions_;
-        }
+        GetAnglePartitions() const;
 
         [[nodiscard]] std::shared_ptr<const LidarFrame2D>
-        GetSensorFrame() const {
-            return m_sensor_frame_;
-        }
+        GetSensorFrame() const;
 
         [[nodiscard]] Vector2
-        GlobalToLocalSo2(const Vector2 &dir_global) const {
-            return m_sensor_frame_->DirWorldToFrame(dir_global);
-        }
+        GlobalToLocalSo2(const Vector2 &dir_global) const;
 
         [[nodiscard]] Vector2
-        LocalToGlobalSo2(const Vector2 &dir_local) const {
-            return m_sensor_frame_->DirFrameToWorld(dir_local);
-        }
+        LocalToGlobalSo2(const Vector2 &dir_local) const;
 
         [[nodiscard]] Vector2
-        GlobalToLocalSe2(const Vector2 &xy_global) const {
-            return m_sensor_frame_->PosWorldToFrame(xy_global);
-        }
+        GlobalToLocalSe2(const Vector2 &xy_global) const;
 
         [[nodiscard]] Vector2
-        LocalToGlobalSe2(const Vector2 &xy_local) const {
-            return m_sensor_frame_->PosFrameToWorld(xy_local);
-        }
+        LocalToGlobalSe2(const Vector2 &xy_local) const;
 
         void
         Reset();
@@ -115,8 +95,17 @@ namespace erl::gaussian_process {
         [[nodiscard]] bool
         StoreData(const Matrix2 &rotation, const Vector2 &translation, VectorX ranges);
 
+        /**
+         * Create partitions based on angles.
+         */
         void
-        RepartitionOnHitRays();
+        PartitionOnAngles();
+
+        /**
+         * Create partitions based on hit rays.
+         */
+        void
+        PartitionOnHitRays();
 
         [[nodiscard]] bool
         Train(const Matrix2 &rotation, const Vector2 &translation, VectorX ranges);

@@ -22,16 +22,9 @@ namespace erl::gaussian_process {
 
         // structure for holding the parameters
         struct Setting : common::Yamlable<Setting> {
-            std::string kernel_type = fmt::format("erl::covariance::OrnsteinUhlenbeck<2, {}>", type_name<Dtype>());
-            std::string kernel_setting_type = fmt::format("erl::covariance::Covariance<{}>::Setting", type_name<Dtype>());
-            std::shared_ptr<typename Covariance::Setting> kernel = []() -> std::shared_ptr<typename Covariance::Setting> {
-                auto setting = std::make_shared<typename Covariance::Setting>();
-                setting->x_dim = 2;
-                setting->alpha = 1.0;
-                setting->scale = 0.5;
-                setting->scale_mix = 1.0;
-                return setting;
-            }();
+            std::string kernel_type = type_name<Covariance>();
+            std::string kernel_setting_type = type_name<typename Covariance::Setting>();
+            std::shared_ptr<typename Covariance::Setting> kernel = std::make_shared<typename Covariance::Setting>();
             long max_num_samples = 256;
 
             struct YamlConvertImpl {
@@ -43,38 +36,46 @@ namespace erl::gaussian_process {
             };
         };
 
-    private:
-        inline static const std::string kFileHeader = fmt::format("# erl::gaussian_process::VanillaGaussianProcess<{}>", type_name<Dtype>());
+        struct TrainSet {
+            long x_dim = 0;        // dimension of x
+            long y_dim = 0;        // dimension of y
+            long num_samples = 0;  // number of training samples
+            MatrixX x;             // input, x1, ..., xn
+            MatrixX y;             // output, h(x1), ..., h(xn)
+            VectorX var;           // variance of y, assumed to be identical across dimensions of y.
+
+            void
+            Reset(long max_num_samples, long x_dim, long y_dim);
+
+            [[nodiscard]] bool
+            operator==(const TrainSet &other) const;
+
+            [[nodiscard]] bool
+            operator!=(const TrainSet &other) const;
+
+            [[nodiscard]] bool
+            Write(std::ostream &s) const;
+
+            [[nodiscard]] bool
+            Read(std::istream &s);
+        };
 
     protected:
-        long m_x_dim_ = 0;                                // dimension of x
-        long m_num_train_samples_ = 0;                    // number of training samples
+        std::shared_ptr<Setting> m_setting_ = nullptr;    // setting
         bool m_trained_ = true;                           // true if the GP is trained
         bool m_trained_once_ = false;                     // true if the GP is trained at least once
         bool m_k_train_updated_ = false;                  // true if Ktrain is updated
         long m_k_train_rows_ = 0;                         // number of rows of Ktrain
         long m_k_train_cols_ = 0;                         // number of columns of Ktrain
-        std::shared_ptr<Setting> m_setting_ = nullptr;    // setting
         std::shared_ptr<Covariance> m_kernel_ = nullptr;  // kernel
         bool m_reduced_rank_kernel_ = false;              // whether the kernel is rank reduced or not
         MatrixX m_mat_k_train_ = {};                      // Ktrain, avoid reallocation
-        MatrixX m_mat_x_train_ = {};                      // x1, ..., xn
         MatrixX m_mat_l_ = {};                            // lower triangular matrix of the Cholesky decomposition of Ktrain
-        VectorX m_vec_alpha_ = {};                        // h(x1)..h(xn), dh(x1)/dx1_1 .. dh(xn)/dxn_1 .. dh(x1)/dx1_dim .. dh(xn)/dxn_dim
-        VectorX m_vec_var_h_ = {};                        // variance of y1 ... yn
+        MatrixX m_mat_alpha_ = {};                        // h(x1)..h(xn), dh(x1)/dx1_1 .. dh(xn)/dxn_1 .. dh(x1)/dx1_dim .. dh(xn)/dxn_dim
+        TrainSet m_train_set_;                            // the training set
 
     public:
-        VanillaGaussianProcess()
-            : m_setting_(std::make_shared<Setting>()) {}
-
-        explicit VanillaGaussianProcess(std::shared_ptr<Setting> setting)
-            : m_setting_(std::move(setting)) {
-            ERL_ASSERTM(m_setting_ != nullptr, "setting should not be nullptr.");
-            ERL_ASSERTM(m_setting_->kernel != nullptr, "setting->kernel should not be nullptr.");
-            if (m_setting_->max_num_samples > 0 && m_setting_->kernel->x_dim > 0) {
-                ERL_ASSERTM(AllocateMemory(m_setting_->max_num_samples, m_setting_->kernel->x_dim), "Failed to allocate memory.");
-            }
-        }
+        explicit VanillaGaussianProcess(std::shared_ptr<Setting> setting);
 
         VanillaGaussianProcess(const VanillaGaussianProcess &other);
         VanillaGaussianProcess(VanillaGaussianProcess &&other) = default;
@@ -85,20 +86,14 @@ namespace erl::gaussian_process {
 
         virtual ~VanillaGaussianProcess() = default;
 
-        [[nodiscard]] std::shared_ptr<Setting>
-        GetSetting() const {
-            return m_setting_;
-        }
+        [[nodiscard]] std::shared_ptr<const Setting>
+        GetSetting() const;
 
         [[nodiscard]] bool
-        IsTrained() const {
-            return m_trained_;
-        }
+        IsTrained() const;
 
         [[nodiscard]] bool
-        UsingReducedRankKernel() const {
-            return m_reduced_rank_kernel_;
-        }
+        UsingReducedRankKernel() const;
 
         [[nodiscard]] VectorX
         GetKernelCoordOrigin() const;
@@ -110,59 +105,47 @@ namespace erl::gaussian_process {
          * @brief reset the model: update flags, kernel, and allocate memory if necessary, etc.
          * @param max_num_samples maximum number of training samples
          * @param x_dim dimension of training input samples
+         * @param y_dim dimension of output, default is 1
          */
         void
-        Reset(long max_num_samples, long x_dim);
+        Reset(long max_num_samples, long x_dim, long y_dim);
 
-        [[nodiscard]] long
-        GetNumTrainSamples() const {
-            return m_num_train_samples_;
-        }
+        [[nodiscard]] std::shared_ptr<Covariance>
+        GetKernel() const;
 
-        [[nodiscard]] MatrixX &
-        GetTrainInputSamplesBuffer() {
-            return m_mat_x_train_;
-        }
+        [[nodiscard]] TrainSet &
+        GetTrainSet();
 
-        [[nodiscard]] VectorX &
-        GetTrainOutputSamplesBuffer() {
-            return m_vec_alpha_;
-        }
+        [[nodiscard]] const TrainSet &
+        GetTrainSet() const;
 
-        [[nodiscard]] VectorX &
-        GetTrainOutputSamplesVarianceBuffer() {
-            return m_vec_var_h_;
-        }
+        [[nodiscard]] const MatrixX &
+        GetKtrain() const;
 
-        [[nodiscard]] MatrixX
-        GetKtrain() const {
-            return m_mat_k_train_;
-        }
+        [[nodiscard]] const MatrixX &
+        GetCholeskyDecomposition() const;
 
-        [[nodiscard]] MatrixX
-        GetCholeskyDecomposition() const {
-            return m_mat_l_;
-        }
+        [[nodiscard]] const MatrixX &
+        GetAlpha() const;
 
         [[nodiscard]] virtual std::size_t
         GetMemoryUsage() const;
 
         bool
-        UpdateKtrain(long num_train_samples);
+        UpdateKtrain();
 
         [[nodiscard]] virtual bool
-        Train(long num_train_samples);
+        Train();
 
         [[nodiscard]] virtual bool
-        Test(const Eigen::Ref<const MatrixX> &mat_x_test, Eigen::Ref<VectorX> vec_f_out, Eigen::Ref<VectorX> vec_var_out) const;
+        Test(const Eigen::Ref<const MatrixX> &mat_x_test, const std::vector<long> &y_indices, Eigen::Ref<MatrixX> mat_f_out, Eigen::Ref<VectorX> vec_var_out)
+            const;
 
         [[nodiscard]] bool
         operator==(const VanillaGaussianProcess &other) const;
 
         [[nodiscard]] bool
-        operator!=(const VanillaGaussianProcess &other) const {
-            return !(*this == other);
-        }
+        operator!=(const VanillaGaussianProcess &other) const;
 
         [[nodiscard]] virtual bool
         Write(const std::string &filename) const;
@@ -178,10 +161,16 @@ namespace erl::gaussian_process {
 
     protected:
         bool
-        AllocateMemory(long max_num_samples, long x_dim);
+        AllocateMemory(long max_num_samples, long x_dim, long y_dim);
 
         void
         InitKernel();
+
+        void
+        ComputeValuePrediction(const MatrixX &ktest, const std::vector<long> &y_indices, Eigen::Ref<MatrixX> mat_f_out) const;
+
+        void
+        ComputeCovPrediction(MatrixX &ktest, Eigen::Ref<VectorX> vec_var_out) const;
     };
 
     using VanillaGaussianProcessD = VanillaGaussianProcess<double>;
