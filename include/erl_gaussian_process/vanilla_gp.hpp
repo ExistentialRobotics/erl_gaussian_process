@@ -148,13 +148,7 @@ namespace erl::gaussian_process {
         operator!=(const VanillaGaussianProcess &other) const;
 
         [[nodiscard]] virtual bool
-        Write(const std::string &filename) const;
-
-        [[nodiscard]] virtual bool
         Write(std::ostream &s) const;
-
-        [[nodiscard]] virtual bool
-        Read(const std::string &filename);
 
         [[nodiscard]] virtual bool
         Read(std::istream &s);

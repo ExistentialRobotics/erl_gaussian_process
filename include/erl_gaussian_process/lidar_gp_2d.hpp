@@ -14,28 +14,45 @@ namespace erl::gaussian_process {
     class LidarGaussianProcess2D {
     public:
         using Gp = VanillaGaussianProcess<Dtype>;
+        using GpSetting = typename Gp::Setting;
         using MappingDtype = Mapping<Dtype>;
+        using MappingSetting = typename MappingDtype::Setting;
         using Scalar = Eigen::Matrix<Dtype, 1, 1>;
         using Matrix2 = Eigen::Matrix2<Dtype>;
         using Vector2 = Eigen::Vector2<Dtype>;
         using MatrixX = Eigen::MatrixX<Dtype>;
         using VectorX = Eigen::VectorX<Dtype>;
         using LidarFrame2D = geometry::LidarFrame2D<Dtype>;
+        using LidarFrameSetting = typename LidarFrame2D::Setting;
 
         struct Setting : common::Yamlable<Setting> {
-            bool partition_on_hit_rays = false;  // if true, partitions are created based on hit rays. otherwise, partitions are created based on angles.
-            bool symmetric_partitions = true;    // if true, partitions are symmetric. otherwise, partitions are asymmetric.
-            long group_size = 26;                // number of points in each group, including the overlap ones.
-            long overlap_size = 6;               // number of points in the overlap region.
-            long margin = 1;                     // points closed to margin will not be used for test because it is challenging to estimate gradient for them.
-            Dtype init_variance = 1e6;           // large value to initialize the variance prediction in case of computation failure.
-            Dtype sensor_range_var = 0.01;       // variance of the sensor range measurement.
-            Dtype max_valid_range_var = 0.1;     // if the distance variance is greater than this threshold, the prediction is invalid and should be discarded.
-            Dtype occ_test_temperature = 30;     // OCC Test is a tanh function, this controls the slope around 0.
-            std::shared_ptr<typename LidarFrame2D::Setting> sensor_frame = std::make_shared<typename LidarFrame2D::Setting>();  // parameters of lidar frame
-            std::shared_ptr<typename Gp::Setting> gp = std::make_shared<typename Gp::Setting>();  // parameters of local GP regression
-            std::shared_ptr<typename MappingDtype::Setting> mapping = []() -> std::shared_ptr<typename MappingDtype::Setting> {
-                auto mapping_setting = std::make_shared<typename MappingDtype::Setting>();
+            // if true, partitions are created based on hit rays. otherwise, partitions are created
+            // based on angles.
+            bool partition_on_hit_rays = false;
+            // if true, partitions are symmetric. otherwise, partitions are asymmetric.
+            bool symmetric_partitions = true;
+            // number of points in each group, including the overlap ones.
+            long group_size = 26;
+            // number of points in the overlap region.
+            long overlap_size = 6;
+            // points closed to margin will not be used for test because it is challenging to
+            // estimate gradient for them.
+            long margin = 1;
+            // large value to initialize the variance prediction in case of computation failure.
+            Dtype init_variance = 1e6f;
+            // variance of the sensor range measurement.
+            Dtype sensor_range_var = 0.01f;
+            // if the distance variance is greater than this threshold, the prediction is invalid
+            // and should be discarded.
+            Dtype max_valid_range_var = 0.1f;
+            // OCC Test is a tanh function, this controls the slope around 0.
+            Dtype occ_test_temperature = 30.0f;
+            // parameters of lidar frame
+            std::shared_ptr<LidarFrameSetting> sensor_frame = std::make_shared<LidarFrameSetting>();
+            // parameters of local GP regression
+            std::shared_ptr<GpSetting> gp = std::make_shared<GpSetting>();
+            std::shared_ptr<MappingSetting> mapping = []() -> std::shared_ptr<MappingSetting> {
+                auto mapping_setting = std::make_shared<MappingSetting>();
                 mapping_setting->type = MappingType::kInverseSqrt;
                 mapping_setting->scale = 1.0;
                 return mapping_setting;
@@ -51,8 +68,8 @@ namespace erl::gaussian_process {
         };
 
     protected:
-        bool m_trained_ = false;
         std::shared_ptr<Setting> m_setting_ = nullptr;
+        bool m_trained_ = false;
         std::vector<std::shared_ptr<Gp>> m_gps_;
         std::vector<std::tuple<long, long, Dtype, Dtype>> m_angle_partitions_;
         std::shared_ptr<LidarFrame2D> m_sensor_frame_ = nullptr;
@@ -111,16 +128,29 @@ namespace erl::gaussian_process {
         Train(const Matrix2 &rotation, const Vector2 &translation, VectorX ranges);
 
         [[nodiscard]] bool
-        Test(const Eigen::Ref<const VectorX> &angles, bool angles_are_local, Eigen::Ref<VectorX> vec_ranges, Eigen::Ref<VectorX> vec_ranges_var, bool un_map)
-            const;
+        Test(
+            const Eigen::Ref<const VectorX> &angles,
+            bool angles_are_local,
+            Eigen::Ref<VectorX> vec_ranges,
+            Eigen::Ref<VectorX> vec_ranges_var,
+            bool un_map) const;
 
+        /**
+         * Compute the occupancy of a point in the local frame.
+         * @param angle_local Ray angle in the local frame.
+         * @param r Distance between the sensor and the surface point.
+         * @param range_pred Range prediction by the GP.
+         * @param range_pred_var Range variance prediction by the GP.
+         * @param occ Occupancy prediction.
+         * @return if the computation is successful.
+         */
         [[nodiscard]] bool
         ComputeOcc(
             const Eigen::Ref<const Scalar> &angle_local,
             Dtype r,
             Eigen::Ref<Scalar> range_pred,
             Eigen::Ref<Scalar> range_pred_var,
-            Dtype &occ) const;  // return false if failed to compute occ
+            Dtype &occ) const;
 
         [[nodiscard]] bool
         operator==(const LidarGaussianProcess2D &other) const;
@@ -129,13 +159,7 @@ namespace erl::gaussian_process {
         operator!=(const LidarGaussianProcess2D &other) const;
 
         [[nodiscard]] bool
-        Write(const std::string &filename) const;
-
-        [[nodiscard]] bool
         Write(std::ostream &s) const;
-
-        [[nodiscard]] bool
-        Read(const std::string &filename);
 
         [[nodiscard]] bool
         Read(std::istream &s);
@@ -148,7 +172,9 @@ namespace erl::gaussian_process {
 #include "lidar_gp_2d.tpp"
 
 template<>
-struct YAML::convert<erl::gaussian_process::LidarGaussianProcess2Dd::Setting> : erl::gaussian_process::LidarGaussianProcess2Dd::Setting::YamlConvertImpl {};
+struct YAML::convert<erl::gaussian_process::LidarGaussianProcess2Dd::Setting>
+    : erl::gaussian_process::LidarGaussianProcess2Dd::Setting::YamlConvertImpl {};
 
 template<>
-struct YAML::convert<erl::gaussian_process::LidarGaussianProcess2Df::Setting> : erl::gaussian_process::LidarGaussianProcess2Df::Setting::YamlConvertImpl {};
+struct YAML::convert<erl::gaussian_process::LidarGaussianProcess2Df::Setting>
+    : erl::gaussian_process::LidarGaussianProcess2Df::Setting::YamlConvertImpl {};

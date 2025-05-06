@@ -144,21 +144,26 @@ namespace erl::gaussian_process {
                 if (gp == nullptr) { gp = std::make_shared<Gp>(m_setting_->gp); }
                 gp->Reset(m_setting_->gp->max_num_samples, 2, 1);
                 long cnt = 0;
-                MatrixX &train_input_samples = gp->GetTrainInputSamplesBuffer();
-                MatrixX &train_output_samples = gp->GetTrainOutputSamplesBuffer();
-                VectorX &train_output_samples_variance = gp->GetTrainOutputSamplesVarianceBuffer();
+                // MatrixX &train_input_samples = gp->GetTrainInputSamplesBuffer();
+                // MatrixX &train_output_samples = gp->GetTrainOutputSamplesBuffer();
+                // VectorX &train_output_samples_variance = gp->GetTrainOutputSamplesVarianceBuffer();
+                typename Gp::TrainSet &train_set = gp->GetTrainSet();
                 const Eigen::MatrixXb &mask_hit = m_sensor_frame_->GetHitMask();
                 const Eigen::MatrixX<Vector2> &frame_coords = m_sensor_frame_->GetFrameCoords();
                 for (long c = col_index_left; c < col_index_right; ++c) {
                     for (long r = row_index_left; r < row_index_right; ++r) {
                         if (!mask_hit(r, c)) { continue; }
-                        train_input_samples.col(cnt) << frame_coords(r, c);
-                        train_output_samples.col(0)[cnt] = m_mapped_distances_(r, c);
-                        train_output_samples_variance[cnt] = m_setting_->sensor_range_var;
+                        train_set.x.col(cnt) = frame_coords(r, c);
+                        train_set.y.col(0)[cnt] = m_mapped_distances_(r, c);
+                        train_set.var[cnt] = m_setting_->sensor_range_var;
+                        // train_input_samples.col(cnt) << frame_coords(r, c);
+                        // train_output_samples.col(0)[cnt] = m_mapped_distances_(r, c);
+                        // train_output_samples_variance[cnt] = m_setting_->sensor_range_var;
                         ++cnt;
                     }
                 }
-                if (cnt > 0) { (void) gp->Train(cnt); }
+                train_set.num_samples = cnt;
+                if (cnt > 0) { (void) gp->Train(); }
             }
         }
 
@@ -218,7 +223,7 @@ namespace erl::gaussian_process {
             const auto gp = m_gps_(partition_row_index, partition_col_index);
             if (!gp->IsTrained()) { continue; }
             Scalar f, var;
-            if (!gp->Test(frame_coords, f, var)) { continue; }  // invalid test
+            if (!gp->Test(frame_coords, {0}, f, var)) { continue; }  // invalid test
             vec_ranges[i] = un_map ? m_mapping_->inv(f[0]) : f[0];
             vec_ranges_var[i] = var[0];
         }

@@ -440,25 +440,7 @@ namespace erl::gaussian_process {
 
     template<typename Dtype>
     bool
-    VanillaGaussianProcess<Dtype>::Write(const std::string &filename) const {
-        ERL_INFO("Writing {} to file: {}", type_name(*this), filename);
-        std::filesystem::create_directories(std::filesystem::path(filename).parent_path());
-        std::ofstream file(filename, std::ios_base::out | std::ios_base::binary);
-        if (!file.is_open()) {
-            ERL_WARN("Failed to open file: {}", filename);
-            return false;
-        }
-
-        const bool success = Write(file);
-        file.close();
-        return success;
-    }
-
-    template<typename Dtype>
-    bool
     VanillaGaussianProcess<Dtype>::Write(std::ostream &s) const {
-        s << "# " << type_name(*this) << "\n# (feel free to add / change comments, but leave the first line as it is!)\n";
-
         static const std::vector<std::pair<const char *, std::function<bool(const VanillaGaussianProcess *, std::ostream &)>>> token_function_pairs = {
             {
                 "setting",
@@ -566,36 +548,7 @@ namespace erl::gaussian_process {
 
     template<typename Dtype>
     bool
-    VanillaGaussianProcess<Dtype>::Read(const std::string &filename) {
-        ERL_INFO("Reading {} from file: {}", type_name(*this), filename);
-        std::ifstream file(filename.c_str(), std::ios_base::in | std::ios_base::binary);
-        if (!file.is_open()) {
-            ERL_WARN("Failed to open file: {}", filename.c_str());
-            return false;
-        }
-
-        const bool success = Read(file);
-        file.close();
-        return success;
-    }
-
-    template<typename Dtype>
-    bool
     VanillaGaussianProcess<Dtype>::Read(std::istream &s) {
-        if (!s.good()) {
-            ERL_WARN("Input stream is not ready for reading");
-            return false;
-        }
-
-        // check if the first line is valid
-        std::string line;
-        std::getline(s, line);
-        if (std::string file_header = fmt::format("# {}", type_name(*this));
-            line.compare(0, file_header.length(), file_header) != 0) {  // check if the first line is valid
-            ERL_WARN("Header does not start with \"{}\"", file_header);
-            return false;
-        }
-
         static const std::vector<std::pair<const char *, std::function<bool(VanillaGaussianProcess *, std::istream &)>>> token_function_pairs = {
             {
                 "setting",
