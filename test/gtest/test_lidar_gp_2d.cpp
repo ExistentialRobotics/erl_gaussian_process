@@ -1,4 +1,5 @@
 #include "erl_common/binary_file.hpp"
+#include "erl_common/block_timer.hpp"
 #include "erl_common/plplot_fig.hpp"
 #include "erl_common/test_helper.hpp"
 #include "erl_covariance/ornstein_uhlenbeck.hpp"
@@ -29,8 +30,8 @@ using TrainDataFrame = struct TrainDataFrame {
     TrainDataFrame(double *pa, double *pr, const double *pose_ptr, const int numel) {
         angles.resize(numel);
         distances.resize(numel);
-        std::copy_n(pa, numel, angles.begin());
-        std::copy_n(pr, numel, distances.begin());
+        std::copy_n(pa, numel, angles.data());
+        std::copy_n(pr, numel, distances.data());
 
         Eigen::Matrix23d pose;
         // clang-format off
@@ -122,9 +123,9 @@ public:
 #define ANGLE_MAX            2.33874  // double(135.0 / 180.0 * M_PI)
 
 TEST(LidarGaussianProcess2D, Build) {
-    std::filesystem::path path = __FILE__;
-    path = path.parent_path().parent_path();
-    path /= "double/train.dat";
+    GTEST_PREPARE_OUTPUT_DIR();
+    std::filesystem::path path = ERL_GAUSSIAN_PROCESS_ROOT_DIR;
+    path /= "data/double/train.dat";
     auto train_data_loader = TrainDataLoader(path.string().c_str());
 
     auto df = train_data_loader[0];
@@ -151,20 +152,27 @@ TEST(LidarGaussianProcess2D, Build) {
 
     auto lidar_gp = std::make_shared<LidarGp2D>(setting);
     Logging::Info("Train:");
-    ReportTime<std::chrono::microseconds>("LidarGaussianProcess2D", 1, false, [&] {
-        (void) lidar_gp->Train(Eigen::Matrix2d::Identity(), Eigen::Vector2d::Zero(), df.distances);
-    });
+    {
+        ERL_BLOCK_TIMER_MSG("gp.Train");
+        ASSERT_TRUE(
+            lidar_gp->Train(Eigen::Matrix2d::Identity(), Eigen::Vector2d::Zero(), df.distances));
+    }
 
     Eigen::VectorXd distance_pred(df.distances.size()), distance_pred_var;
-    ReportTime<std::chrono::microseconds>("LidarGaussianProcess2D", 1, false, [&] {
-        (void) lidar_gp->Test(df.angles, false, distance_pred, distance_pred_var, true);
-    });
+    {
+        ERL_BLOCK_TIMER_MSG("gp.Test");
+        auto test_result = lidar_gp->Test(df.angles, false /*angles_are_local*/, true /*un_map*/);
+        Eigen::VectorXb success = test_result->GetMean(distance_pred, true /*parallel*/);
+        ASSERT_TRUE(success.any());
+    }
 
     Eigen::VectorXd error = distance_pred - df.distances;
 
     PlplotFig fig(640, 480, true);
     PlplotFig::LegendOpt legend_opt(3, {"train", "pred", "error"});
-    legend_opt.SetTextColors({PlplotFig::Color0::Red, PlplotFig::Color0::Green, PlplotFig::Color0::Yellow})
+    legend_opt
+        .SetTextColors(
+            {PlplotFig::Color0::Red, PlplotFig::Color0::Green, PlplotFig::Color0::Yellow})
         .SetStyles({PL_LEGEND_LINE, PL_LEGEND_LINE, PL_LEGEND_LINE})
         .SetLineColors(legend_opt.text_colors)
         .SetLineStyles({1, 1, 1})
@@ -180,7 +188,9 @@ TEST(LidarGaussianProcess2D, Build) {
             std::min(df.distances.minCoeff(), distance_pred.minCoeff()) - 0.1,
             std::max(df.distances.maxCoeff(), distance_pred.maxCoeff()) + 0.1)
         .SetCurrentColor(PlplotFig::Color0::White)
-        .DrawAxesBox(PlplotFig::AxisOpt().DrawTopRightEdge(), PlplotFig::AxisOpt().DrawPerpendicularTickLabels())
+        .DrawAxesBox(
+            PlplotFig::AxisOpt().DrawTopRightEdge(),
+            PlplotFig::AxisOpt().DrawPerpendicularTickLabels())
         .SetAxisLabelX("x")
         .SetAxisLabelY("y")
         .SetCurrentColor(PlplotFig::Color0::Red)
@@ -188,11 +198,20 @@ TEST(LidarGaussianProcess2D, Build) {
         .DrawLine(n, df.angles.data(), df.distances.data())
         .SetCurrentColor(PlplotFig::Color0::Green)
         .DrawLine(n, df.angles.data(), distance_pred.data())
-        .SetAxisLimits(df.angles.minCoeff() - 0.1, df.angles.maxCoeff() + 0.1, error.minCoeff() - 0.1, error.maxCoeff() + 0.1)
+        .SetAxisLimits(
+            df.angles.minCoeff() - 0.1,
+            df.angles.maxCoeff() + 0.1,
+            error.minCoeff() - 0.1,
+            error.maxCoeff() + 0.1)
         .SetCurrentColor(PlplotFig::Color0::White)
         .DrawAxesBox(
             PlplotFig::AxisOpt::Off(),
-            PlplotFig::AxisOpt::Off().DrawTopRightEdge().DrawTopRightTickLabels().DrawTickMajor().DrawTickMinor().DrawPerpendicularTickLabels())
+            PlplotFig::AxisOpt::Off()
+                .DrawTopRightEdge()
+                .DrawTopRightTickLabels()
+                .DrawTickMajor()
+                .DrawTickMinor()
+                .DrawPerpendicularTickLabels())
         .SetAxisLabelY("error", true)
         .SetCurrentColor(PlplotFig::Color0::Yellow)
         .DrawLine(n, df.angles.data(), error.data())
@@ -201,8 +220,23 @@ TEST(LidarGaussianProcess2D, Build) {
     double mae = error.cwiseAbs().mean();
     ERL_INFO("mean absolute error: {}", mae);
 
-    cv::imshow(test_info_->name(), fig.ToCvMat());
-    cv::waitKey(0);
+    cv::imwrite(test_output_dir / "lidar_gp_2d.png", fig.ToCvMat());
+    try {
+        cv::imshow(test_info_->name(), fig.ToCvMat());
+        cv::waitKey(1000);
+    } catch (const std::exception &e) { ERL_WARN("Failed to show image: {}", e.what()); }
 
-    ASSERT_TRUE(mae < 0.022);
+    ASSERT_TRUE(mae < 0.022);  // 0.02135875277600203
+
+    ASSERT_TRUE(Serialization<LidarGp2D>::Write("lidar_gp_2d.bin", *lidar_gp));
+    LidarGp2D lidar_gp_read(std::make_shared<LidarGp2D::Setting>());
+    ASSERT_TRUE(Serialization<LidarGp2D>::Read("lidar_gp_2d.bin", lidar_gp_read));
+    EXPECT_TRUE(*lidar_gp == lidar_gp_read);
+}
+
+int
+main(int argc, char *argv[]) {
+    Init();
+    ::testing::InitGoogleTest(&argc, argv);
+    return RUN_ALL_TESTS();
 }

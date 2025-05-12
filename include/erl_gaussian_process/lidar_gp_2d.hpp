@@ -25,7 +25,7 @@ namespace erl::gaussian_process {
         using LidarFrame2D = geometry::LidarFrame2D<Dtype>;
         using LidarFrameSetting = typename LidarFrame2D::Setting;
 
-        struct Setting : common::Yamlable<Setting> {
+        struct Setting : public common::Yamlable<Setting> {
             // if true, partitions are created based on hit rays. otherwise, partitions are created
             // based on angles.
             bool partition_on_hit_rays = false;
@@ -65,6 +65,46 @@ namespace erl::gaussian_process {
                 static bool
                 decode(const YAML::Node &node, Setting &setting);
             };
+        };
+
+        class TestResult {
+        protected:
+            const LidarGaussianProcess2D *m_gp_;
+            std::vector<const Gp *> m_gps_;
+            std::vector<VectorX> m_k_test_vec_;
+            std::vector<std::pair<const Dtype *, long>> m_alpha_vec_;
+            std::vector<VectorX> m_alpha_test_vec_;
+            std::shared_ptr<MappingDtype> m_mapping_;
+            bool m_reduced_rank_kernel_ = false;
+
+        public:
+            TestResult(
+                const LidarGaussianProcess2D *gp,
+                const Eigen::Ref<const VectorX> &angles,
+                bool angles_are_local,
+                const std::shared_ptr<MappingDtype> &mapping);
+
+            [[nodiscard]] long
+            GetNumTest() const;
+
+            [[nodiscard]] const VectorX &
+            GetKtest(long index) const;
+
+            [[nodiscard]] Eigen::VectorXb
+            GetMean(Eigen::Ref<VectorX> vec_f_out, bool parallel) const;
+
+            [[nodiscard]] bool
+            GetMean(long index, Dtype &f) const;
+
+            [[nodiscard]] Eigen::VectorXb
+            GetVariance(Eigen::Ref<VectorX> vec_var_out, bool parallel) const;
+
+            [[nodiscard]] bool
+            GetVariance(long index, Dtype &var) const;
+
+        protected:
+            void
+            PrepareAlphaTest(long index);
         };
 
     protected:
@@ -127,30 +167,22 @@ namespace erl::gaussian_process {
         [[nodiscard]] bool
         Train(const Matrix2 &rotation, const Vector2 &translation, VectorX ranges);
 
-        [[nodiscard]] bool
-        Test(
-            const Eigen::Ref<const VectorX> &angles,
-            bool angles_are_local,
-            Eigen::Ref<VectorX> vec_ranges,
-            Eigen::Ref<VectorX> vec_ranges_var,
-            bool un_map) const;
+        [[nodiscard]] long
+        SearchPartition(Dtype angle_local) const;
+
+        [[nodiscard]] std::shared_ptr<TestResult>
+        Test(const Eigen::Ref<const VectorX> &angles, bool angles_are_local, bool un_map) const;
 
         /**
          * Compute the occupancy of a point in the local frame.
          * @param angle_local Ray angle in the local frame.
          * @param r Distance between the sensor and the surface point.
          * @param range_pred Range prediction by the GP.
-         * @param range_pred_var Range variance prediction by the GP.
          * @param occ Occupancy prediction.
          * @return if the computation is successful.
          */
         [[nodiscard]] bool
-        ComputeOcc(
-            const Eigen::Ref<const Scalar> &angle_local,
-            Dtype r,
-            Eigen::Ref<Scalar> range_pred,
-            Eigen::Ref<Scalar> range_pred_var,
-            Dtype &occ) const;
+        ComputeOcc(const Scalar &angle_local, Dtype r, Dtype &range_pred, Dtype &occ) const;
 
         [[nodiscard]] bool
         operator==(const LidarGaussianProcess2D &other) const;

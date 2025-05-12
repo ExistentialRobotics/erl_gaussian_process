@@ -8,7 +8,16 @@
 #include <memory>
 
 namespace erl::gaussian_process {
-    enum class MappingType { kIdentity = 0, kInverse = 1, kInverseSqrt = 2, kExp = 3, kLog = 4, kTanh = 5, kSigmoid = 6, kUnknown = 7 };
+    enum class MappingType {
+        kIdentity = 0,
+        kInverse = 1,
+        kInverseSqrt = 2,
+        kExp = 3,
+        kLog = 4,
+        kTanh = 5,
+        kSigmoid = 6,
+        kUnknown = 7
+    };
 }
 
 template<>
@@ -26,7 +35,7 @@ namespace erl::gaussian_process {
     class Mapping {
 
     public:
-        struct Setting : common::Yamlable<Setting> {
+        struct Setting : public common::Yamlable<Setting> {
             MappingType type = MappingType::kUnknown;
             Dtype scale = 1.0;
 
@@ -40,7 +49,8 @@ namespace erl::gaussian_process {
         };
 
     private:
-        inline static const volatile bool kSettingRegistered = common::YamlableBase::Register<Setting>();
+        inline static const volatile bool kSettingRegistered =
+            common::YamlableBase::Register<Setting>();
 
     protected:
         std::shared_ptr<Setting> m_setting_;
@@ -66,14 +76,16 @@ namespace erl::gaussian_process {
         explicit Mapping(std::shared_ptr<Setting> setting);
     };
 
-#include "mapping.tpp"
-
     using MappingD = Mapping<double>;
     using MappingF = Mapping<float>;
 }  // namespace erl::gaussian_process
 
-template<>
-struct YAML::convert<erl::gaussian_process::MappingD::Setting> : erl::gaussian_process::MappingD::Setting::YamlConvertImpl {};
+#include "mapping.tpp"
 
 template<>
-struct YAML::convert<erl::gaussian_process::MappingF::Setting> : erl::gaussian_process::MappingF::Setting::YamlConvertImpl {};
+struct YAML::convert<erl::gaussian_process::MappingD::Setting>
+    : erl::gaussian_process::MappingD::Setting::YamlConvertImpl {};
+
+template<>
+struct YAML::convert<erl::gaussian_process::MappingF::Setting>
+    : erl::gaussian_process::MappingF::Setting::YamlConvertImpl {};

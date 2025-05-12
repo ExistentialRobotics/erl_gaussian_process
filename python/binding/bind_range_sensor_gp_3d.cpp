@@ -9,11 +9,14 @@ void
 BindRangeSensorGaussianProcess3DImpl(const py::module &m, const char *name) {
 
     using T = RangeSensorGaussianProcess3D<Dtype>;
-
+    using Vector3 = Eigen::Vector3<Dtype>;
+    using VectorX = Eigen::VectorX<Dtype>;
     auto py_range_sensor_gp_3d = py::class_<T, std::shared_ptr<T>>(m, name);
 
     // Setting
-    py::class_<typename T::Setting, YamlableBase, std::shared_ptr<typename T::Setting>>(py_range_sensor_gp_3d, "Setting")
+    py::class_<typename T::Setting, YamlableBase, std::shared_ptr<typename T::Setting>>(
+        py_range_sensor_gp_3d,
+        "Setting")
         .def(py::init<>())
         .def_readwrite("row_group_size", &T::Setting::row_group_size)
         .def_readwrite("row_overlap_size", &T::Setting::row_overlap_size)
@@ -26,11 +29,47 @@ BindRangeSensorGaussianProcess3DImpl(const py::module &m, const char *name) {
         .def_readwrite("max_valid_range_var", &T::Setting::max_valid_range_var)
         .def_readwrite("occ_test_temperature", &T::Setting::occ_test_temperature)
         .def_readwrite("sensor_frame_type", &T::Setting::sensor_frame_type)
+        .def_readwrite("sensor_frame_setting_type", &T::Setting::sensor_frame_setting_type)
         .def_readwrite("sensor_frame", &T::Setting::sensor_frame)
         .def_readwrite("gp", &T::Setting::gp)
         .def_readwrite("mapping", &T::Setting::mapping);
 
-    py_range_sensor_gp_3d.def(py::init<std::shared_ptr<typename T::Setting>>(), py::arg("setting").none(false))
+    py::class_<typename T::TestResult, std::shared_ptr<typename T::TestResult>>(
+        py_range_sensor_gp_3d,
+        "TestResult")
+        .def_property_readonly("num_test", &T::TestResult::GetNumTest)
+        .def("get_ktest", &T::TestResult::GetKtest, py::arg("index"))
+        .def(
+            "get_mean",
+            [](const typename T::TestResult &self, bool parallel) {
+                VectorX vec_f_out(self.GetNumTest());
+                Eigen::VectorXb success = self.GetMean(vec_f_out, parallel);
+                return py::make_tuple(success, vec_f_out);
+            },
+            py::arg("parallel"))
+        .def(
+            "get_mean",
+            [](const typename T::TestResult &self, long index) {
+                Dtype f;
+                bool success = self.GetMean(index, f);
+                return py::make_tuple(success, f);
+            })
+        .def(
+            "get_variance",
+            [](const typename T::TestResult &self, bool parallel) {
+                VectorX vec_var_out(self.GetNumTest());
+                Eigen::VectorXb success = self.GetVariance(vec_var_out, parallel);
+                return py::make_tuple(success, vec_var_out);
+            },
+            py::arg("parallel"))
+        .def("get_variance", [](const typename T::TestResult &self, long index) {
+            Dtype var;
+            bool success = self.GetVariance(index, var);
+            return py::make_tuple(success, var);
+        });
+
+    py_range_sensor_gp_3d
+        .def(py::init<std::shared_ptr<typename T::Setting>>(), py::arg("setting").none(false))
         .def_property_readonly("is_trained", &T::IsTrained)
         .def_property_readonly("setting", &T::GetSetting)
         .def_property_readonly(
@@ -55,18 +94,29 @@ BindRangeSensorGaussianProcess3DImpl(const py::module &m, const char *name) {
         .def("local_to_global_se3", &T::LocalToGlobalSe3, py::arg("xyz_local"))
         .def("compute_frame_coords", &T::ComputeFrameCoords, py::arg("xyz_frame"))
         .def("reset", &T::Reset)
-        .def("store_data", &T::StoreData, py::arg("rotation"), py::arg("translation"), py::arg("ranges"))
+        .def(
+            "store_data",
+            &T::StoreData,
+            py::arg("rotation"),
+            py::arg("translation"),
+            py::arg("ranges"))
         .def("train", &T::Train, py::arg("rotation"), py::arg("translation"), py::arg("ranges"))
+        .def("search_partition", &T::SearchPartition, py::arg("frame_coords"))
         .def(
             "test",
-            [](const T &gp, const Eigen::Ref<const Eigen::Matrix3X<Dtype>> &directions, const bool directions_are_local, const bool un_map) {
-                Eigen::VectorX<Dtype> fs(directions.cols()), vars(directions.cols());
-                bool success = gp.Test(directions, directions_are_local, fs, vars, un_map);
-                return py::make_tuple(success, fs, vars);
-            },
+            &T::Test,
             py::arg("directions"),
             py::arg("directions_are_local"),
-            py::arg("un_map"));
+            py::arg("un_map"))
+        .def(
+            "compute_occ",
+            [](const T &gp, const Vector3 &dir_local, const Dtype r) {
+                Dtype range_pred, occ;
+                bool success = gp.ComputeOcc(dir_local, r, range_pred, occ);
+                return py::make_tuple(success, range_pred, occ);
+            },
+            py::arg("dir_local"),
+            py::arg("r"));
 }
 
 void

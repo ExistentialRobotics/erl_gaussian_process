@@ -1,6 +1,7 @@
 #pragma once
 
 #include "erl_common/serialization.hpp"
+#include "erl_common/template_helper.hpp"
 #include "erl_common/yaml.hpp"
 
 namespace erl::gaussian_process {
@@ -8,23 +9,135 @@ namespace erl::gaussian_process {
     YAML::Node
     VanillaGaussianProcess<Dtype>::Setting::YamlConvertImpl::encode(const Setting &setting) {
         YAML::Node node;
-        node["kernel_type"] = setting.kernel_type;
-        node["kernel_setting_type"] = setting.kernel_setting_type;
-        node["kernel"] = setting.kernel->AsYamlNode();
-        node["max_num_samples"] = setting.max_num_samples;
+        ERL_YAML_SAVE_ATTR(node, setting, kernel_type);
+        ERL_YAML_SAVE_ATTR(node, setting, kernel_setting_type);
+        ERL_YAML_SAVE_ATTR(node, setting, kernel);
+        ERL_YAML_SAVE_ATTR(node, setting, max_num_samples);
         return node;
     }
 
     template<typename Dtype>
     bool
-    VanillaGaussianProcess<Dtype>::Setting::YamlConvertImpl::decode(const YAML::Node &node, Setting &setting) {
+    VanillaGaussianProcess<Dtype>::Setting::YamlConvertImpl::decode(
+        const YAML::Node &node,
+        Setting &setting) {
         if (!node.IsMap()) { return false; }
-        setting.kernel_type = node["kernel_type"].as<std::string>();
-        setting.kernel_setting_type = node["kernel_setting_type"].as<std::string>();
-        setting.kernel = common::YamlableBase::Create<typename Covariance::Setting>(setting.kernel_setting_type);
+        ERL_YAML_LOAD_ATTR_TYPE(node, setting, kernel_type, std::string);
+        ERL_YAML_LOAD_ATTR_TYPE(node, setting, kernel_setting_type, std::string);
+        setting.kernel = common::YamlableBase::Create<typename Covariance::Setting>(  //
+            setting.kernel_setting_type);
         if (!setting.kernel->FromYamlNode(node["kernel"])) { return false; }
-        setting.max_num_samples = node["max_num_samples"].as<long>();
+        ERL_YAML_LOAD_ATTR_TYPE(node, setting, max_num_samples, long);
         return true;
+    }
+
+    template<typename Dtype>
+    VanillaGaussianProcess<Dtype>::TestResult::TestResult(
+        const VanillaGaussianProcess *gp,
+        const Eigen::Ref<const MatrixX> &mat_x_test)
+        : m_gp_(NotNull(gp, true, "gp = nullptr.")),
+          m_num_test_(mat_x_test.cols()),
+          m_reduced_rank_kernel_(m_gp_->m_reduced_rank_kernel_),
+          m_x_dim_(m_gp_->m_train_set_.x_dim),
+          m_y_dim_(m_gp_->m_train_set_.y_dim) {
+        const bool success = m_gp_->ComputeKtest(mat_x_test, m_mat_k_test_);
+        (void) success;
+        ERL_DEBUG_ASSERT(success, "Failed to compute Ktest.");
+    }
+
+    template<typename Dtype>
+    long
+    VanillaGaussianProcess<Dtype>::TestResult::GetNumTest() const {
+        return m_num_test_;
+    }
+
+    template<typename Dtype>
+    const typename VanillaGaussianProcess<Dtype>::MatrixX &
+    VanillaGaussianProcess<Dtype>::TestResult::GetKtest() const {
+        return m_mat_k_test_;
+    }
+
+    template<typename Dtype>
+    void
+    VanillaGaussianProcess<Dtype>::TestResult::GetMean(
+        const long y_index,
+        Eigen::Ref<VectorX> vec_f_out,
+        const bool parallel) const {
+        (void) parallel;
+        ERL_DEBUG_ASSERT(
+            y_index >= 0 && y_index < m_y_dim_,
+            "y_index = {}, it should be in [0, {}).",
+            y_index,
+            m_y_dim_);
+        ERL_DEBUG_ASSERT(
+            vec_f_out.size() == m_num_test_,
+            "vec_f_out.size() = {}, it should be {}.",
+            vec_f_out.size(),
+            m_num_test_);
+        const auto alpha = m_gp_->m_mat_alpha_.col(y_index).head(m_gp_->m_k_train_cols_);
+        Dtype *f = vec_f_out.data();
+#pragma omp parallel for if (parallel) default(none) shared(alpha, f)
+        for (long i = 0; i < m_num_test_; ++i) { f[i] = m_mat_k_test_.col(i).dot(alpha); }
+    }
+
+    template<typename Dtype>
+    void
+    VanillaGaussianProcess<Dtype>::TestResult::GetMean(
+        const long index,
+        const long y_index,
+        Dtype &f) const {
+        ERL_DEBUG_ASSERT(
+            index >= 0 && index < m_num_test_,
+            "index = {}, it should be >= 0 and < {}.",
+            index,
+            m_num_test_);
+        ERL_DEBUG_ASSERT(
+            y_index >= 0 && y_index < m_y_dim_,
+            "y_index = {}, it should be >= 0 and < {}.",
+            y_index,
+            m_y_dim_);
+        // f = ktest(xt, X) @ (ktrain(X, X) + sigma * I).inv() @ y
+        // f = ktest(xt, X) @ alpha
+        const auto alpha = m_gp_->m_mat_alpha_.col(y_index).head(m_gp_->m_k_train_cols_);
+        f = m_mat_k_test_.col(index).dot(alpha);  // h_{y_index}(x_{index})
+    }
+
+    template<typename Dtype>
+    void
+    VanillaGaussianProcess<Dtype>::TestResult::GetVariance(
+        Eigen::Ref<VectorX> vec_var_out,
+        const bool parallel) const {
+        (void) parallel;
+        // var = ktest(xt, xt) - ktest(xt, X) @ (ktest(X, X) + sigma * I).m_inv_() @ ktest(X, xt)
+        //     = ktest(xt, xt) - ktest(xt, X) @ (m_l_ @ m_l_.T).m_inv_() @ ktest(X, xt)
+        const_cast<TestResult *>(this)->PrepareAlphaTest();
+        Dtype *var = vec_var_out.data();
+#pragma omp parallel for if (parallel) default(none) shared(var)
+        for (long i = 0; i < m_num_test_; ++i) {
+            Dtype &var_i = var[i];
+            var_i = m_mat_alpha_test_.col(i).squaredNorm();
+            if (m_reduced_rank_kernel_) { continue; }
+            var_i = 1.0f - var_i;  // variance of h(x)
+        }
+    }
+
+    template<typename Dtype>
+    void
+    VanillaGaussianProcess<Dtype>::TestResult::GetVariance(long index, Dtype &var) const {
+        const_cast<TestResult *>(this)->PrepareAlphaTest();
+        var = m_mat_alpha_test_.col(index).squaredNorm();
+        if (m_reduced_rank_kernel_) { return; }
+        var = 1.0f - var;  // variance of h(x)
+    }
+
+    template<typename Dtype>
+    void
+    VanillaGaussianProcess<Dtype>::TestResult::PrepareAlphaTest() {
+        if (m_mat_alpha_test_.size() > 0) { return; }
+        const long rows = m_mat_k_test_.rows();
+        m_mat_alpha_test_ = m_gp_->m_mat_l_.topLeftCorner(rows, rows)
+                                .template triangularView<Eigen::Lower>()
+                                .solve(m_mat_k_test_);
     }
 
     template<typename Dtype>
@@ -45,8 +158,12 @@ namespace erl::gaussian_process {
         if (y_dim != other.y_dim) { return false; }
         if (num_samples != other.num_samples) { return false; }
         if (num_samples == 0) { return true; }
-        if (x.topLeftCorner(x_dim, num_samples) != other.x.topLeftCorner(x_dim, num_samples)) { return false; }
-        if (y.topLeftCorner(num_samples, y_dim) != other.y.topLeftCorner(num_samples, y_dim)) { return false; }
+        if (x.topLeftCorner(x_dim, num_samples) != other.x.topLeftCorner(x_dim, num_samples)) {
+            return false;
+        }
+        if (y.topLeftCorner(num_samples, y_dim) != other.y.topLeftCorner(num_samples, y_dim)) {
+            return false;
+        }
         if (var.head(num_samples) != other.var.head(num_samples)) { return false; }
         return true;
     }
@@ -60,7 +177,8 @@ namespace erl::gaussian_process {
     template<typename Dtype>
     bool
     VanillaGaussianProcess<Dtype>::TrainSet::Write(std::ostream &s) const {
-        static const std::vector<std::pair<const char *, std::function<bool(const TrainSet *, std::ostream &)>>> token_function_pairs = {
+        using namespace common;
+        static const TokenWriteFunctionPairs<TrainSet> token_function_pairs = {
             {
                 "x_dim",
                 [](const TrainSet *train_set, std::ostream &stream) -> bool {
@@ -85,46 +203,37 @@ namespace erl::gaussian_process {
             {
                 "x",
                 [](const TrainSet *train_set, std::ostream &stream) -> bool {
-                    if (!common::SaveEigenMatrixToBinaryStream(stream, train_set->x)) {
-                        ERL_WARN("Failed to write x.");
-                        return false;
-                    }
-                    return true;
+                    return SaveEigenMatrixToBinaryStream(stream, train_set->x) && stream.good();
                 },
             },
             {
                 "y",
                 [](const TrainSet *train_set, std::ostream &stream) -> bool {
-                    if (!common::SaveEigenMatrixToBinaryStream(stream, train_set->y)) {
-                        ERL_WARN("Failed to write y.");
-                        return false;
-                    }
-                    return true;
+                    return SaveEigenMatrixToBinaryStream(stream, train_set->y) && stream.good();
                 },
             },
             {
                 "var",
                 [](const TrainSet *train_set, std::ostream &stream) -> bool {
-                    if (!common::SaveEigenMatrixToBinaryStream(stream, train_set->var)) {
-                        ERL_WARN("Failed to write var.");
-                        return false;
-                    }
-                    return true;
+                    return SaveEigenMatrixToBinaryStream(stream, train_set->var) && stream.good();
                 },
             },
         };
-        return common::WriteTokens(s, this, token_function_pairs);
+        return WriteTokens(s, this, token_function_pairs);
     }
 
     template<typename Dtype>
     bool
     VanillaGaussianProcess<Dtype>::TrainSet::Read(std::istream &s) {
-        static const std::vector<std::pair<const char *, std::function<bool(TrainSet *, std::istream &)>>> token_function_pairs = {
-            {"x_dim",
-             [](TrainSet *train_set, std::istream &stream) -> bool {
-                 stream >> train_set->x_dim;
-                 return true;
-             }},
+        using namespace common;
+        static const TokenReadFunctionPairs<TrainSet> token_function_pairs = {
+            {
+                "x_dim",
+                [](TrainSet *train_set, std::istream &stream) -> bool {
+                    stream >> train_set->x_dim;
+                    return true;
+                },
+            },
             {
                 "y_dim",
                 [](TrainSet *train_set, std::istream &stream) -> bool {
@@ -142,37 +251,22 @@ namespace erl::gaussian_process {
             {
                 "x",
                 [](TrainSet *train_set, std::istream &stream) -> bool {
-                    common::SkipLine(stream);
-                    if (!common::LoadEigenMatrixFromBinaryStream(stream, train_set->x)) {
-                        ERL_WARN("Failed to read x.");
-                        return false;
-                    }
-                    return true;
+                    return LoadEigenMatrixFromBinaryStream(stream, train_set->x) && stream.good();
                 },
             },
             {
                 "y",
                 [](TrainSet *train_set, std::istream &stream) -> bool {
-                    common::SkipLine(stream);
-                    if (!common::LoadEigenMatrixFromBinaryStream(stream, train_set->y)) {
-                        ERL_WARN("Failed to read y.");
-                        return false;
-                    }
-                    return true;
+                    return LoadEigenMatrixFromBinaryStream(stream, train_set->y) && stream.good();
                 },
             },
             {
                 "var",
                 [](TrainSet *train_set, std::istream &stream) -> bool {
-                    common::SkipLine(stream);
-                    if (!common::LoadEigenMatrixFromBinaryStream(stream, train_set->var)) {
-                        ERL_WARN("Failed to read var.");
-                        return false;
-                    }
-                    return true;
+                    return LoadEigenMatrixFromBinaryStream(stream, train_set->var) && stream.good();
                 },
             }};
-        return common::ReadTokens(s, this, token_function_pairs);
+        return ReadTokens(s, this, token_function_pairs);
     }
 
     template<typename Dtype>
@@ -197,8 +291,9 @@ namespace erl::gaussian_process {
           m_train_set_(other.m_train_set_) {
         if (other.m_kernel_ != nullptr) {
             m_kernel_ = Covariance::CreateCovariance(m_setting_->kernel_type, m_setting_->kernel);
-            if (m_reduced_rank_kernel_) {  // rank-reduced kernel is stateful, so we need to copy the kernel
-                *std::reinterpret_pointer_cast<ReducedRankCovariance>(m_kernel_) = *std::reinterpret_pointer_cast<ReducedRankCovariance>(other.m_kernel_);
+            if (m_reduced_rank_kernel_) {  // rank-reduced kernel is stateful, need to copy it
+                *std::reinterpret_pointer_cast<ReducedRankCovariance>(m_kernel_) =
+                    *std::reinterpret_pointer_cast<ReducedRankCovariance>(other.m_kernel_);
             }
         }
     }
@@ -220,8 +315,9 @@ namespace erl::gaussian_process {
         m_train_set_ = other.m_train_set_;
         if (other.m_kernel_ != nullptr) {
             m_kernel_ = Covariance::CreateCovariance(m_setting_->kernel_type, m_setting_->kernel);
-            if (m_reduced_rank_kernel_) {  // rank-reduced kernel is stateful, so we need to copy the kernel
-                *std::reinterpret_pointer_cast<ReducedRankCovariance>(m_kernel_) = *std::reinterpret_pointer_cast<ReducedRankCovariance>(other.m_kernel_);
+            if (m_reduced_rank_kernel_) {  // rank-reduced kernel is stateful, need to copy it
+                *std::reinterpret_pointer_cast<ReducedRankCovariance>(m_kernel_) =
+                    *std::reinterpret_pointer_cast<ReducedRankCovariance>(other.m_kernel_);
             }
         }
         return *this;
@@ -248,7 +344,10 @@ namespace erl::gaussian_process {
     template<typename Dtype>
     typename VanillaGaussianProcess<Dtype>::VectorX
     VanillaGaussianProcess<Dtype>::GetKernelCoordOrigin() const {
-        if (m_reduced_rank_kernel_) { return std::reinterpret_pointer_cast<ReducedRankCovariance>(m_kernel_)->GetCoordOrigin(); }
+        if (m_reduced_rank_kernel_) {
+            return std::reinterpret_pointer_cast<ReducedRankCovariance>(m_kernel_)
+                ->GetCoordOrigin();
+        }
         ERL_DEBUG_ASSERT(m_train_set_.x_dim > 0, "train set should be initialized first.");
         return VectorX::Zero(m_train_set_.x_dim);
     }
@@ -256,16 +355,25 @@ namespace erl::gaussian_process {
     template<typename Dtype>
     void
     VanillaGaussianProcess<Dtype>::SetKernelCoordOrigin(const VectorX &coord_origin) const {
-        if (m_reduced_rank_kernel_) { std::reinterpret_pointer_cast<ReducedRankCovariance>(m_kernel_)->SetCoordOrigin(coord_origin); }
+        if (m_reduced_rank_kernel_) {
+            std::reinterpret_pointer_cast<ReducedRankCovariance>(m_kernel_)->SetCoordOrigin(
+                coord_origin);
+        }
     }
 
     template<typename Dtype>
     void
-    VanillaGaussianProcess<Dtype>::Reset(const long max_num_samples, const long x_dim, const long y_dim) {
+    VanillaGaussianProcess<Dtype>::Reset(
+        const long max_num_samples,
+        const long x_dim,
+        const long y_dim) {
         ERL_DEBUG_ASSERT(max_num_samples > 0, "max_num_samples should be > 0.");
         ERL_DEBUG_ASSERT(x_dim > 0, "x_dim should be > 0.");
         ERL_DEBUG_ASSERT(y_dim > 0, "y_dim should be > 0.");
-        ERL_DEBUG_ASSERT(m_setting_->kernel->x_dim == -1 || m_setting_->kernel->x_dim == x_dim, "x_dim should be {}.", m_setting_->kernel->x_dim);
+        ERL_DEBUG_ASSERT(
+            m_setting_->kernel->x_dim == -1 || m_setting_->kernel->x_dim == x_dim,
+            "x_dim should be {}.",
+            m_setting_->kernel->x_dim);
         ERL_DEBUG_ASSERT(
             m_setting_->max_num_samples < 0 || max_num_samples <= m_setting_->max_num_samples,
             "max_num_samples should be <= {}.",
@@ -322,8 +430,10 @@ namespace erl::gaussian_process {
         if (m_setting_ != nullptr) { memory_usage += sizeof(Setting); }
         if (m_kernel_ != nullptr) { memory_usage += m_kernel_->GetMemoryUsage(); }
         memory_usage += sizeof(TrainSet);
-        memory_usage += (m_train_set_.x.size() + m_train_set_.y.size() + m_train_set_.var.size()) * sizeof(Dtype);
-        memory_usage += (m_mat_k_train_.size() + m_mat_l_.size() + m_mat_alpha_.size()) * sizeof(Dtype);
+        memory_usage += (m_train_set_.x.size() + m_train_set_.y.size() + m_train_set_.var.size()) *
+                        sizeof(Dtype);
+        memory_usage +=
+            (m_mat_k_train_.size() + m_mat_l_.size() + m_mat_alpha_.size()) * sizeof(Dtype);
         return memory_usage;
     }
 
@@ -337,7 +447,8 @@ namespace erl::gaussian_process {
             return false;
         }
         m_mat_alpha_.topLeftCorner(num_samples, y_dim) = y.topRows(num_samples);
-        std::tie(m_k_train_rows_, m_k_train_cols_) = m_kernel_->ComputeKtrain(x, var, num_samples, m_mat_k_train_, m_mat_alpha_);
+        std::tie(m_k_train_rows_, m_k_train_cols_) =
+            m_kernel_->ComputeKtrain(x, var, num_samples, m_mat_k_train_, m_mat_alpha_);
         m_k_train_updated_ = true;
         return true;
     }
@@ -356,9 +467,11 @@ namespace erl::gaussian_process {
         const auto mat_ktrain = m_mat_k_train_.topLeftCorner(m_k_train_rows_, m_k_train_cols_);
         auto &&mat_l = m_mat_l_.topLeftCorner(m_k_train_rows_, m_k_train_cols_);
         auto alpha = m_mat_alpha_.topRows(m_k_train_cols_);
-        mat_l = mat_ktrain.llt().matrixL();  // A = ktrain(mat_x_train, mat_x_train) + sigma * I = mat_l @ mat_l.T
+        // A = ktrain(mat_x_train, mat_x_train) + sigma * I = mat_l @ mat_l.T
+        mat_l = mat_ktrain.llt().matrixL();
+        // A.inv() @ vec_alpha
         mat_l.template triangularView<Eigen::Lower>().solveInPlace(alpha);
-        mat_l.transpose().template triangularView<Eigen::Upper>().solveInPlace(alpha);  // A.m_inv_() @ vec_alpha
+        mat_l.transpose().template triangularView<Eigen::Upper>().solveInPlace(alpha);
         m_trained_once_ = true;
         m_trained_ = true;
         return true;
@@ -366,51 +479,52 @@ namespace erl::gaussian_process {
 
     template<typename Dtype>
     bool
-    VanillaGaussianProcess<Dtype>::Test(
+    VanillaGaussianProcess<Dtype>::ComputeKtest(
         const Eigen::Ref<const MatrixX> &mat_x_test,
-        const std::vector<long> &y_indices,
-        Eigen::Ref<MatrixX> mat_f_out,
-        Eigen::Ref<VectorX> vec_var_out) const {
+        MatrixX &mat_k_test) const {
+        if (!m_trained_) { return false; }
 
-        if (!m_trained_) {
-            ERL_WARN("The model has not been trained.");
+        auto &[x_dim, y_dim, n_samples, x_train, y_train, var_x] = m_train_set_;
+        const long num_test = mat_x_test.cols();
+        if (num_test == 0) {
+            ERL_WARN("num_test = {}, it should be > 0.", num_test);
             return false;
         }
 
-        const long num_test = mat_x_test.cols();
-        if (num_test == 0) { return false; }
-
-        const auto &[x_dim, y_dim, num_samples, x_train, y_train, var_train] = m_train_set_;  // unpack
-
-#ifndef NDEBUG
-        const auto num_y_dims = static_cast<long>(y_indices.size());
-#endif
-        ERL_DEBUG_ASSERT(mat_x_test.rows() == x_dim, "mat_x_test.rows() = {}, it should be {}.", mat_x_test.rows(), x_dim);
-        ERL_DEBUG_ASSERT(mat_f_out.rows() >= num_y_dims, "mat_f_out.rows() = {}, it should be >= {}.", mat_f_out.rows(), num_y_dims);
-        ERL_DEBUG_ASSERT(mat_f_out.cols() >= num_test, "mat_f_out.cols() = {}, it should be >= {}.", mat_f_out.cols(), num_test);
-
-        const auto [ktest_rows, ktest_cols] = m_kernel_->GetMinimumKtestSize(num_samples, 0, x_dim, num_test, false);
-        MatrixX ktest(ktest_rows, ktest_cols);  // (num_features, num_test). Usually, num_features = num_train_samples.
-        const auto [output_rows, output_cols] = m_kernel_->ComputeKtest(x_train, num_samples, mat_x_test, num_test, ktest);
-
+        auto size0 = m_kernel_->GetMinimumKtestSize(n_samples, 0, x_dim, num_test, false);
+        mat_k_test.resize(size0.first, size0.second);
+        auto size1 = m_kernel_->ComputeKtest(x_train, n_samples, mat_x_test, num_test, mat_k_test);
+        (void) size1;
+        ERL_DEBUG_ASSERT(size0 == size1, "output size is ({}), it should be ({}).", size0, size1);
         ERL_DEBUG_ASSERT(
-            output_rows == ktest_rows && output_cols == ktest_cols,
-            "output_size = ({}, {}), it should be ({}, {}).",
-            output_rows,
-            output_cols,
-            ktest_rows,
-            ktest_cols);
+            mat_k_test.rows() == m_k_train_cols_,
+            "m_mat_k_test_.rows() = {}, it should be {}.",
+            mat_k_test.rows(),
+            m_k_train_cols_);
+        ERL_DEBUG_ASSERT(
+            mat_k_test.cols() == num_test,
+            "m_mat_k_test_.cols() = {}, it should be {}.",
+            mat_k_test.cols(),
+            num_test);
 
-        ComputeValuePrediction(ktest, y_indices, mat_f_out);
-        ComputeCovPrediction(ktest, vec_var_out);
         return true;
+    }
+
+    template<typename Dtype>
+    std::shared_ptr<typename VanillaGaussianProcess<Dtype>::TestResult>
+    VanillaGaussianProcess<Dtype>::Test(const Eigen::Ref<const MatrixX> &mat_x_test) const {
+        if (!m_trained_) { return nullptr; }
+        return std::make_shared<TestResult>(this, mat_x_test);
     }
 
     template<typename Dtype>
     bool
     VanillaGaussianProcess<Dtype>::operator==(const VanillaGaussianProcess &other) const {
         if (m_setting_ == nullptr && other.m_setting_ != nullptr) { return false; }
-        if (m_setting_ != nullptr && (other.m_setting_ == nullptr || *m_setting_ != *other.m_setting_)) { return false; }
+        if (m_setting_ != nullptr &&
+            (other.m_setting_ == nullptr || *m_setting_ != *other.m_setting_)) {
+            return false;
+        }
         if (m_trained_ != other.m_trained_) { return false; }
         if (m_trained_once_ != other.m_trained_once_) { return false; }
         if (m_k_train_updated_ != other.m_k_train_updated_) { return false; }
@@ -418,15 +532,19 @@ namespace erl::gaussian_process {
         if (m_k_train_cols_ != other.m_k_train_cols_) { return false; }
         if (m_reduced_rank_kernel_ != other.m_reduced_rank_kernel_) { return false; }
         if (m_train_set_ != other.m_train_set_) { return false; }
-        if (m_mat_k_train_.rows() != other.m_mat_k_train_.rows() || m_mat_k_train_.cols() != other.m_mat_k_train_.cols() ||
-            m_mat_k_train_.topLeftCorner(m_k_train_rows_, m_k_train_cols_) != other.m_mat_k_train_.topLeftCorner(m_k_train_rows_, m_k_train_cols_)) {
+        if (m_mat_k_train_.rows() != other.m_mat_k_train_.rows() ||
+            m_mat_k_train_.cols() != other.m_mat_k_train_.cols() ||
+            m_mat_k_train_.topLeftCorner(m_k_train_rows_, m_k_train_cols_) !=
+                other.m_mat_k_train_.topLeftCorner(m_k_train_rows_, m_k_train_cols_)) {
             return false;
         }
         if (m_mat_l_.rows() != other.m_mat_l_.rows() || m_mat_l_.cols() != other.m_mat_l_.cols() ||
-            m_mat_l_.topLeftCorner(m_k_train_rows_, m_k_train_cols_) != other.m_mat_l_.topLeftCorner(m_k_train_rows_, m_k_train_cols_)) {
+            m_mat_l_.topLeftCorner(m_k_train_rows_, m_k_train_cols_) !=
+                other.m_mat_l_.topLeftCorner(m_k_train_rows_, m_k_train_cols_)) {
             return false;
         }
-        if (m_mat_alpha_.size() != other.m_mat_alpha_.size() || m_mat_alpha_.topRows(m_k_train_cols_) != other.m_mat_alpha_.topRows(m_k_train_cols_)) {
+        if (m_mat_alpha_.size() != other.m_mat_alpha_.size() ||
+            m_mat_alpha_.topRows(m_k_train_cols_) != other.m_mat_alpha_.topRows(m_k_train_cols_)) {
             return false;
         }
         return true;
@@ -441,7 +559,8 @@ namespace erl::gaussian_process {
     template<typename Dtype>
     bool
     VanillaGaussianProcess<Dtype>::Write(std::ostream &s) const {
-        static const std::vector<std::pair<const char *, std::function<bool(const VanillaGaussianProcess *, std::ostream &)>>> token_function_pairs = {
+        using namespace common;
+        static const TokenWriteFunctionPairs<VanillaGaussianProcess> token_function_pairs = {
             {
                 "setting",
                 [](const VanillaGaussianProcess *gp, std::ostream &stream) -> bool {
@@ -467,21 +586,21 @@ namespace erl::gaussian_process {
                 },
             },
             {
-                "ktrain_updated",
+                "k_train_updated",
                 [](const VanillaGaussianProcess *gp, std::ostream &stream) -> bool {
                     stream << gp->m_k_train_updated_;
                     return true;
                 },
             },
             {
-                "ktrain_rows",
+                "k_train_rows",
                 [](const VanillaGaussianProcess *gp, std::ostream &stream) -> bool {
                     stream << gp->m_k_train_rows_;
                     return true;
                 },
             },
             {
-                "ktrain_cols",
+                "k_train_cols",
                 [](const VanillaGaussianProcess *gp, std::ostream &stream) -> bool {
                     stream << gp->m_k_train_cols_;
                     return true;
@@ -501,183 +620,144 @@ namespace erl::gaussian_process {
             {
                 "mat_k_train",
                 [](const VanillaGaussianProcess *gp, std::ostream &stream) -> bool {
-                    if (!common::SaveEigenMatrixToBinaryStream(stream, gp->m_mat_k_train_)) {
-                        ERL_WARN("Failed to write mat_k_train.");
-                        return false;
-                    }
-                    return true;
+                    return SaveEigenMatrixToBinaryStream(stream, gp->m_mat_k_train_) &&
+                           stream.good();
                 },
             },
             {
                 "mat_l",
                 [](const VanillaGaussianProcess *gp, std::ostream &stream) -> bool {
-                    if (!common::SaveEigenMatrixToBinaryStream(stream, gp->m_mat_l_)) {
-                        ERL_WARN("Failed to write mat_l.");
-                        return false;
-                    }
-                    return true;
+                    return SaveEigenMatrixToBinaryStream(stream, gp->m_mat_l_) && stream.good();
                 },
             },
             {
                 "mat_alpha",
                 [](const VanillaGaussianProcess *gp, std::ostream &stream) -> bool {
-                    if (!common::SaveEigenMatrixToBinaryStream(stream, gp->m_mat_alpha_)) {
-                        ERL_WARN("Failed to write mat_alpha.");
-                        return false;
-                    }
-                    return true;
+                    return SaveEigenMatrixToBinaryStream(stream, gp->m_mat_alpha_) && stream.good();
                 },
             },
             {
                 "train_set",
                 [](const VanillaGaussianProcess *gp, std::ostream &stream) -> bool {
-                    if (!gp->m_train_set_.Write(stream)) {
-                        ERL_WARN("Failed to write train set.");
-                        return false;
-                    }
-                    return true;
+                    return gp->m_train_set_.Write(stream) && stream.good();
                 },
             },
-            {
-                "end_of_VanillaGaussianProcess",
-                [](const VanillaGaussianProcess *, std::ostream &) -> bool { return true; },
-            },
         };
-        return common::WriteTokens(s, this, token_function_pairs);
+        return WriteTokens(s, this, token_function_pairs);
     }
 
     template<typename Dtype>
     bool
     VanillaGaussianProcess<Dtype>::Read(std::istream &s) {
-        static const std::vector<std::pair<const char *, std::function<bool(VanillaGaussianProcess *, std::istream &)>>> token_function_pairs = {
+        using namespace common;
+        static const TokenReadFunctionPairs<VanillaGaussianProcess> token_function_pairs = {
             {
                 "setting",
-                [](VanillaGaussianProcess *gp, std::istream &stream) -> bool {
-                    common::SkipLine(stream);
-                    if (!gp->m_setting_->Read(stream)) {
-                        ERL_WARN("Failed to read setting.");
-                        return false;
-                    }
-                    return true;
+                [](VanillaGaussianProcess *self, std::istream &stream) -> bool {
+                    return self->m_setting_->Read(stream) && stream.good();
                 },
             },
             {
                 "trained",
-                [](VanillaGaussianProcess *gp, std::istream &stream) -> bool {
-                    stream >> gp->m_trained_;
+                [](VanillaGaussianProcess *self, std::istream &stream) -> bool {
+                    stream >> self->m_trained_;
                     return true;
                 },
             },
             {
                 "trained_once",
-                [](VanillaGaussianProcess *gp, std::istream &stream) -> bool {
-                    stream >> gp->m_trained_once_;
+                [](VanillaGaussianProcess *self, std::istream &stream) -> bool {
+                    stream >> self->m_trained_once_;
                     return true;
                 },
             },
             {
-                "ktrain_updated",
-                [](VanillaGaussianProcess *gp, std::istream &stream) -> bool {
-                    stream >> gp->m_k_train_updated_;
+                "k_train_updated",
+                [](VanillaGaussianProcess *self, std::istream &stream) -> bool {
+                    stream >> self->m_k_train_updated_;
                     return true;
                 },
             },
             {
-                "ktrain_rows",
-                [](VanillaGaussianProcess *gp, std::istream &stream) -> bool {
-                    stream >> gp->m_k_train_rows_;
+                "k_train_rows",
+                [](VanillaGaussianProcess *self, std::istream &stream) -> bool {
+                    stream >> self->m_k_train_rows_;
                     return true;
                 },
             },
             {
-                "ktrain_cols",
-                [](VanillaGaussianProcess *gp, std::istream &stream) -> bool {
-                    stream >> gp->m_k_train_cols_;
+                "k_train_cols",
+                [](VanillaGaussianProcess *self, std::istream &stream) -> bool {
+                    stream >> self->m_k_train_cols_;
                     return true;
                 },
             },
             {
                 "kernel",
-                [](VanillaGaussianProcess *gp, std::istream &stream) -> bool {
+                [](VanillaGaussianProcess *self, std::istream &stream) -> bool {
                     bool has_kernel;
                     stream >> has_kernel;
-                    if (has_kernel) {
-                        common::SkipLine(stream);
-                        gp->m_kernel_ = Covariance::CreateCovariance(gp->m_setting_->kernel_type, gp->m_setting_->kernel);
-                        if (!gp->m_kernel_->Read(stream)) {
-                            ERL_WARN("Failed to read kernel.");
-                            return false;
-                        }
-                        const auto rank_reduced_kernel = std::dynamic_pointer_cast<ReducedRankCovariance>(gp->m_kernel_);
-                        gp->m_reduced_rank_kernel_ = rank_reduced_kernel != nullptr;
-                        if (gp->m_reduced_rank_kernel_) { rank_reduced_kernel->BuildSpectralDensities(); }
+                    SkipLine(stream);
+                    if (!has_kernel) { return stream.good(); }
+                    self->m_kernel_ = Covariance::CreateCovariance(
+                        self->m_setting_->kernel_type,
+                        self->m_setting_->kernel);
+                    if (!self->m_kernel_->Read(stream)) { return false; }
+                    const auto rank_reduced_kernel =
+                        std::dynamic_pointer_cast<ReducedRankCovariance>(self->m_kernel_);
+                    self->m_reduced_rank_kernel_ = rank_reduced_kernel != nullptr;
+                    if (self->m_reduced_rank_kernel_) {
+                        rank_reduced_kernel->BuildSpectralDensities();
                     }
                     return true;
                 },
             },
             {
                 "mat_k_train",
-                [](VanillaGaussianProcess *gp, std::istream &stream) -> bool {
-                    common::SkipLine(stream);
-                    if (!common::LoadEigenMatrixFromBinaryStream(stream, gp->m_mat_k_train_)) {
-                        ERL_WARN("Failed to read mat_k_train.");
-                        return false;
-                    }
-                    return true;
+                [](VanillaGaussianProcess *self, std::istream &stream) -> bool {
+                    return LoadEigenMatrixFromBinaryStream(stream, self->m_mat_k_train_) &&
+                           stream.good();
                 },
             },
             {
                 "mat_l",
-                [](VanillaGaussianProcess *gp, std::istream &stream) -> bool {
-                    common::SkipLine(stream);
-                    if (!common::LoadEigenMatrixFromBinaryStream(stream, gp->m_mat_l_)) {
-                        ERL_WARN("Failed to read mat_l.");
-                        return false;
-                    }
-                    return true;
+                [](VanillaGaussianProcess *self, std::istream &stream) -> bool {
+                    return LoadEigenMatrixFromBinaryStream(stream, self->m_mat_l_) && stream.good();
                 },
             },
             {
                 "mat_alpha",
-                [](VanillaGaussianProcess *gp, std::istream &stream) -> bool {
-                    common::SkipLine(stream);
-                    if (!common::LoadEigenMatrixFromBinaryStream(stream, gp->m_mat_alpha_)) {
-                        ERL_WARN("Failed to read alpha.");
-                        return false;
-                    }
-                    return true;
+                [](VanillaGaussianProcess *self, std::istream &stream) -> bool {
+                    return LoadEigenMatrixFromBinaryStream(stream, self->m_mat_alpha_) &&
+                           stream.good();
                 },
             },
             {
                 "train_set",
-                [](VanillaGaussianProcess *gp, std::istream &stream) -> bool {
-                    if (!gp->m_train_set_.Read(stream)) {
-                        ERL_WARN("Failed to read train set.");
-                        return false;
-                    }
-                    return true;
-                },
-            },
-            {
-                "end_of_VanillaGaussianProcess",
-                [](VanillaGaussianProcess *, std::istream &stream) -> bool {
-                    common::SkipLine(stream);
-                    return true;
+                [](VanillaGaussianProcess *self, std::istream &stream) -> bool {
+                    return self->m_train_set_.Read(stream) && stream.good();
                 },
             },
         };
-        return common::ReadTokens(s, this, token_function_pairs);
+        return ReadTokens(s, this, token_function_pairs);
     }
 
     template<typename Dtype>
     bool
-    VanillaGaussianProcess<Dtype>::AllocateMemory(const long max_num_samples, const long x_dim, const long y_dim) {
+    VanillaGaussianProcess<Dtype>::AllocateMemory(
+        const long max_num_samples,
+        const long x_dim,
+        const long y_dim) {
         if (max_num_samples <= 0 || x_dim <= 0 || y_dim <= 0) { return false; }  // invalid input
-        if (m_setting_->max_num_samples > 0 && max_num_samples > m_setting_->max_num_samples) { return false; }
+        if (m_setting_->max_num_samples > 0 && max_num_samples > m_setting_->max_num_samples) {
+            return false;
+        }
         if (m_setting_->kernel->x_dim > 0 && x_dim != m_setting_->kernel->x_dim) { return false; }
         InitKernel();
         const auto [rows, cols] = m_kernel_->GetMinimumKtrainSize(max_num_samples, 0, 0);
-        if (m_mat_k_train_.rows() < rows || m_mat_k_train_.cols() < cols) { m_mat_k_train_.resize(rows, cols); }
+        if (m_mat_k_train_.rows() < rows || m_mat_k_train_.cols() < cols) {
+            m_mat_k_train_.resize(rows, cols);
+        }
         if (m_mat_l_.rows() < rows || m_mat_l_.cols() < cols) { m_mat_l_.resize(rows, cols); }
         if (const long alpha_rows = std::max(max_num_samples, cols);  //
             m_mat_alpha_.rows() < alpha_rows || m_mat_alpha_.cols() < y_dim) {
@@ -691,45 +771,14 @@ namespace erl::gaussian_process {
     VanillaGaussianProcess<Dtype>::InitKernel() {
         if (m_kernel_ == nullptr) {
             m_kernel_ = Covariance::CreateCovariance(m_setting_->kernel_type, m_setting_->kernel);
-            ERL_DEBUG_ASSERT(m_kernel_ != nullptr, "failed to create kernel of type {}.", m_setting_->kernel_type);
-            const auto rank_reduced_kernel = std::dynamic_pointer_cast<ReducedRankCovariance>(m_kernel_);
+            ERL_DEBUG_ASSERT(
+                m_kernel_ != nullptr,
+                "failed to create kernel of type {}.",
+                m_setting_->kernel_type);
+            const auto rank_reduced_kernel =
+                std::dynamic_pointer_cast<ReducedRankCovariance>(m_kernel_);
             m_reduced_rank_kernel_ = rank_reduced_kernel != nullptr;
             if (m_reduced_rank_kernel_) { rank_reduced_kernel->BuildSpectralDensities(); }
         }
     }
-
-    template<typename Dtype>
-    void
-    VanillaGaussianProcess<Dtype>::ComputeValuePrediction(const MatrixX &ktest, const std::vector<long> &y_indices, Eigen::Ref<MatrixX> mat_f_out) const {
-        // xt is one column of mat_x_test.
-        // expectation: f = ktest(xt, X) @ (ktrain(X, X) + sigma * I).inv() @ y
-        for (long i = 0; i < ktest.cols(); ++i) {
-            Dtype *f = mat_f_out.col(i).data();
-            const auto ktest_col = ktest.col(i);
-            for (const long &y_idx: y_indices) {
-                *f = ktest_col.dot(m_mat_alpha_.col(y_idx).head(m_k_train_cols_));  // h_d(x_i)
-                ++f;
-            }
-        }
-    }
-
-    template<typename Dtype>
-    void
-    VanillaGaussianProcess<Dtype>::ComputeCovPrediction(MatrixX &ktest, Eigen::Ref<VectorX> vec_var_out) const {
-        if (vec_var_out.size() == 0) { return; }  // only compute mean
-
-        const long ktest_rows = ktest.rows();
-        const long ktest_cols = ktest.cols();
-
-        // variance of vec_f_out = ktest(xt, xt) - ktest(xt, X) @ (ktest(X, X) + sigma * I).m_inv_() @ ktest(X, xt)
-        //                       = ktest(xt, xt) - ktest(xt, X) @ (m_l_ @ m_l_.T).m_inv_() @ ktest(X, xt)
-        ERL_DEBUG_ASSERT(vec_var_out.size() >= ktest_cols, "vec_var_out size = {}, it should be >= {}.", vec_var_out.size(), ktest_cols);
-        m_mat_l_.topLeftCorner(ktest_rows, ktest_rows).template triangularView<Eigen::Lower>().solveInPlace(ktest);
-        if (m_reduced_rank_kernel_) {
-            for (long i = 0; i < ktest_cols; ++i) { vec_var_out[i] = ktest.col(i).squaredNorm(); }
-        } else {
-            for (long i = 0; i < ktest_cols; ++i) { vec_var_out[i] = 1.0f - ktest.col(i).squaredNorm(); }
-        }
-    }
-
 }  // namespace erl::gaussian_process

@@ -20,11 +20,11 @@ namespace erl::gaussian_process {
         using MatrixX = Eigen::MatrixX<Dtype>;
         using VectorX = Eigen::VectorX<Dtype>;
 
-        // structure for holding the parameters
-        struct Setting : common::Yamlable<Setting> {
+        struct Setting : public common::Yamlable<Setting> {
             std::string kernel_type = type_name<Covariance>();
             std::string kernel_setting_type = type_name<typename Covariance::Setting>();
-            std::shared_ptr<typename Covariance::Setting> kernel = std::make_shared<typename Covariance::Setting>();
+            std::shared_ptr<typename Covariance::Setting> kernel =
+                std::make_shared<typename Covariance::Setting>();
             long max_num_samples = 256;
 
             struct YamlConvertImpl {
@@ -34,6 +34,44 @@ namespace erl::gaussian_process {
                 static bool
                 decode(const YAML::Node &node, Setting &setting);
             };
+        };
+
+        class TestResult {
+        protected:
+            const VanillaGaussianProcess *m_gp_;
+            const long m_num_test_;
+            const bool m_reduced_rank_kernel_;
+            const long m_x_dim_;
+            const long m_y_dim_;
+            MatrixX m_mat_k_test_;
+            MatrixX m_mat_alpha_test_;
+
+        public:
+            TestResult(
+                const VanillaGaussianProcess *gp,
+                const Eigen::Ref<const MatrixX> &mat_x_test);
+
+            [[nodiscard]] long
+            GetNumTest() const;
+
+            [[nodiscard]] const MatrixX &
+            GetKtest() const;
+
+            void
+            GetMean(long y_index, Eigen::Ref<VectorX> vec_f_out, bool parallel) const;
+
+            void
+            GetMean(long index, long y_index, Dtype &f) const;
+
+            void
+            GetVariance(Eigen::Ref<VectorX> vec_var_out, bool parallel) const;
+
+            void
+            GetVariance(long index, Dtype &var) const;
+
+        protected:
+            void
+            PrepareAlphaTest();
         };
 
         struct TrainSet {
@@ -68,11 +106,11 @@ namespace erl::gaussian_process {
         long m_k_train_rows_ = 0;                         // number of rows of Ktrain
         long m_k_train_cols_ = 0;                         // number of columns of Ktrain
         std::shared_ptr<Covariance> m_kernel_ = nullptr;  // kernel
-        bool m_reduced_rank_kernel_ = false;              // whether the kernel is rank reduced or not
-        MatrixX m_mat_k_train_ = {};                      // Ktrain, avoid reallocation
-        MatrixX m_mat_l_ = {};                            // lower triangular matrix of the Cholesky decomposition of Ktrain
-        MatrixX m_mat_alpha_ = {};                        // h(x1)..h(xn), dh(x1)/dx1_1 .. dh(xn)/dxn_1 .. dh(x1)/dx1_dim .. dh(xn)/dxn_dim
-        TrainSet m_train_set_;                            // the training set
+        bool m_reduced_rank_kernel_ = false;  // whether the kernel is rank reduced or not
+        MatrixX m_mat_k_train_ = {};          // Ktrain, avoid reallocation
+        MatrixX m_mat_l_ = {};  // lower triangular matrix of the Cholesky decomposition of Ktrain
+        MatrixX m_mat_alpha_ = {};  // h(x1)..h(xn), dh(x1)/dx_1..dh(xn)/dx_n, ..dh(xn)/dx_dim
+        TrainSet m_train_set_;      // the training set
 
     public:
         explicit VanillaGaussianProcess(std::shared_ptr<Setting> setting);
@@ -83,8 +121,6 @@ namespace erl::gaussian_process {
         operator=(const VanillaGaussianProcess &other);
         VanillaGaussianProcess &
         operator=(VanillaGaussianProcess &&other) = default;
-
-        virtual ~VanillaGaussianProcess() = default;
 
         [[nodiscard]] std::shared_ptr<const Setting>
         GetSetting() const;
@@ -128,18 +164,20 @@ namespace erl::gaussian_process {
         [[nodiscard]] const MatrixX &
         GetAlpha() const;
 
-        [[nodiscard]] virtual std::size_t
+        [[nodiscard]] std::size_t
         GetMemoryUsage() const;
 
         bool
         UpdateKtrain();
 
-        [[nodiscard]] virtual bool
+        [[nodiscard]] bool
         Train();
 
-        [[nodiscard]] virtual bool
-        Test(const Eigen::Ref<const MatrixX> &mat_x_test, const std::vector<long> &y_indices, Eigen::Ref<MatrixX> mat_f_out, Eigen::Ref<VectorX> vec_var_out)
-            const;
+        [[nodiscard]] bool
+        ComputeKtest(const Eigen::Ref<const MatrixX> &mat_x_test, MatrixX &mat_k_test) const;
+
+        [[nodiscard]] std::shared_ptr<TestResult>
+        Test(const Eigen::Ref<const MatrixX> &mat_x_test) const;
 
         [[nodiscard]] bool
         operator==(const VanillaGaussianProcess &other) const;
@@ -147,10 +185,10 @@ namespace erl::gaussian_process {
         [[nodiscard]] bool
         operator!=(const VanillaGaussianProcess &other) const;
 
-        [[nodiscard]] virtual bool
+        [[nodiscard]] bool
         Write(std::ostream &s) const;
 
-        [[nodiscard]] virtual bool
+        [[nodiscard]] bool
         Read(std::istream &s);
 
     protected:
@@ -159,12 +197,6 @@ namespace erl::gaussian_process {
 
         void
         InitKernel();
-
-        void
-        ComputeValuePrediction(const MatrixX &ktest, const std::vector<long> &y_indices, Eigen::Ref<MatrixX> mat_f_out) const;
-
-        void
-        ComputeCovPrediction(MatrixX &ktest, Eigen::Ref<VectorX> vec_var_out) const;
     };
 
     using VanillaGaussianProcessD = VanillaGaussianProcess<double>;
@@ -174,7 +206,9 @@ namespace erl::gaussian_process {
 #include "vanilla_gp.tpp"
 
 template<>
-struct YAML::convert<erl::gaussian_process::VanillaGaussianProcessD::Setting> : erl::gaussian_process::VanillaGaussianProcessD::Setting::YamlConvertImpl {};
+struct YAML::convert<erl::gaussian_process::VanillaGaussianProcessD::Setting>
+    : erl::gaussian_process::VanillaGaussianProcessD::Setting::YamlConvertImpl {};
 
 template<>
-struct YAML::convert<erl::gaussian_process::VanillaGaussianProcessF::Setting> : erl::gaussian_process::VanillaGaussianProcessF::Setting::YamlConvertImpl {};
+struct YAML::convert<erl::gaussian_process::VanillaGaussianProcessF::Setting>
+    : erl::gaussian_process::VanillaGaussianProcessF::Setting::YamlConvertImpl {};

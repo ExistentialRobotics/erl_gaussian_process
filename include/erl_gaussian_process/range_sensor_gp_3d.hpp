@@ -28,20 +28,32 @@ namespace erl::gaussian_process {
         using MatrixX = Eigen::MatrixX<Dtype>;
         using VectorX = Eigen::VectorX<Dtype>;
 
-        struct Setting : common::Yamlable<Setting> {
-            long row_group_size = 24;   // number of points in each group for each row, including the overlap ones
-            long row_overlap_size = 6;  // number of points in the overlap region for each row
+        struct Setting : public common::Yamlable<Setting> {
+            // number of points in each group for each row, including the overlap ones
+            long row_group_size = 24;
+            // number of points in the overlap region for each row
+            long row_overlap_size = 6;
             long row_margin = 0;
-            long col_group_size = 8;    // number of elevation points in each group, including the overlap ones
-            long col_overlap_size = 2;  // number of points in the overlap region
+            // number of elevation points in each group, including the overlap ones
+            long col_group_size = 8;
+            // number of points in the overlap region
+            long col_overlap_size = 2;
             long col_margin = 0;
-            Dtype init_variance = 1e6;        // large value to initialize variance result in case of computation failure
-            Dtype sensor_range_var = 0.01;    // variance of the sensor range measurement
-            Dtype max_valid_range_var = 0.1;  // if the distance variance is greater than this threshold, the prediction is invalid and should be discarded
-            Dtype occ_test_temperature = 30;  // OCC test is a tanh function, this controls the slope around 0
-            std::string sensor_frame_type = type_name<LidarFrame>();                            // type of the range sensor frame
-            std::string sensor_frame_setting_type = type_name<typename LidarFrame::Setting>();  // type of the range sensor frame setting
-            std::shared_ptr<typename RangeSensorFrame::Setting> sensor_frame = std::make_shared<typename LidarFrame::Setting>();
+            // large value to initialize variance results in case of computation failure
+            Dtype init_variance = 1e6f;
+            // variance of the sensor range measurement
+            Dtype sensor_range_var = 0.01f;
+            // if the distance variance is greater than this threshold, the prediction is invalid
+            // and should be discarded
+            Dtype max_valid_range_var = 0.1f;
+            // OCC test is a tanh function, this controls the slope around 0
+            Dtype occ_test_temperature = 30.0f;
+            // type of the range sensor frame
+            std::string sensor_frame_type = type_name<LidarFrame>();
+            // type of the range sensor frame setting
+            std::string sensor_frame_setting_type = type_name<typename LidarFrame::Setting>();
+            std::shared_ptr<typename RangeSensorFrame::Setting> sensor_frame =
+                std::make_shared<typename LidarFrame::Setting>();
             std::shared_ptr<typename Gp::Setting> gp = std::make_shared<typename Gp::Setting>();
             std::shared_ptr<typename MappingDtype::Setting> mapping = []() {
                 auto mapping_setting = std::make_shared<typename MappingDtype::Setting>();
@@ -59,8 +71,45 @@ namespace erl::gaussian_process {
             };
         };
 
-    private:
-        inline static const std::string kFileHeader = fmt::format("# {}", type_name<RangeSensorGaussianProcess3D>());
+        class TestResult {
+        protected:
+            const RangeSensorGaussianProcess3D *m_gp_;
+            std::vector<const Gp *> m_gps_;
+            std::vector<VectorX> m_k_test_vec_;
+            std::vector<std::pair<const Dtype *, long>> m_alpha_vec_;
+            std::vector<VectorX> m_alpha_test_vec_;
+            std::shared_ptr<MappingDtype> m_mapping_ = nullptr;
+            bool m_reduced_rank_kernel_ = false;
+
+        public:
+            TestResult(
+                const RangeSensorGaussianProcess3D *gp,
+                const Eigen::Ref<const Matrix3X> &directions,
+                bool directions_are_local,
+                const std::shared_ptr<MappingDtype> &mapping);
+
+            [[nodiscard]] long
+            GetNumTest() const;
+
+            [[nodiscard]] const VectorX &
+            GetKtest(long index) const;
+
+            [[nodiscard]] Eigen::VectorXb
+            GetMean(Eigen::Ref<VectorX> vec_f_out, bool parallel) const;
+
+            [[nodiscard]] bool
+            GetMean(long index, Dtype &f) const;
+
+            [[nodiscard]] Eigen::VectorXb
+            GetVariance(Eigen::Ref<VectorX> vec_var_out, bool parallel) const;
+
+            [[nodiscard]] bool
+            GetVariance(long index, Dtype &var) const;
+
+        protected:
+            void
+            PrepareAlphaTest(long index);
+        };
 
     protected:
         bool m_trained_ = false;
@@ -144,16 +193,15 @@ namespace erl::gaussian_process {
         [[nodiscard]] bool
         Train(const Matrix3 &rotation, const Vector3 &translation, MatrixX ranges);
 
-        [[nodiscard]] bool
-        Test(
-            const Eigen::Ref<const Matrix3X> &directions,
-            bool directions_are_local,
-            Eigen::Ref<VectorX> vec_ranges,
-            Eigen::Ref<VectorX> vec_ranges_var,
-            bool un_map) const;
+        [[nodiscard]] std::pair<long, long>
+        SearchPartition(const Vector2 &frame_coords) const;
+
+        [[nodiscard]] std::shared_ptr<TestResult>
+        Test(const Eigen::Ref<const Matrix3X> &directions, bool directions_are_local, bool un_map)
+            const;
 
         bool
-        ComputeOcc(const Vector3 &dir_local, Dtype r, Eigen::Ref<Scalar> range_pred, Eigen::Ref<Scalar> range_pred_var, Dtype &occ) const;
+        ComputeOcc(const Vector3 &dir_local, Dtype r, Dtype &range_pred, Dtype &occ) const;
 
         [[nodiscard]] bool
         operator==(const RangeSensorGaussianProcess3D &other) const;
@@ -164,13 +212,7 @@ namespace erl::gaussian_process {
         }
 
         [[nodiscard]] bool
-        Write(const std::string &filename) const;
-
-        [[nodiscard]] bool
         Write(std::ostream &s) const;
-
-        [[nodiscard]] bool
-        Read(const std::string &filename);
 
         [[nodiscard]] bool
         Read(std::istream &s);

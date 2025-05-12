@@ -73,7 +73,6 @@ namespace erl::gaussian_process {
         const long k_train_cols = m_gp_->m_k_train_cols_;
         const long k_test_cols = m_support_gradient_ ? m_num_test_ * (m_x_dim_ + 1) : m_num_test_;
 #else
-        (void) rows1, (void) cols1;
         (void) rows2, (void) cols2;
 #endif
         ERL_DEBUG_ASSERT(
@@ -96,10 +95,36 @@ namespace erl::gaussian_process {
     }
 
     template<typename Dtype>
+    long
+    NoisyInputGaussianProcess<Dtype>::TestResult::GetNumTest() const {
+        return m_num_test_;
+    }
+
+    template<typename Dtype>
+    long
+    NoisyInputGaussianProcess<Dtype>::TestResult::GetDimX() const {
+        return m_x_dim_;
+    }
+
+    template<typename Dtype>
+    long
+    NoisyInputGaussianProcess<Dtype>::TestResult::GetDimY() const {
+        return m_y_dim_;
+    }
+
+    template<typename Dtype>
+    const typename NoisyInputGaussianProcess<Dtype>::MatrixX&
+    NoisyInputGaussianProcess<Dtype>::TestResult::GetKtest() const {
+        return m_mat_k_test_;
+    }
+
+    template<typename Dtype>
     void
     NoisyInputGaussianProcess<Dtype>::TestResult::GetMean(
         const long y_index,
-        Eigen::Ref<VectorX> vec_f_out) const {
+        Eigen::Ref<VectorX> vec_f_out,
+        const bool parallel) const {
+        (void) parallel;
         ERL_DEBUG_ASSERT(
             y_index >= 0 && y_index < m_y_dim_,
             "y_index = {}, it should be in [0, {}).",
@@ -110,9 +135,10 @@ namespace erl::gaussian_process {
             "vec_f_out.size() = {}, it should be >= {}.",
             vec_f_out.size(),
             m_num_test_);
-        Dtype* f = vec_f_out.data();
         const auto alpha = m_gp_->m_mat_alpha_.col(y_index).head(m_gp_->m_k_train_cols_);
-        for (long i = 0; i < m_num_test_; ++i, ++f) { *f = m_mat_k_test_.col(i).dot(alpha); }
+        Dtype* f = vec_f_out.data();
+#pragma omp parallel for if (parallel) default(none) shared(alpha, f)
+        for (long i = 0; i < m_num_test_; ++i) { f[i] = m_mat_k_test_.col(i).dot(alpha); }
     }
 
     template<typename Dtype>
@@ -139,7 +165,9 @@ namespace erl::gaussian_process {
     void
     NoisyInputGaussianProcess<Dtype>::TestResult::GetGradient(
         const long y_index,
-        Eigen::Ref<MatrixX> mat_grad_out) const {
+        Eigen::Ref<MatrixX> mat_grad_out,
+        const bool parallel) const {
+        (void) parallel;
         ERL_DEBUG_ASSERT(
             m_support_gradient_,
             "m_support_gradient_ = false, it should be true to call GetGradient().");
@@ -159,6 +187,7 @@ namespace erl::gaussian_process {
             mat_grad_out.cols(),
             m_num_test_);
         const auto alpha = m_gp_->m_mat_alpha_.col(y_index).head(m_gp_->m_k_train_cols_);
+#pragma omp parallel for if (parallel) default(none) shared(alpha, mat_grad_out)
         for (long index = 0; index < m_num_test_; ++index) {
             Dtype* grad = mat_grad_out.col(index).data();
             for (long j = 0, jj = index + m_num_test_; j < m_x_dim_; ++j, jj += m_num_test_) {
@@ -195,13 +224,17 @@ namespace erl::gaussian_process {
     template<typename Dtype>
     void
     NoisyInputGaussianProcess<Dtype>::TestResult::GetMeanVariance(
-        Eigen::Ref<VectorX> vec_var_out) const {
+        Eigen::Ref<VectorX> vec_var_out,
+        const bool parallel) const {
+        (void) parallel;
         const_cast<TestResult*>(this)->PrepareAlphaTest();
         Dtype* var = vec_var_out.data();
-        for (long i = 0; i < m_num_test_; ++i, ++var) {
-            *var = m_mat_alpha_test_.col(i).squaredNorm();  // variance of h(x)
+#pragma omp parallel for if (parallel) default(none) shared(var)
+        for (long i = 0; i < m_num_test_; ++i) {
+            Dtype& var_i = var[i];
+            var_i = m_mat_alpha_test_.col(i).squaredNorm();  // variance of h(x)
             if (m_reduced_rank_kernel_) { continue; }
-            *var = 1.0f - *var;  // variance of h(x)
+            var_i = 1.0f - var_i;  // variance of h(x)
         }
     }
 
@@ -217,13 +250,16 @@ namespace erl::gaussian_process {
     template<typename Dtype>
     void
     NoisyInputGaussianProcess<Dtype>::TestResult::GetGradientVariance(
-        Eigen::Ref<MatrixX> mat_var_out) const {
+        Eigen::Ref<MatrixX> mat_var_out,
+        const bool parallel) const {
+        (void) parallel;
         ERL_DEBUG_ASSERT(
             m_support_gradient_,
             "m_support_gradient_ = false, it should be true to call GetGradient().");
         const_cast<TestResult*>(this)->PrepareAlphaTest();
         const Dtype scale_square = m_gp_->m_three_over_scale_square_;
         const long cols = m_mat_alpha_test_.cols();
+#pragma omp parallel for if (parallel) default(none) shared(mat_var_out, scale_square, cols)
         for (long index = 0; index < m_num_test_; ++index) {
             Dtype* var = mat_var_out.col(index).data();
             for (long jj = index + m_num_test_; jj < cols; jj += m_num_test_, ++var) {
@@ -254,7 +290,9 @@ namespace erl::gaussian_process {
     template<typename Dtype>
     void
     NoisyInputGaussianProcess<Dtype>::TestResult::GetCovariance(
-        Eigen::Ref<MatrixX> mat_cov_out) const {
+        Eigen::Ref<MatrixX> mat_cov_out,
+        const bool parallel) const {
+        (void) parallel;
         ERL_DEBUG_ASSERT(
             m_support_gradient_,
             "m_support_gradient_ = false, it should be true to call GetGradient().");
@@ -270,6 +308,7 @@ namespace erl::gaussian_process {
             m_num_test_);
 
         const_cast<TestResult*>(this)->PrepareAlphaTest();
+#pragma omp parallel for if (parallel) default(none) shared(mat_cov_out)
         for (long index = 0; index < m_num_test_; ++index) {
             Dtype* cov = mat_cov_out.col(index).data();
             for (long j = 0, jj = index + m_num_test_; j < m_x_dim_; ++j, jj += m_num_test_) {
@@ -378,193 +417,166 @@ namespace erl::gaussian_process {
     template<typename Dtype>
     bool
     NoisyInputGaussianProcess<Dtype>::TrainSet::Write(std::ostream& s) const {
-        static const std::vector<
-            std::pair<const char*, std::function<bool(const TrainSet*, std::ostream&)>>>
-            token_function_pairs = {
-                {
-                    "x_dim",
-                    [](const TrainSet* train_set, std::ostream& stream) -> bool {
-                        stream << train_set->x_dim;
-                        return stream.good();
-                    },
+        using namespace common;
+        static const TokenWriteFunctionPairs<TrainSet> token_function_pairs = {
+            {
+                "x_dim",
+                [](const TrainSet* train_set, std::ostream& stream) -> bool {
+                    stream << train_set->x_dim;
+                    return stream.good();
                 },
-                {
-                    "y_dim",
-                    [](const TrainSet* train_set, std::ostream& stream) -> bool {
-                        stream << train_set->y_dim;
-                        return stream.good();
-                    },
+            },
+            {
+                "y_dim",
+                [](const TrainSet* train_set, std::ostream& stream) -> bool {
+                    stream << train_set->y_dim;
+                    return stream.good();
                 },
-                {
-                    "num_samples",
-                    [](const TrainSet* train_set, std::ostream& stream) -> bool {
-                        stream << train_set->num_samples;
-                        return stream.good();
-                    },
+            },
+            {
+                "num_samples",
+                [](const TrainSet* train_set, std::ostream& stream) -> bool {
+                    stream << train_set->num_samples;
+                    return stream.good();
                 },
-                {
-                    "num_samples_with_grad",
-                    [](const TrainSet* train_set, std::ostream& stream) -> bool {
-                        stream << train_set->num_samples_with_grad;
-                        return stream.good();
-                    },
+            },
+            {
+                "num_samples_with_grad",
+                [](const TrainSet* train_set, std::ostream& stream) -> bool {
+                    stream << train_set->num_samples_with_grad;
+                    return stream.good();
                 },
-                {
-                    "x",
-                    [](const TrainSet* train_set, std::ostream& stream) -> bool {
-                        if (!common::SaveEigenMatrixToBinaryStream(stream, train_set->x)) {
-                            ERL_WARN("Failed to write x.");
-                            return false;
-                        }
-                        return stream.good();
-                    },
+            },
+            {
+                "x",
+                [](const TrainSet* train_set, std::ostream& stream) -> bool {
+                    return SaveEigenMatrixToBinaryStream(stream, train_set->x) && stream.good();
                 },
-                {
-                    "y",
-                    [](const TrainSet* train_set, std::ostream& stream) -> bool {
-                        if (!common::SaveEigenMatrixToBinaryStream(stream, train_set->y)) {
-                            ERL_WARN("Failed to write y.");
-                            return false;
-                        }
-                        return stream.good();
-                    },
+            },
+            {
+                "y",
+                [](const TrainSet* train_set, std::ostream& stream) -> bool {
+                    return SaveEigenMatrixToBinaryStream(stream, train_set->y) && stream.good();
                 },
-                {
-                    "grad",
-                    [](const TrainSet* train_set, std::ostream& stream) -> bool {
-                        if (!common::SaveEigenMatrixToBinaryStream(stream, train_set->grad)) {
-                            ERL_WARN("Failed to write grad.");
-                            return false;
-                        }
-                        return stream.good();
-                    },
+            },
+            {
+                "grad",
+                [](const TrainSet* train_set, std::ostream& stream) -> bool {
+                    return SaveEigenMatrixToBinaryStream(stream, train_set->grad) && stream.good();
                 },
-                {
-                    "var_x",
-                    [](const TrainSet* train_set, std::ostream& stream) -> bool {
-                        if (!common::SaveEigenMatrixToBinaryStream(stream, train_set->var_x)) {
-                            ERL_WARN("Failed to write var_x.");
-                            return false;
-                        }
-                        return stream.good();
-                    },
+            },
+            {
+                "var_x",
+                [](const TrainSet* train_set, std::ostream& stream) -> bool {
+                    return SaveEigenMatrixToBinaryStream(stream, train_set->var_x) && stream.good();
                 },
-                {
-                    "var_y",
-                    [](const TrainSet* train_set, std::ostream& stream) -> bool {
-                        if (!common::SaveEigenMatrixToBinaryStream(stream, train_set->var_y)) {
-                            ERL_WARN("Failed to write var_y.");
-                            return false;
-                        }
-                        return stream.good();
-                    },
+            },
+            {
+                "var_y",
+                [](const TrainSet* train_set, std::ostream& stream) -> bool {
+                    return SaveEigenMatrixToBinaryStream(stream, train_set->var_y) && stream.good();
                 },
-                {
-                    "var_grad",
-                    [](const TrainSet* train_set, std::ostream& stream) -> bool {
-                        if (!common::SaveEigenMatrixToBinaryStream(stream, train_set->var_grad)) {
-                            ERL_WARN("Failed to write var_grad.");
-                            return false;
-                        }
-                        return stream.good();
-                    },
+            },
+            {
+                "var_grad",
+                [](const TrainSet* train_set, std::ostream& stream) -> bool {
+                    return SaveEigenMatrixToBinaryStream(stream, train_set->var_grad) &&
+                           stream.good();
                 },
-                {
-                    "grad_flag",
-                    [](const TrainSet* train_set, std::ostream& stream) -> bool {
-                        if (!common::SaveEigenMatrixToBinaryStream(stream, train_set->grad_flag)) {
-                            ERL_WARN("Failed to write grad_flag.");
-                            return false;
-                        }
-                        return stream.good();
-                    },
+            },
+            {
+                "grad_flag",
+                [](const TrainSet* train_set, std::ostream& stream) -> bool {
+                    return SaveEigenMatrixToBinaryStream(stream, train_set->grad_flag) &&
+                           stream.good();
                 },
-            };
-        return common::WriteTokens(s, this, token_function_pairs);
+            },
+        };
+        return WriteTokens(s, this, token_function_pairs);
     }
 
     template<typename Dtype>
     bool
     NoisyInputGaussianProcess<Dtype>::TrainSet::Read(std::istream& s) {
-        static const std::vector<
-            std::pair<const char*, std::function<bool(TrainSet*, std::istream&)>>>
-            token_function_pairs = {
-                {
-                    "x_dim",
-                    [](TrainSet* train_set, std::istream& stream) -> bool {
-                        stream >> train_set->x_dim;
-                        return stream.good();
-                    },
+        using namespace common;
+        static const TokenReadFunctionPairs<TrainSet> token_function_pairs = {
+            {
+                "x_dim",
+                [](TrainSet* train_set, std::istream& stream) -> bool {
+                    stream >> train_set->x_dim;
+                    return stream.good();
                 },
-                {
-                    "y_dim",
-                    [](TrainSet* train_set, std::istream& stream) -> bool {
-                        stream >> train_set->y_dim;
-                        return stream.good();
-                    },
+            },
+            {
+                "y_dim",
+                [](TrainSet* train_set, std::istream& stream) -> bool {
+                    stream >> train_set->y_dim;
+                    return stream.good();
                 },
-                {
-                    "num_samples",
-                    [](TrainSet* train_set, std::istream& stream) -> bool {
-                        stream >> train_set->num_samples;
-                        return stream.good();
-                    },
+            },
+            {
+                "num_samples",
+                [](TrainSet* train_set, std::istream& stream) -> bool {
+                    stream >> train_set->num_samples;
+                    return stream.good();
                 },
-                {
-                    "num_samples_with_grad",
-                    [](TrainSet* train_set, std::istream& stream) -> bool {
-                        stream >> train_set->num_samples_with_grad;
-                        return stream.good();
-                    },
+            },
+            {
+                "num_samples_with_grad",
+                [](TrainSet* train_set, std::istream& stream) -> bool {
+                    stream >> train_set->num_samples_with_grad;
+                    return stream.good();
                 },
-                {
-                    "x",
-                    [](TrainSet* train_set, std::istream& stream) -> bool {
-                        return common::LoadEigenMatrixFromBinaryStream(stream, train_set->x) &&
-                               stream.good();
-                    },
+            },
+            {
+                "x",
+                [](TrainSet* train_set, std::istream& stream) -> bool {
+                    return LoadEigenMatrixFromBinaryStream(stream, train_set->x) && stream.good();
                 },
-                {
-                    "y",
-                    [](TrainSet* train_set, std::istream& stream) -> bool {
-                        return common::LoadEigenMatrixFromBinaryStream(stream, train_set->y) &&
-                               stream.good();
-                    },
+            },
+            {
+                "y",
+                [](TrainSet* train_set, std::istream& stream) -> bool {
+                    return LoadEigenMatrixFromBinaryStream(stream, train_set->y) && stream.good();
                 },
-                {
-                    "grad",
-                    [](TrainSet* train_set, std::istream& stream) -> bool {
-                        return common::LoadEigenMatrixFromBinaryStream(stream, train_set->grad) &&
-                               stream.good();
-                    },
+            },
+            {
+                "grad",
+                [](TrainSet* train_set, std::istream& stream) -> bool {
+                    return LoadEigenMatrixFromBinaryStream(stream, train_set->grad) &&
+                           stream.good();
                 },
-                {
-                    "var_x",
-                    [](TrainSet* train_set, std::istream& stream) -> bool {
-                        return common::LoadEigenMatrixFromBinaryStream(stream, train_set->var_x) &&
-                               stream.good();
-                    },
+            },
+            {
+                "var_x",
+                [](TrainSet* train_set, std::istream& stream) -> bool {
+                    return LoadEigenMatrixFromBinaryStream(stream, train_set->var_x) &&
+                           stream.good();
                 },
-                {
-                    "var_grad",
-                    [](TrainSet* train_set, std::istream& stream) -> bool {
-                        return common::LoadEigenMatrixFromBinaryStream(
-                                   stream,
-                                   train_set->var_grad) &&
-                               stream.good();
-                    },
+            },
+            {
+                "var_y",
+                [](TrainSet* train_set, std::istream& stream) -> bool {
+                    return LoadEigenMatrixFromBinaryStream(stream, train_set->var_y) &&
+                           stream.good();
                 },
-                {
-                    "grad_flag",
-                    [](TrainSet* train_set, std::istream& stream) -> bool {
-                        return common::LoadEigenMatrixFromBinaryStream(
-                                   stream,
-                                   train_set->grad_flag) &&
-                               stream.good();
-                    },
+            },
+            {
+                "var_grad",
+                [](TrainSet* train_set, std::istream& stream) -> bool {
+                    return LoadEigenMatrixFromBinaryStream(stream, train_set->var_grad) &&
+                           stream.good();
                 },
-            };
-        return common::ReadTokens(s, this, token_function_pairs);
+            },
+            {
+                "grad_flag",
+                [](TrainSet* train_set, std::istream& stream) -> bool {
+                    return LoadEigenMatrixFromBinaryStream(stream, train_set->grad_flag) &&
+                           stream.good();
+                },
+            },
+        };
+        return ReadTokens(s, this, token_function_pairs);
     }
 
     template<typename Dtype>
@@ -851,6 +863,7 @@ namespace erl::gaussian_process {
     NoisyInputGaussianProcess<Dtype>::Test(
         const Eigen::Ref<const MatrixX>& mat_x_test,
         const bool predict_gradient) const {
+        if (!m_trained_) { return nullptr; }
         return std::make_shared<TestResult>(this, mat_x_test, predict_gradient);
     }
 
@@ -905,209 +918,199 @@ namespace erl::gaussian_process {
     template<typename Dtype>
     bool
     NoisyInputGaussianProcess<Dtype>::Write(std::ostream& s) const {
-        static const std::vector<std::pair<
-            const char*,
-            std::function<bool(const NoisyInputGaussianProcess*, std::ostream&)>>>
-            token_function_pairs = {
-                {
-                    "setting",
-                    [](const NoisyInputGaussianProcess* gp, std::ostream& stream) -> bool {
-                        return gp->m_setting_->Write(stream) && stream.good();
-                    },
+        using namespace common;
+        static const TokenWriteFunctionPairs<NoisyInputGaussianProcess> token_function_pairs = {
+            {
+                "setting",
+                [](const NoisyInputGaussianProcess* gp, std::ostream& stream) -> bool {
+                    return gp->m_setting_->Write(stream) && stream.good();
                 },
-                {
-                    "trained",
-                    [](const NoisyInputGaussianProcess* gp, std::ostream& stream) -> bool {
-                        stream << gp->m_trained_;
-                        return stream.good();
-                    },
+            },
+            {
+                "trained",
+                [](const NoisyInputGaussianProcess* gp, std::ostream& stream) -> bool {
+                    stream << gp->m_trained_;
+                    return stream.good();
                 },
-                {
-                    "trained_once",
-                    [](const NoisyInputGaussianProcess* gp, std::ostream& stream) -> bool {
-                        stream << gp->m_trained_once_;
-                        return stream.good();
-                    },
+            },
+            {
+                "trained_once",
+                [](const NoisyInputGaussianProcess* gp, std::ostream& stream) -> bool {
+                    stream << gp->m_trained_once_;
+                    return stream.good();
                 },
-                {
-                    "k_train_updated",
-                    [](const NoisyInputGaussianProcess* gp, std::ostream& stream) -> bool {
-                        stream << gp->m_k_train_updated_;
-                        return stream.good();
-                    },
+            },
+            {
+                "k_train_updated",
+                [](const NoisyInputGaussianProcess* gp, std::ostream& stream) -> bool {
+                    stream << gp->m_k_train_updated_;
+                    return stream.good();
                 },
-                {
-                    "k_train_rows",
-                    [](const NoisyInputGaussianProcess* gp, std::ostream& stream) -> bool {
-                        stream << gp->m_k_train_rows_;
-                        return stream.good();
-                    },
+            },
+            {
+                "k_train_rows",
+                [](const NoisyInputGaussianProcess* gp, std::ostream& stream) -> bool {
+                    stream << gp->m_k_train_rows_;
+                    return stream.good();
                 },
-                {
-                    "k_train_cols",
-                    [](const NoisyInputGaussianProcess* gp, std::ostream& stream) -> bool {
-                        stream << gp->m_k_train_cols_;
-                        return stream.good();
-                    },
+            },
+            {
+                "k_train_cols",
+                [](const NoisyInputGaussianProcess* gp, std::ostream& stream) -> bool {
+                    stream << gp->m_k_train_cols_;
+                    return stream.good();
                 },
-                {
-                    "three_over_scale_square",
-                    [](const NoisyInputGaussianProcess* gp, std::ostream& stream) -> bool {
-                        stream.write(
-                            reinterpret_cast<const char*>(&gp->m_three_over_scale_square_),
-                            sizeof(Dtype));
-                        return stream.good();
-                    },
+            },
+            {
+                "three_over_scale_square",
+                [](const NoisyInputGaussianProcess* gp, std::ostream& stream) -> bool {
+                    stream.write(
+                        reinterpret_cast<const char*>(&gp->m_three_over_scale_square_),
+                        sizeof(Dtype));
+                    return stream.good();
                 },
-                {
-                    "kernel",
-                    [](const NoisyInputGaussianProcess* gp, std::ostream& stream) -> bool {
-                        stream << (gp->m_kernel_ != nullptr) << '\n';
-                        if (gp->m_kernel_ != nullptr && !gp->m_kernel_->Write(stream)) {
-                            return false;
-                        }
-                        return stream.good();
-                    },
+            },
+            {
+                "kernel",
+                [](const NoisyInputGaussianProcess* gp, std::ostream& stream) -> bool {
+                    stream << (gp->m_kernel_ != nullptr) << '\n';
+                    if (gp->m_kernel_ != nullptr && !gp->m_kernel_->Write(stream)) { return false; }
+                    return stream.good();
                 },
-                {
-                    "mat_k_train",
-                    [](const NoisyInputGaussianProcess* gp, std::ostream& stream) -> bool {
-                        return common::SaveEigenMatrixToBinaryStream(stream, gp->m_mat_k_train_) &&
-                               stream.good();
-                    },
+            },
+            {
+                "mat_k_train",
+                [](const NoisyInputGaussianProcess* gp, std::ostream& stream) -> bool {
+                    return SaveEigenMatrixToBinaryStream(stream, gp->m_mat_k_train_) &&
+                           stream.good();
                 },
-                {
-                    "mat_l",
-                    [](const NoisyInputGaussianProcess* gp, std::ostream& stream) -> bool {
-                        return common::SaveEigenMatrixToBinaryStream(stream, gp->m_mat_l_) &&
-                               stream.good();
-                    },
+            },
+            {
+                "mat_l",
+                [](const NoisyInputGaussianProcess* gp, std::ostream& stream) -> bool {
+                    return SaveEigenMatrixToBinaryStream(stream, gp->m_mat_l_) && stream.good();
                 },
-                {
-                    "mat_alpha",
-                    [](const NoisyInputGaussianProcess* gp, std::ostream& stream) -> bool {
-                        return common::SaveEigenMatrixToBinaryStream(stream, gp->m_mat_alpha_) &&
-                               stream.good();
-                    },
+            },
+            {
+                "mat_alpha",
+                [](const NoisyInputGaussianProcess* gp, std::ostream& stream) -> bool {
+                    return SaveEigenMatrixToBinaryStream(stream, gp->m_mat_alpha_) && stream.good();
                 },
-                {
-                    "train_set",
-                    [](const NoisyInputGaussianProcess* gp, std::ostream& stream) -> bool {
-                        return gp->m_train_set_.Write(stream) && stream.good();
-                    },
+            },
+            {
+                "train_set",
+                [](const NoisyInputGaussianProcess* gp, std::ostream& stream) -> bool {
+                    return gp->m_train_set_.Write(stream) && stream.good();
                 },
-            };
+            },
+        };
         return common::WriteTokens(s, this, token_function_pairs);
     }
 
     template<typename Dtype>
     bool
     NoisyInputGaussianProcess<Dtype>::Read(std::istream& s) {
-        static const std::vector<
-            std::pair<const char*, std::function<bool(NoisyInputGaussianProcess*, std::istream&)>>>
-            token_function_pairs = {
-                {
-                    "setting",
-                    [](NoisyInputGaussianProcess* gp, std::istream& stream) -> bool {
-                        return gp->m_setting_->Read(stream) && stream.good();
-                    },
+        using namespace common;
+        static const TokenReadFunctionPairs<NoisyInputGaussianProcess> token_function_pairs = {
+            {
+                "setting",
+                [](NoisyInputGaussianProcess* gp, std::istream& stream) -> bool {
+                    return gp->m_setting_->Read(stream) && stream.good();
                 },
-                {
-                    "trained",
-                    [](NoisyInputGaussianProcess* gp, std::istream& stream) -> bool {
-                        stream >> gp->m_trained_;
-                        return stream.good();
-                    },
+            },
+            {
+                "trained",
+                [](NoisyInputGaussianProcess* gp, std::istream& stream) -> bool {
+                    stream >> gp->m_trained_;
+                    return stream.good();
                 },
-                {
-                    "trained_once",
-                    [](NoisyInputGaussianProcess* gp, std::istream& stream) -> bool {
-                        stream >> gp->m_trained_once_;
-                        return stream.good();
-                    },
+            },
+            {
+                "trained_once",
+                [](NoisyInputGaussianProcess* gp, std::istream& stream) -> bool {
+                    stream >> gp->m_trained_once_;
+                    return stream.good();
                 },
-                {
-                    "k_train_updated",
-                    [](NoisyInputGaussianProcess* gp, std::istream& stream) -> bool {
-                        stream >> gp->m_k_train_updated_;
-                        return stream.good();
-                    },
+            },
+            {
+                "k_train_updated",
+                [](NoisyInputGaussianProcess* gp, std::istream& stream) -> bool {
+                    stream >> gp->m_k_train_updated_;
+                    return stream.good();
                 },
-                {
-                    "k_train_rows",
-                    [](NoisyInputGaussianProcess* gp, std::istream& stream) -> bool {
-                        stream >> gp->m_k_train_rows_;
-                        return stream.good();
-                    },
+            },
+            {
+                "k_train_rows",
+                [](NoisyInputGaussianProcess* gp, std::istream& stream) -> bool {
+                    stream >> gp->m_k_train_rows_;
+                    return stream.good();
                 },
-                {
-                    "k_train_cols",
-                    [](NoisyInputGaussianProcess* gp, std::istream& stream) -> bool {
-                        stream >> gp->m_k_train_cols_;
-                        return stream.good();
-                    },
+            },
+            {
+                "k_train_cols",
+                [](NoisyInputGaussianProcess* gp, std::istream& stream) -> bool {
+                    stream >> gp->m_k_train_cols_;
+                    return stream.good();
                 },
-                {
-                    "three_over_scale_square",
-                    [](NoisyInputGaussianProcess* gp, std::istream& stream) -> bool {
-                        stream.read(
-                            reinterpret_cast<char*>(&gp->m_three_over_scale_square_),
-                            sizeof(Dtype));
-                        return stream.good();
-                    },
+            },
+            {
+                "three_over_scale_square",
+                [](NoisyInputGaussianProcess* gp, std::istream& stream) -> bool {
+                    stream.read(
+                        reinterpret_cast<char*>(&gp->m_three_over_scale_square_),
+                        sizeof(Dtype));
+                    return stream.good();
                 },
-                {
-                    "kernel",
-                    [](NoisyInputGaussianProcess* gp, std::istream& stream) -> bool {
-                        bool has_kernel;
-                        stream >> has_kernel;
-                        if (has_kernel) {
-                            common::SkipLine(stream);
-                            gp->m_kernel_ = Covariance::CreateCovariance(
-                                gp->m_setting_->kernel_type,
-                                gp->m_setting_->kernel);
-                            if (!gp->m_kernel_->Read(stream)) { return false; }
-                            const auto rank_reduced_kernel =
-                                std::dynamic_pointer_cast<ReducedRankCovariance>(gp->m_kernel_);
-                            gp->m_reduced_rank_kernel_ = rank_reduced_kernel != nullptr;
-                            if (gp->m_reduced_rank_kernel_) {
-                                rank_reduced_kernel->BuildSpectralDensities();
-                            }
+            },
+            {
+                "kernel",
+                [](NoisyInputGaussianProcess* gp, std::istream& stream) -> bool {
+                    bool has_kernel;
+                    stream >> has_kernel;
+                    SkipLine(stream);
+                    if (has_kernel) {
+                        gp->m_kernel_ = Covariance::CreateCovariance(
+                            gp->m_setting_->kernel_type,
+                            gp->m_setting_->kernel);
+                        if (!gp->m_kernel_->Read(stream)) { return false; }
+                        const auto rank_reduced_kernel =
+                            std::dynamic_pointer_cast<ReducedRankCovariance>(gp->m_kernel_);
+                        gp->m_reduced_rank_kernel_ = rank_reduced_kernel != nullptr;
+                        if (gp->m_reduced_rank_kernel_) {
+                            rank_reduced_kernel->BuildSpectralDensities();
                         }
-                        return true;
-                    },
+                    }
+                    return true;
                 },
-                {
-                    "mat_k_train",
-                    [](NoisyInputGaussianProcess* gp, std::istream& stream) -> bool {
-                        return common::LoadEigenMatrixFromBinaryStream(
-                                   stream,
-                                   gp->m_mat_k_train_) &&
-                               stream.good();
-                    },
+            },
+            {
+                "mat_k_train",
+                [](NoisyInputGaussianProcess* gp, std::istream& stream) -> bool {
+                    return LoadEigenMatrixFromBinaryStream(stream, gp->m_mat_k_train_) &&
+                           stream.good();
                 },
-                {
-                    "mat_l",
-                    [](NoisyInputGaussianProcess* gp, std::istream& stream) -> bool {
-                        return common::LoadEigenMatrixFromBinaryStream(stream, gp->m_mat_l_) &&
-                               stream.good();
-                    },
+            },
+            {
+                "mat_l",
+                [](NoisyInputGaussianProcess* gp, std::istream& stream) -> bool {
+                    return LoadEigenMatrixFromBinaryStream(stream, gp->m_mat_l_) && stream.good();
                 },
-                {
-                    "mat_alpha",
-                    [](NoisyInputGaussianProcess* gp, std::istream& stream) -> bool {
-                        return common::LoadEigenMatrixFromBinaryStream(stream, gp->m_mat_alpha_) &&
-                               stream.good();
-                    },
+            },
+            {
+                "mat_alpha",
+                [](NoisyInputGaussianProcess* gp, std::istream& stream) -> bool {
+                    return LoadEigenMatrixFromBinaryStream(stream, gp->m_mat_alpha_) &&
+                           stream.good();
                 },
-                {
-                    "train_set",
-                    [](NoisyInputGaussianProcess* gp, std::istream& stream) -> bool {
-                        return gp->m_train_set_.Read(stream) && stream.good();
-                    },
+            },
+            {
+                "train_set",
+                [](NoisyInputGaussianProcess* gp, std::istream& stream) -> bool {
+                    return gp->m_train_set_.Read(stream) && stream.good();
                 },
-            };
-        return common::ReadTokens(s, this, token_function_pairs);
+            },
+        };
+        return ReadTokens(s, this, token_function_pairs);
     }
 
     template<typename Dtype>

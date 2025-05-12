@@ -15,10 +15,18 @@ BindMappingImpl(const py::module &m, const char *name) {
         .def_readwrite("scale", &T::Setting::scale);
 
     py_mapping.def(py::init([] { return T::Create(); }))
-        .def(py::init([](std::shared_ptr<typename T::Setting> setting) { return T::Create(std::move(setting)); }), py::arg("setting"))
+        .def(
+            py::init([](std::shared_ptr<typename T::Setting> setting) {
+                return T::Create(std::move(setting));
+            }),
+            py::arg("setting"))
         .def_property_readonly("setting", &T::GetSetting)
-        .def_property_readonly("map", [](const std::shared_ptr<T> &mapping) { return mapping->map; })
-        .def_property_readonly("inv", [](const std::shared_ptr<T> &mapping) { return mapping->inv; });
+        .def_property_readonly(
+            "map",
+            [](const std::shared_ptr<T> &mapping) { return mapping->map; })
+        .def_property_readonly("inv", [](const std::shared_ptr<T> &mapping) {
+            return mapping->inv;
+        });
 }
 
 void

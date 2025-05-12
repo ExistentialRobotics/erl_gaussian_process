@@ -1,5 +1,7 @@
 #pragma once
 
+#include "init.hpp"
+
 #include "erl_covariance/covariance.hpp"
 #include "erl_covariance/reduced_rank_covariance.hpp"
 
@@ -16,7 +18,7 @@ namespace erl::gaussian_process {
         using MatrixX = Eigen::MatrixX<Dtype>;
         using VectorX = Eigen::VectorX<Dtype>;
 
-        struct Setting : common::Yamlable<Setting> {
+        struct Setting : public common::Yamlable<Setting> {
             std::string kernel_type = type_name<Covariance>();
             std::string kernel_setting_type = type_name<CovarianceSetting>();
             std::shared_ptr<CovarianceSetting> kernel = std::make_shared<CovarianceSetting>();
@@ -55,13 +57,26 @@ namespace erl::gaussian_process {
 
             virtual ~TestResult() = default;
 
+            [[nodiscard]] long
+            GetNumTest() const;
+
+            [[nodiscard]] long
+            GetDimX() const;
+
+            [[nodiscard]] long
+            GetDimY() const;
+
+            [[nodiscard]] const MatrixX &
+            GetKtest() const;
+
             /**
              * Compute the mean of the test samples.
              * @param y_index Index of the output dimension.
              * @param vec_f_out Vector to store the result.
+             * @param parallel Whether to use parallel computation.
              */
             virtual void
-            GetMean(long y_index, Eigen::Ref<VectorX> vec_f_out) const;
+            GetMean(long y_index, Eigen::Ref<VectorX> vec_f_out, bool parallel) const;
 
             /**
              * Compute the mean of the selected test sample.
@@ -77,9 +92,10 @@ namespace erl::gaussian_process {
              * @param y_index Index of the output dimension.
              * @param mat_grad_out The matrix to store the gradient result. Each column is a
              * gradient vector.
+             * @param parallel Whether to use parallel computation.
              */
             virtual void
-            GetGradient(long y_index, Eigen::Ref<MatrixX> mat_grad_out) const;
+            GetGradient(long y_index, Eigen::Ref<MatrixX> mat_grad_out, bool parallel) const;
 
             /**
              * Compute the gradient of the selected test sample.
@@ -93,9 +109,10 @@ namespace erl::gaussian_process {
             /**
              * Compute the variance of prediction for the test samples.
              * @param vec_var_out Vector to store the variance result.
+             * @param parallel Whether to use parallel computation.
              */
             void
-            GetMeanVariance(Eigen::Ref<VectorX> vec_var_out) const;
+            GetMeanVariance(Eigen::Ref<VectorX> vec_var_out, bool parallel) const;
 
             /**
              * Compute the prediction variance of the selected test sample.
@@ -109,9 +126,10 @@ namespace erl::gaussian_process {
              * Compute the gradient variance of the test samples.
              * @param mat_var_out The matrix to store the variance result. Each column is the
              * variance of the gradient.
+             * @param parallel Whether to use parallel computation.
              */
             void
-            GetGradientVariance(Eigen::Ref<MatrixX> mat_var_out) const;
+            GetGradientVariance(Eigen::Ref<MatrixX> mat_var_out, bool parallel) const;
 
             /**
              * Compute the gradient variance of the selected test sample.
@@ -126,9 +144,10 @@ namespace erl::gaussian_process {
              * each test sample.
              * @param mat_cov_out The matrix to store the covariance result. Each column is the
              * covariance between the mean and the gradient.
+             * @param parallel Whether to use parallel computation.
              */
             void
-            GetCovariance(Eigen::Ref<MatrixX> mat_cov_out) const;
+            GetCovariance(Eigen::Ref<MatrixX> mat_cov_out, bool parallel) const;
 
             /**
              * Compute the lower triangular part of the covariance matrix except the diagonal for
@@ -183,7 +202,7 @@ namespace erl::gaussian_process {
         bool m_k_train_updated_ = false;                  // true if Ktrain is updated
         long m_k_train_rows_ = 0;                         // number of rows of Ktrain
         long m_k_train_cols_ = 0;                         // number of columns of Ktrain
-        Dtype m_three_over_scale_square_ = 0.;            // for computing normal variance
+        Dtype m_three_over_scale_square_ = 0.0f;          // for computing normal variance
         std::shared_ptr<Covariance> m_kernel_ = nullptr;  // kernel
         bool m_reduced_rank_kernel_ = false;  // whether the kernel is rank reduced or not
         MatrixX m_mat_k_train_ = {};          // Ktrain, avoid reallocation
