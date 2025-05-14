@@ -178,9 +178,9 @@ TEST(NoisyInputGaussianProcess, SingleInputSingleOutputWithGradientObservation) 
     ASSERT_TRUE(mae < 1.0e-5);
     ASSERT_TRUE(mae_grad < 1.0e-4);
 
-    ASSERT_TRUE(Serialization<NoisyInputGaussianProcessD>::Write("noisy_input_gp.bin", gp));
+    ASSERT_TRUE(Serialization<NoisyInputGaussianProcessD>::Write("noisy_input_gp.bin", &gp));
     NoisyInputGaussianProcessD gp_read(std::make_shared<NoisyInputGaussianProcessD::Setting>());
-    ASSERT_TRUE(Serialization<NoisyInputGaussianProcessD>::Read("noisy_input_gp.bin", gp_read));
+    ASSERT_TRUE(Serialization<NoisyInputGaussianProcessD>::Read("noisy_input_gp.bin", &gp_read));
     ASSERT_TRUE(gp == gp_read);
 }
 

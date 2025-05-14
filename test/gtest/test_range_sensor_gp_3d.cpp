@@ -32,6 +32,7 @@ static std::filesystem::path kProjectDir = ERL_GAUSSIAN_PROCESS_ROOT_DIR;
 
 TEST(RangeSensorGp3D, Lidar) {
     using namespace erl::common;
+    using namespace erl::geometry;
     GTEST_PREPARE_OUTPUT_DIR();
     const auto gp_setting = std::make_shared<RangeSensorGaussianProcess3D::Setting>();
     const auto lidar_frame_setting = std::make_shared<LidarFrame::Setting>();
@@ -71,8 +72,7 @@ TEST(RangeSensorGp3D, Lidar) {
     rpy[0] *= M_PI_4;                                       // roll
     rpy[1] *= M_PI_4;                                       // pitch
     rpy[2] *= M_PI;                                         // yaw
-    const Matrix3 rotation =
-        EulerToRotation3D(rpy[0], rpy[1], rpy[2], erl::geometry::EulerAngleOrder::kRxyz);
+    const Matrix3 rotation = EulerToRotation3D(rpy[0], rpy[1], rpy[2], EulerAngleOrder::kRxyz);
     const Vector3 translation = mesh->GetCenter().cast<Dtype>();
 
     // generate training data
@@ -204,16 +204,17 @@ TEST(RangeSensorGp3D, Lidar) {
 
     EXPECT_TRUE(Serialization<RangeSensorGaussianProcess3D>::Write(
         test_output_dir / "range_sensor_gp_3d_lidar.bin",
-        gp));
+        &gp));
     RangeSensorGaussianProcess3D gp_read(std::make_shared<RangeSensorGaussianProcess3D::Setting>());
     ASSERT_TRUE(Serialization<RangeSensorGaussianProcess3D>::Read(
         test_output_dir / "range_sensor_gp_3d_lidar.bin",
-        gp_read));
+        &gp_read));
     EXPECT_TRUE(gp == gp_read);
 }
 
 TEST(RangeSensorGp3D, Depth) {
     using namespace erl::common;
+    using namespace erl::geometry;
     GTEST_PREPARE_OUTPUT_DIR();
 
     const auto gp_setting = std::make_shared<RangeSensorGaussianProcess3D::Setting>();
@@ -237,7 +238,7 @@ TEST(RangeSensorGp3D, Depth) {
     *depth_camera_setting = depth_frame_setting->camera_intrinsic;
     std::cout << "depth_camera_setting:\n" << *depth_camera_setting << std::endl;
     std::cout << "depth_frame_setting:\n" << *depth_frame_setting << std::endl;
-    erl::geometry::DepthCamera3D depth_camera(depth_camera_setting);
+    DepthCamera3D depth_camera(depth_camera_setting);
     depth_camera.AddMesh(mesh_file);
 
     srand(10);                                              // NOLINT(*-msc51-cpp)
@@ -245,8 +246,7 @@ TEST(RangeSensorGp3D, Depth) {
     rpy[0] *= M_PI_4;                                       // roll
     rpy[1] *= M_PI_4;                                       // pitch
     rpy[2] *= M_PI;                                         // yaw
-    Matrix3 cam_rotation =
-        EulerToRotation3D(rpy[0], rpy[1], rpy[2], erl::geometry::EulerAngleOrder::kRxyz);
+    Matrix3 cam_rotation = EulerToRotation3D(rpy[0], rpy[1], rpy[2], EulerAngleOrder::kRxyz);
     Vector3 cam_translation = mesh->GetCenter().cast<Dtype>();
 
     // generate training data
@@ -406,11 +406,11 @@ TEST(RangeSensorGp3D, Depth) {
 
     ASSERT_TRUE(Serialization<RangeSensorGaussianProcess3D>::Write(
         test_output_dir / "range_sensor_gp_3d_depth.bin",
-        gp));
+        &gp));
     RangeSensorGaussianProcess3D gp_read(std::make_shared<RangeSensorGaussianProcess3D::Setting>());
     ASSERT_TRUE(Serialization<RangeSensorGaussianProcess3D>::Read(
         test_output_dir / "range_sensor_gp_3d_depth.bin",
-        gp_read));
+        &gp_read));
     EXPECT_TRUE(gp == gp_read);
 }
 

@@ -28,15 +28,15 @@ namespace erl::gaussian_process {
         const YAML::Node &node,
         Setting &setting) {
         if (!node.IsMap()) { return false; }
-        ERL_YAML_LOAD_ATTR_TYPE(node, setting, partition_on_hit_rays, bool);
-        ERL_YAML_LOAD_ATTR_TYPE(node, setting, symmetric_partitions, bool);
-        ERL_YAML_LOAD_ATTR_TYPE(node, setting, group_size, long);
-        ERL_YAML_LOAD_ATTR_TYPE(node, setting, overlap_size, long);
-        ERL_YAML_LOAD_ATTR_TYPE(node, setting, margin, long);
-        ERL_YAML_LOAD_ATTR_TYPE(node, setting, init_variance, Dtype);
-        ERL_YAML_LOAD_ATTR_TYPE(node, setting, sensor_range_var, Dtype);
-        ERL_YAML_LOAD_ATTR_TYPE(node, setting, max_valid_range_var, Dtype);
-        ERL_YAML_LOAD_ATTR_TYPE(node, setting, occ_test_temperature, Dtype);
+        ERL_YAML_LOAD_ATTR(node, setting, partition_on_hit_rays);
+        ERL_YAML_LOAD_ATTR(node, setting, symmetric_partitions);
+        ERL_YAML_LOAD_ATTR(node, setting, group_size);
+        ERL_YAML_LOAD_ATTR(node, setting, overlap_size);
+        ERL_YAML_LOAD_ATTR(node, setting, margin);
+        ERL_YAML_LOAD_ATTR(node, setting, init_variance);
+        ERL_YAML_LOAD_ATTR(node, setting, sensor_range_var);
+        ERL_YAML_LOAD_ATTR(node, setting, max_valid_range_var);
+        ERL_YAML_LOAD_ATTR(node, setting, occ_test_temperature);
         ERL_YAML_LOAD_ATTR(node, setting, sensor_frame);
         ERL_YAML_LOAD_ATTR(node, setting, gp);
         ERL_YAML_LOAD_ATTR(node, setting, mapping);

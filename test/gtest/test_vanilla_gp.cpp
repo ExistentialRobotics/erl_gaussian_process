@@ -102,9 +102,9 @@ TEST(VanillaGaussianProcess, SingleInputSingleOutput) {
     ERL_INFO("mean absolute error: {}.", mae);  // 0.00024246430481069056
     ASSERT_TRUE(mae < 3.0e-4);
 
-    ASSERT_TRUE(Serialization<VanillaGaussianProcessD>::Write("vanilla_gp.bin", gp));
+    ASSERT_TRUE(Serialization<VanillaGaussianProcessD>::Write("vanilla_gp.bin", &gp));
     VanillaGaussianProcessD gp_read(std::make_shared<VanillaGaussianProcessD::Setting>());
-    ASSERT_TRUE(Serialization<VanillaGaussianProcessD>::Read("vanilla_gp.bin", gp_read));
+    ASSERT_TRUE(Serialization<VanillaGaussianProcessD>::Read("vanilla_gp.bin", &gp_read));
     EXPECT_TRUE(gp == gp_read);
 }
 
@@ -213,9 +213,9 @@ TEST(VanillaGaussianProcess, MultiInputSingleOutput) {
     ERL_INFO("mean absolute error: {}.", mae);  // 0.0005035569336460338
     ASSERT_TRUE(mae < 5.1e-4);
 
-    ASSERT_TRUE(Serialization<VanillaGaussianProcessD>::Write("vanilla_gp.bin", gp));
+    ASSERT_TRUE(Serialization<VanillaGaussianProcessD>::Write("vanilla_gp.bin", &gp));
     VanillaGaussianProcessD gp_read(std::make_shared<VanillaGaussianProcessD::Setting>());
-    ASSERT_TRUE(Serialization<VanillaGaussianProcessD>::Read("vanilla_gp.bin", gp_read));
+    ASSERT_TRUE(Serialization<VanillaGaussianProcessD>::Read("vanilla_gp.bin", &gp_read));
     EXPECT_TRUE(gp == gp_read);
 }
 
@@ -365,9 +365,9 @@ TEST(VanillaGaussianProcess, MultiInputMultiOutput) {
     ASSERT_TRUE(mae1 < 5.1e-4);  // 0.0005035569336460478
     ASSERT_TRUE(mae2 < 1.2e-3);  // 0.0011257545588707807
 
-    ASSERT_TRUE(Serialization<VanillaGaussianProcessD>::Write("vanilla_gp.bin", gp));
+    ASSERT_TRUE(Serialization<VanillaGaussianProcessD>::Write("vanilla_gp.bin", &gp));
     VanillaGaussianProcessD gp_read(std::make_shared<VanillaGaussianProcessD::Setting>());
-    ASSERT_TRUE(Serialization<VanillaGaussianProcessD>::Read("vanilla_gp.bin", gp_read));
+    ASSERT_TRUE(Serialization<VanillaGaussianProcessD>::Read("vanilla_gp.bin", &gp_read));
     EXPECT_TRUE(gp == gp_read);
 }
 

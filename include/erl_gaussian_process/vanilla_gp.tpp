@@ -22,12 +22,13 @@ namespace erl::gaussian_process {
         const YAML::Node &node,
         Setting &setting) {
         if (!node.IsMap()) { return false; }
-        ERL_YAML_LOAD_ATTR_TYPE(node, setting, kernel_type, std::string);
-        ERL_YAML_LOAD_ATTR_TYPE(node, setting, kernel_setting_type, std::string);
-        setting.kernel = common::YamlableBase::Create<typename Covariance::Setting>(  //
-            setting.kernel_setting_type);
-        if (!setting.kernel->FromYamlNode(node["kernel"])) { return false; }
-        ERL_YAML_LOAD_ATTR_TYPE(node, setting, max_num_samples, long);
+        ERL_YAML_LOAD_ATTR(node, setting, kernel_type);
+        ERL_YAML_LOAD_ATTR(node, setting, kernel_setting_type);
+        using namespace common;
+        using CovarianceSetting = typename Covariance::Setting;
+        setting.kernel = YamlableBase::Create<CovarianceSetting>(setting.kernel_setting_type);
+        ERL_YAML_LOAD_ATTR(node, setting, kernel);
+        ERL_YAML_LOAD_ATTR(node, setting, max_num_samples);
         return true;
     }
 
@@ -771,7 +772,7 @@ namespace erl::gaussian_process {
     VanillaGaussianProcess<Dtype>::InitKernel() {
         if (m_kernel_ == nullptr) {
             m_kernel_ = Covariance::CreateCovariance(m_setting_->kernel_type, m_setting_->kernel);
-            ERL_DEBUG_ASSERT(
+            ERL_ASSERTM(
                 m_kernel_ != nullptr,
                 "failed to create kernel of type {}.",
                 m_setting_->kernel_type);

@@ -24,12 +24,12 @@ namespace erl::gaussian_process {
         using namespace common;
 
         if (!node.IsMap()) { return false; }
-        ERL_YAML_LOAD_ATTR_TYPE(node, setting, kernel_type, std::string);
-        ERL_YAML_LOAD_ATTR_TYPE(node, setting, kernel_setting_type, std::string);
+        ERL_YAML_LOAD_ATTR(node, setting, kernel_type);
+        ERL_YAML_LOAD_ATTR(node, setting, kernel_setting_type);
         setting.kernel = YamlableBase::Create<CovarianceSetting>(setting.kernel_setting_type);
-        if (!setting.kernel->FromYamlNode(node["kernel"])) { return false; }
-        ERL_YAML_LOAD_ATTR_TYPE(node, setting, max_num_samples, long);
-        ERL_YAML_LOAD_ATTR_TYPE(node, setting, no_gradient_observation, bool);
+        ERL_YAML_LOAD_ATTR(node, setting, kernel);
+        ERL_YAML_LOAD_ATTR(node, setting, max_num_samples);
+        ERL_YAML_LOAD_ATTR(node, setting, no_gradient_observation);
         return true;
     }
 

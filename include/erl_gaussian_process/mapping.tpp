@@ -16,8 +16,8 @@ namespace erl::gaussian_process {
     bool
     Mapping<Dtype>::Setting::YamlConvertImpl::decode(const YAML::Node &node, Setting &setting) {
         if (!node.IsMap()) { return false; }
-        ERL_YAML_LOAD_ATTR_TYPE(node, setting, type, MappingType);
-        ERL_YAML_LOAD_ATTR_TYPE(node, setting, scale, Dtype);
+        ERL_YAML_LOAD_ATTR(node, setting, type);
+        ERL_YAML_LOAD_ATTR(node, setting, scale);
         return true;
     }
 

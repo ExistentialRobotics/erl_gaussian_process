@@ -20,7 +20,7 @@ namespace erl::gaussian_process {
         ERL_YAML_SAVE_ATTR(node, setting, occ_test_temperature);
         ERL_YAML_SAVE_ATTR(node, setting, sensor_frame_type);
         ERL_YAML_SAVE_ATTR(node, setting, sensor_frame_setting_type);
-        node["sensor_frame"] = setting.sensor_frame->AsYamlNode();
+        ERL_YAML_SAVE_ATTR(node, setting, sensor_frame);
         ERL_YAML_SAVE_ATTR(node, setting, gp);
         ERL_YAML_SAVE_ATTR(node, setting, mapping);
         return node;
@@ -32,18 +32,18 @@ namespace erl::gaussian_process {
         const YAML::Node &node,
         Setting &setting) {
         if (!node.IsMap()) { return false; }
-        ERL_YAML_LOAD_ATTR_TYPE(node, setting, row_group_size, int);
-        ERL_YAML_LOAD_ATTR_TYPE(node, setting, row_overlap_size, int);
-        ERL_YAML_LOAD_ATTR_TYPE(node, setting, row_margin, long);
-        ERL_YAML_LOAD_ATTR_TYPE(node, setting, col_group_size, int);
-        ERL_YAML_LOAD_ATTR_TYPE(node, setting, col_overlap_size, int);
-        ERL_YAML_LOAD_ATTR_TYPE(node, setting, col_margin, long);
-        ERL_YAML_LOAD_ATTR_TYPE(node, setting, init_variance, Dtype);
-        ERL_YAML_LOAD_ATTR_TYPE(node, setting, sensor_range_var, Dtype);
-        ERL_YAML_LOAD_ATTR_TYPE(node, setting, max_valid_range_var, Dtype);
-        ERL_YAML_LOAD_ATTR_TYPE(node, setting, occ_test_temperature, Dtype);
-        ERL_YAML_LOAD_ATTR_TYPE(node, setting, sensor_frame_type, std::string);
-        ERL_YAML_LOAD_ATTR_TYPE(node, setting, sensor_frame_setting_type, std::string);
+        ERL_YAML_LOAD_ATTR(node, setting, row_group_size);
+        ERL_YAML_LOAD_ATTR(node, setting, row_overlap_size);
+        ERL_YAML_LOAD_ATTR(node, setting, row_margin);
+        ERL_YAML_LOAD_ATTR(node, setting, col_group_size);
+        ERL_YAML_LOAD_ATTR(node, setting, col_overlap_size);
+        ERL_YAML_LOAD_ATTR(node, setting, col_margin);
+        ERL_YAML_LOAD_ATTR(node, setting, init_variance);
+        ERL_YAML_LOAD_ATTR(node, setting, sensor_range_var);
+        ERL_YAML_LOAD_ATTR(node, setting, max_valid_range_var);
+        ERL_YAML_LOAD_ATTR(node, setting, occ_test_temperature);
+        ERL_YAML_LOAD_ATTR(node, setting, sensor_frame_type);
+        ERL_YAML_LOAD_ATTR(node, setting, sensor_frame_setting_type);
         using SensorFrameSetting = typename geometry::RangeSensorFrame3D<Dtype>::Setting;
         setting.sensor_frame =
             common::YamlableBase::Create<SensorFrameSetting>(setting.sensor_frame_setting_type);
