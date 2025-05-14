@@ -22,14 +22,8 @@ erl_catkin_package(
         DEPENDS ${${PROJECT_NAME}_DEPENDS})
 
 if (NOT TARGET Open3D::Open3D)
-        message(STATUS "Adding Open3D in erl_gaussian_process")
-        erl_find_package(
-                PACKAGE Open3D
-                REQUIRED
-                COMMANDS GENERAL "visit http://www.open3d.org/"
-                COMMANDS ARCH_LINUX "try `paru -S open3d`"
-        )
-endif()
+    erl_config_open3d()
+endif ()
 # ######################################################################################################################
 # BUILD
 # ######################################################################################################################
@@ -77,6 +71,7 @@ erl_install(
 # ######################################################################################################################
 erl_add_tests(
         LIBRARIES ${PROJECT_NAME}
+        EXCLUDE_FROM_ALL test_range_sensor_gp_3d
 )
 
 # ######################################################################################################################

@@ -412,14 +412,8 @@ namespace erl::gaussian_process {
             (other.m_sensor_frame_ == nullptr || *m_sensor_frame_ != *other.m_sensor_frame_)) {
             return false;
         }
-        if (m_mapped_distances_.rows() != other.m_mapped_distances_.rows() ||
-            m_mapped_distances_.cols() != other.m_mapped_distances_.cols() ||
-            std::memcmp(
-                m_mapped_distances_.data(),
-                other.m_mapped_distances_.data(),
-                m_mapped_distances_.size() * sizeof(Dtype)) != 0) {
-            return false;
-        }
+        using namespace common;
+        if (!SafeEigenMatrixEqual(m_mapped_distances_, other.m_mapped_distances_)) { return false; }
         return true;
     }
 

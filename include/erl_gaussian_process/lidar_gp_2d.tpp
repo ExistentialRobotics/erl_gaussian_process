@@ -479,22 +479,14 @@ namespace erl::gaussian_process {
                 return false;
             }
         }
-        if (m_angle_partitions_.size() != other.m_angle_partitions_.size()) { return false; }
-        for (std::size_t i = 0; i < m_angle_partitions_.size(); ++i) {
-            if (m_angle_partitions_[i] != other.m_angle_partitions_[i]) { return false; }
-        }
+        if (m_angle_partitions_ != other.m_angle_partitions_) { return false; }
         if (m_sensor_frame_ == nullptr && other.m_sensor_frame_ != nullptr) { return false; }
         if (m_sensor_frame_ != nullptr &&
             (other.m_sensor_frame_ == nullptr || *m_sensor_frame_ != *other.m_sensor_frame_)) {
             return false;
         }
-        if (m_mapped_distances_.size() != other.m_mapped_distances_.size() ||
-            std::memcmp(
-                m_mapped_distances_.data(),
-                other.m_mapped_distances_.data(),
-                m_mapped_distances_.size() * sizeof(Dtype)) != 0) {
-            return false;
-        }
+        using namespace common;
+        if (!SafeEigenMatrixEqual(m_mapped_distances_, other.m_mapped_distances_)) { return false; }
         return true;
     }
 

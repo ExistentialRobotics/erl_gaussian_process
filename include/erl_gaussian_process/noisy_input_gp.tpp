@@ -393,23 +393,28 @@ namespace erl::gaussian_process {
         if (num_samples != other.num_samples) { return false; }
         if (num_samples_with_grad != other.num_samples_with_grad) { return false; }
         if (num_samples == 0) { return true; }
+        if (other.x.rows() < x_dim || other.x.cols() < num_samples) { return false; }
         if (x.topLeftCorner(x_dim, num_samples) != other.x.topLeftCorner(x_dim, num_samples)) {
             return false;
         }
+        if (other.y.rows() < num_samples || other.y.cols() < y_dim) { return false; }
         if (y.topLeftCorner(num_samples, y_dim) != other.y.topLeftCorner(num_samples, y_dim)) {
             return false;
         }
+        if (other.grad_flag.size() < num_samples) { return false; }
         if (grad_flag.head(num_samples) != other.grad_flag.head(num_samples)) { return false; }
+        if (other.var_x.size() < num_samples) { return false; }
         if (var_x.head(num_samples) != other.var_x.head(num_samples)) { return false; }
+        if (other.var_y.size() < num_samples) { return false; }
         if (var_y.head(num_samples) != other.var_y.head(num_samples)) { return false; }
         if (grad.size() == 0 && other.grad.size() == 0) { return true; }
-        if (grad.size() != other.grad.size()) { return false; }
+        if (other.grad.rows() < x_dim * y_dim || other.grad.cols() < num_samples) { return false; }
         if (grad.topLeftCorner(x_dim * y_dim, num_samples) !=
             other.grad.topLeftCorner(x_dim * y_dim, num_samples)) {
             return false;
         }
         if (var_grad.size() == 0 && other.var_grad.size() == 0) { return true; }
-        if (var_grad.size() != other.var_grad.size()) { return false; }
+        if (other.var_grad.size() < num_samples) { return false; }
         if (var_grad.head(num_samples) != other.var_grad.head(num_samples)) { return false; }
         return true;
     }
@@ -883,26 +888,20 @@ namespace erl::gaussian_process {
         if (m_three_over_scale_square_ != other.m_three_over_scale_square_) { return false; }
         if (m_reduced_rank_kernel_ != other.m_reduced_rank_kernel_) { return false; }
         // kernel is not compared.
-        if (m_mat_k_train_.rows() != other.m_mat_k_train_.rows() ||
-            m_mat_k_train_.cols() != other.m_mat_k_train_.cols() ||
-            std::memcmp(
-                m_mat_k_train_.data(),
-                other.m_mat_k_train_.data(),
-                m_mat_k_train_.size() * sizeof(Dtype)) != 0) {
+        if (other.m_mat_k_train_.rows() < m_k_train_rows_ ||
+            other.m_mat_k_train_.cols() < m_k_train_cols_ ||
+            m_mat_k_train_.topLeftCorner(m_k_train_rows_, m_k_train_cols_) !=
+                other.m_mat_k_train_.topLeftCorner(m_k_train_rows_, m_k_train_cols_)) {
             return false;
         }
-        if (m_mat_l_.rows() != other.m_mat_l_.rows() || m_mat_l_.cols() != other.m_mat_l_.cols() ||
-            std::memcmp(  //
-                m_mat_l_.data(),
-                other.m_mat_l_.data(),
-                m_mat_l_.size() * sizeof(Dtype)) != 0) {
+        if (other.m_mat_l_.rows() < m_k_train_rows_ || other.m_mat_l_.cols() < m_k_train_cols_ ||
+            m_mat_l_.topLeftCorner(m_k_train_rows_, m_k_train_cols_) !=
+                other.m_mat_l_.topLeftCorner(m_k_train_rows_, m_k_train_cols_)) {
             return false;
         }
-        if (m_mat_alpha_.size() != other.m_mat_alpha_.size() ||
-            std::memcmp(
-                m_mat_alpha_.data(),
-                other.m_mat_alpha_.data(),
-                m_mat_alpha_.size() * sizeof(Dtype)) != 0) {
+        if (m_mat_alpha_.cols() != other.m_mat_alpha_.cols() ||
+            other.m_mat_alpha_.rows() < m_k_train_cols_ ||
+            m_mat_alpha_.topRows(m_k_train_cols_) != other.m_mat_alpha_.topRows(m_k_train_cols_)) {
             return false;
         }
         if (m_train_set_ != other.m_train_set_) { return false; }

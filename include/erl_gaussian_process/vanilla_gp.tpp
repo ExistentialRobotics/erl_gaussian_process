@@ -159,12 +159,15 @@ namespace erl::gaussian_process {
         if (y_dim != other.y_dim) { return false; }
         if (num_samples != other.num_samples) { return false; }
         if (num_samples == 0) { return true; }
+        if (other.x.rows() < x_dim || other.x.cols() < num_samples) { return false; }
         if (x.topLeftCorner(x_dim, num_samples) != other.x.topLeftCorner(x_dim, num_samples)) {
             return false;
         }
+        if (other.y.rows() < num_samples || other.y.cols() < y_dim) { return false; }
         if (y.topLeftCorner(num_samples, y_dim) != other.y.topLeftCorner(num_samples, y_dim)) {
             return false;
         }
+        if (other.var.size() < num_samples) { return false; }
         if (var.head(num_samples) != other.var.head(num_samples)) { return false; }
         return true;
     }
@@ -533,18 +536,19 @@ namespace erl::gaussian_process {
         if (m_k_train_cols_ != other.m_k_train_cols_) { return false; }
         if (m_reduced_rank_kernel_ != other.m_reduced_rank_kernel_) { return false; }
         if (m_train_set_ != other.m_train_set_) { return false; }
-        if (m_mat_k_train_.rows() != other.m_mat_k_train_.rows() ||
-            m_mat_k_train_.cols() != other.m_mat_k_train_.cols() ||
+        if (other.m_mat_k_train_.rows() < m_k_train_rows_ ||
+            other.m_mat_k_train_.cols() < m_k_train_cols_ ||
             m_mat_k_train_.topLeftCorner(m_k_train_rows_, m_k_train_cols_) !=
                 other.m_mat_k_train_.topLeftCorner(m_k_train_rows_, m_k_train_cols_)) {
             return false;
         }
-        if (m_mat_l_.rows() != other.m_mat_l_.rows() || m_mat_l_.cols() != other.m_mat_l_.cols() ||
+        if (other.m_mat_l_.rows() < m_k_train_rows_ || other.m_mat_l_.cols() < m_k_train_cols_ ||
             m_mat_l_.topLeftCorner(m_k_train_rows_, m_k_train_cols_) !=
                 other.m_mat_l_.topLeftCorner(m_k_train_rows_, m_k_train_cols_)) {
             return false;
         }
-        if (m_mat_alpha_.size() != other.m_mat_alpha_.size() ||
+        if (m_mat_alpha_.cols() != other.m_mat_alpha_.cols() ||
+            other.m_mat_alpha_.rows() < m_k_train_cols_ ||
             m_mat_alpha_.topRows(m_k_train_cols_) != other.m_mat_alpha_.topRows(m_k_train_cols_)) {
             return false;
         }
