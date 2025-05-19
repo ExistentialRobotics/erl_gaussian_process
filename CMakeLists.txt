@@ -38,10 +38,11 @@ target_include_directories(${PROJECT_NAME}
         PUBLIC
         $<BUILD_INTERFACE:${${PROJECT_NAME}_INCLUDE_DIR}>
         $<INSTALL_INTERFACE:${${PROJECT_NAME}_INSTALL_INCLUDE_DIR}>)
-target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC ${catkin_INCLUDE_DIRS})
-
-if (catkin_LIBRARIES)
-    target_link_libraries(${PROJECT_NAME} PUBLIC ${catkin_LIBRARIES})
+if (ROS_ACTIVATED)
+    if (ROS_VERSION STREQUAL "1")
+        target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC ${catkin_INCLUDE_DIRS})
+        target_link_libraries(${PROJECT_NAME} PUBLIC ${catkin_LIBRARIES})
+    endif ()
 else ()
     target_link_libraries(${PROJECT_NAME} PUBLIC ${${PROJECT_NAME}_ERL_PACKAGES})
 endif ()
