@@ -125,64 +125,40 @@ namespace erl::gaussian_process {
         explicit RangeSensorGaussianProcess3D(std::shared_ptr<Setting> setting);
 
         [[nodiscard]] bool
-        IsTrained() const {
-            return m_trained_;
-        }
+        IsTrained() const;
 
-        [[nodiscard]] std::shared_ptr<Setting>
-        GetSetting() const {
-            return m_setting_;
-        }
+        [[nodiscard]] std::shared_ptr<const Setting>
+        GetSetting() const;
 
         [[nodiscard]] const Eigen::MatrixX<std::shared_ptr<Gp>> &
-        GetGps() const {
-            return m_gps_;
-        }
+        GetGps() const;
 
         [[nodiscard]] const std::vector<std::tuple<long, long, Dtype, Dtype>> &
-        GetRowPartitions() const {
-            return m_row_partitions_;
-        }
+        GetRowPartitions() const;
 
         [[nodiscard]] const std::vector<std::tuple<long, long, Dtype, Dtype>> &
-        GetColPartitions() const {
-            return m_col_partitions_;
-        }
+        GetColPartitions() const;
 
         [[nodiscard]] std::shared_ptr<const RangeSensorFrame>
-        GetSensorFrame() const {
-            return m_sensor_frame_;
-        }
+        GetSensorFrame() const;
 
         [[nodiscard]] std::shared_ptr<const MappingDtype>
-        GetMapping() const {
-            return m_mapping_;
-        }
+        GetMapping() const;
 
         [[nodiscard]] Vector3
-        GlobalToLocalSo3(const Vector3 &dir_global) const {
-            return m_sensor_frame_->DirWorldToFrame(dir_global);
-        }
+        GlobalToLocalSo3(const Vector3 &dir_global) const;
 
         [[nodiscard]] Vector3
-        LocalToGlobalSo3(const Vector3 &dir_local) const {
-            return m_sensor_frame_->DirFrameToWorld(dir_local);
-        }
+        LocalToGlobalSo3(const Vector3 &dir_local) const;
 
         [[nodiscard]] Vector3
-        GlobalToLocalSe3(const Vector3 &xyz_global) const {
-            return m_sensor_frame_->PosWorldToFrame(xyz_global);
-        }
+        GlobalToLocalSe3(const Vector3 &xyz_global) const;
 
         [[nodiscard]] Vector3
-        LocalToGlobalSe3(const Vector3 &xyz_local) const {
-            return m_sensor_frame_->PosFrameToWorld(xyz_local);
-        }
+        LocalToGlobalSe3(const Vector3 &xyz_local) const;
 
         [[nodiscard]] Vector2
-        ComputeFrameCoords(const Vector3 &xyz_frame) const {
-            return m_sensor_frame_->ComputeFrameCoords(xyz_frame);
-        }
+        ComputeFrameCoords(const Vector3 &xyz_frame) const;
 
         void
         Reset();

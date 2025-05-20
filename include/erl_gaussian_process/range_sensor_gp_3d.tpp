@@ -249,6 +249,78 @@ namespace erl::gaussian_process {
     }
 
     template<typename Dtype>
+    bool
+    RangeSensorGaussianProcess3D<Dtype>::IsTrained() const {
+        return m_trained_;
+    }
+
+    template<typename Dtype>
+    std::shared_ptr<const typename RangeSensorGaussianProcess3D<Dtype>::Setting>
+    RangeSensorGaussianProcess3D<Dtype>::GetSetting() const {
+        return m_setting_;
+    }
+
+    template<typename Dtype>
+    const Eigen::MatrixX<std::shared_ptr<typename RangeSensorGaussianProcess3D<Dtype>::Gp>> &
+    RangeSensorGaussianProcess3D<Dtype>::GetGps() const {
+        return m_gps_;
+    }
+
+    template<typename Dtype>
+    const std::vector<std::tuple<long, long, Dtype, Dtype>> &
+    RangeSensorGaussianProcess3D<Dtype>::GetRowPartitions() const {
+        return m_row_partitions_;
+    }
+
+    template<typename Dtype>
+    const std::vector<std::tuple<long, long, Dtype, Dtype>> &
+    RangeSensorGaussianProcess3D<Dtype>::GetColPartitions() const {
+        return m_col_partitions_;
+    }
+
+    template<typename Dtype>
+    std::shared_ptr<const typename RangeSensorGaussianProcess3D<Dtype>::RangeSensorFrame>
+    RangeSensorGaussianProcess3D<Dtype>::GetSensorFrame() const {
+        return m_sensor_frame_;
+    }
+
+    template<typename Dtype>
+    std::shared_ptr<const typename RangeSensorGaussianProcess3D<Dtype>::MappingDtype>
+    RangeSensorGaussianProcess3D<Dtype>::GetMapping() const {
+        return m_mapping_;
+    }
+
+    template<typename Dtype>
+    typename RangeSensorGaussianProcess3D<Dtype>::Vector3
+    RangeSensorGaussianProcess3D<Dtype>::GlobalToLocalSo3(const Vector3 &dir_global) const {
+        return m_sensor_frame_->DirWorldToFrame(dir_global);
+    }
+
+    template<typename Dtype>
+    typename RangeSensorGaussianProcess3D<Dtype>::Vector3
+    RangeSensorGaussianProcess3D<Dtype>::LocalToGlobalSo3(const Vector3 &dir_local) const {
+        return m_sensor_frame_->DirFrameToWorld(dir_local);
+    }
+
+    template<typename Dtype>
+    typename RangeSensorGaussianProcess3D<Dtype>::Vector3
+    RangeSensorGaussianProcess3D<Dtype>::GlobalToLocalSe3(const Vector3 &xyz_global) const {
+        return m_sensor_frame_->PosWorldToFrame(xyz_global);
+    }
+
+    template<typename Dtype>
+    typename RangeSensorGaussianProcess3D<Dtype>::Vector3
+    RangeSensorGaussianProcess3D<Dtype>::LocalToGlobalSe3(const Vector3 &xyz_local) const {
+        return m_sensor_frame_->PosFrameToWorld(xyz_local);
+    }
+
+    template<typename Dtype>
+    typename RangeSensorGaussianProcess3D<Dtype>::Vector2
+    RangeSensorGaussianProcess3D<Dtype>::ComputeFrameCoords(const Vector3 &xyz_frame) const {
+        return m_sensor_frame_->ComputeFrameCoords(xyz_frame);
+    }
+
+    template<typename Dtype>
     void
     RangeSensorGaussianProcess3D<Dtype>::Reset() {
         m_trained_ = false;
@@ -306,8 +378,6 @@ namespace erl::gaussian_process {
                 if (cnt > 0) { (void) gp->Train(); }
             }
         }
-
-        // ERL_INFO("{} x {} Gaussian processes are trained.", m_gps_.rows(), m_gps_.cols());
 
         m_trained_ = true;
         return true;
