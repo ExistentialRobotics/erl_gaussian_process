@@ -1,5 +1,7 @@
 #pragma once
 
+#include "noisy_input_gp.hpp"
+
 #include "erl_common/serialization.hpp"
 #include "erl_common/template_helper.hpp"
 
@@ -162,7 +164,7 @@ namespace erl::gaussian_process {
     }
 
     template<typename Dtype>
-    void
+    Eigen::VectorXb
     NoisyInputGaussianProcess<Dtype>::TestResult::GetGradient(
         const long y_index,
         Eigen::Ref<MatrixX> mat_grad_out,
@@ -187,17 +189,24 @@ namespace erl::gaussian_process {
             mat_grad_out.cols(),
             m_num_test_);
         const auto alpha = m_gp_->m_mat_alpha_.col(y_index).head(m_gp_->m_k_train_cols_);
-#pragma omp parallel for if (parallel) default(none) shared(alpha, mat_grad_out)
+        Eigen::VectorXb valid_gradients(m_num_test_);
+#pragma omp parallel for if (parallel) default(none) shared(alpha, mat_grad_out, valid_gradients)
         for (long index = 0; index < m_num_test_; ++index) {
             Dtype* grad = mat_grad_out.col(index).data();
             for (long j = 0, jj = index + m_num_test_; j < m_x_dim_; ++j, jj += m_num_test_) {
-                *grad++ = m_mat_k_test_.col(jj).dot(alpha);
+                *grad = m_mat_k_test_.col(jj).dot(alpha);
+                if (!std::isfinite(*grad)) {
+                    valid_gradients[index] = false;
+                    break;
+                }
+                ++grad;
             }
         }
+        return valid_gradients;
     }
 
     template<typename Dtype>
-    void
+    bool
     NoisyInputGaussianProcess<Dtype>::TestResult::GetGradient(
         const long index,
         const long y_index,
@@ -217,8 +226,11 @@ namespace erl::gaussian_process {
             m_y_dim_);
         const auto alpha = m_gp_->m_mat_alpha_.col(y_index).head(m_gp_->m_k_train_cols_);
         for (long j = 0, jj = index + m_num_test_; j < m_x_dim_; ++j, jj += m_num_test_) {
-            *grad++ = m_mat_k_test_.col(jj).dot(alpha);
+            *grad = m_mat_k_test_.col(jj).dot(alpha);
+            if (!std::isfinite(*grad)) { return false; }  // gradient is not valid
+            ++grad;
         }
+        return true;
     }
 
     template<typename Dtype>

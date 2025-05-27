@@ -93,8 +93,9 @@ namespace erl::gaussian_process {
              * @param mat_grad_out The matrix to store the gradient result. Each column is a
              * gradient vector.
              * @param parallel Whether to use parallel computation.
+             * @return A vector indicating whether the gradients are valid (true) or not (false).
              */
-            virtual void
+            virtual Eigen::VectorXb
             GetGradient(long y_index, Eigen::Ref<MatrixX> mat_grad_out, bool parallel) const;
 
             /**
@@ -102,8 +103,9 @@ namespace erl::gaussian_process {
              * @param index Index of the test sample.
              * @param y_index Index of the output dimension.
              * @param grad Raw pointer to store the result.
+             * @return True if the gradient is valid, false otherwise.
              */
-            virtual void
+            virtual bool
             GetGradient(long index, long y_index, Dtype *grad) const;
 
             /**
