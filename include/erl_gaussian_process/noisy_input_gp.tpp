@@ -366,9 +366,13 @@ namespace erl::gaussian_process {
     NoisyInputGaussianProcess<Dtype>::TestResult::PrepareAlphaTest() {
         if (m_mat_alpha_test_.size() > 0) { return; }
         const long rows = m_mat_k_test_.rows();
-        m_mat_alpha_test_ = m_gp_->m_mat_l_.topLeftCorner(rows, rows)
-                                .template triangularView<Eigen::Lower>()
-                                .solve(m_mat_k_test_);
+        m_mat_alpha_test_.resize(rows, m_mat_k_test_.cols());
+        auto mat_l =
+            m_gp_->m_mat_l_.topLeftCorner(rows, rows).template triangularView<Eigen::Lower>();
+#pragma omp parallel for default(none) shared(mat_l)
+        for (long i = 0; i < m_mat_k_test_.cols(); ++i) {
+            m_mat_alpha_test_.col(i) = mat_l.solve(m_mat_k_test_.col(i));
+        }
     }
 
     template<typename Dtype>

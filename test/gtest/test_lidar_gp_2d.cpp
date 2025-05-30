@@ -171,23 +171,22 @@ TEST(LidarGaussianProcess2D, Build) {
     PlplotFig fig(640, 480, true);
     PlplotFig::LegendOpt legend_opt(3, {"train", "pred", "error"});
     legend_opt
-        .SetTextColors(
-            {PlplotFig::Color0::Red, PlplotFig::Color0::Green, PlplotFig::Color0::Yellow})
+        .SetTextColors({PlplotFig::Color0::Red, PlplotFig::Color0::Green, PlplotFig::Color0::Blue})
         .SetStyles({PL_LEGEND_LINE, PL_LEGEND_LINE, PL_LEGEND_LINE})
         .SetLineColors(legend_opt.text_colors)
         .SetLineStyles({1, 1, 1})
         .SetLineWidths({1.0, 1.0, 1.0})
         .SetBoxStyle(PL_LEGEND_BOUNDING_BOX)
         .SetBgColor0(PlplotFig::Color0::Gray)
-        .SetLegendBoxLineColor0(PlplotFig::Color0::White);
-    fig.Clear()
+        .SetLegendBoxLineColor0(PlplotFig::Color0::Black);
+    fig.Clear(1.0, 1.0, 1.0)
         .SetMargin(0.15, 0.85, 0.15, 0.85)
         .SetAxisLimits(
             df.angles.minCoeff() - 0.1,
             df.angles.maxCoeff() + 0.1,
             std::min(df.distances.minCoeff(), distance_pred.minCoeff()) - 0.1,
             std::max(df.distances.maxCoeff(), distance_pred.maxCoeff()) + 0.1)
-        .SetCurrentColor(PlplotFig::Color0::White)
+        .SetCurrentColor(PlplotFig::Color0::Black)
         .DrawAxesBox(
             PlplotFig::AxisOpt().DrawTopRightEdge(),
             PlplotFig::AxisOpt().DrawPerpendicularTickLabels())
@@ -195,15 +194,17 @@ TEST(LidarGaussianProcess2D, Build) {
         .SetAxisLabelY("y")
         .SetCurrentColor(PlplotFig::Color0::Red)
         .SetLineStyle(1)
+        .SetPenWidth(3)
         .DrawLine(n, df.angles.data(), df.distances.data())
         .SetCurrentColor(PlplotFig::Color0::Green)
+        .SetPenWidth(2)
         .DrawLine(n, df.angles.data(), distance_pred.data())
         .SetAxisLimits(
             df.angles.minCoeff() - 0.1,
             df.angles.maxCoeff() + 0.1,
             error.minCoeff() - 0.1,
             error.maxCoeff() + 0.1)
-        .SetCurrentColor(PlplotFig::Color0::White)
+        .SetCurrentColor(PlplotFig::Color0::Black)
         .DrawAxesBox(
             PlplotFig::AxisOpt::Off(),
             PlplotFig::AxisOpt::Off()
@@ -213,7 +214,8 @@ TEST(LidarGaussianProcess2D, Build) {
                 .DrawTickMinor()
                 .DrawPerpendicularTickLabels())
         .SetAxisLabelY("error", true)
-        .SetCurrentColor(PlplotFig::Color0::Yellow)
+        .SetCurrentColor(PlplotFig::Color0::Blue)
+        .SetPenWidth(1)
         .DrawLine(n, df.angles.data(), error.data())
         .Legend(legend_opt);
 

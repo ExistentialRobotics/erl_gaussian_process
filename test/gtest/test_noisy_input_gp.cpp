@@ -423,7 +423,7 @@ TEST(NoisyInputGaussianProcess, MultiInputSingleOutputWithGradientObservation) {
         ERL_BLOCK_TIMER_MSG("gp.Test()");
         auto result = gp.Test(pts, true);
         result->GetMean(0, z_pred, true);
-        result->GetGradient(0, gradient_pred, true);
+        (void) result->GetGradient(0, gradient_pred, true);
     }
     Eigen::VectorXd grad_x_pred = gradient_pred.row(0).transpose();
     Eigen::VectorXd grad_y_pred = gradient_pred.row(1).transpose();
@@ -627,7 +627,7 @@ TEST(NoisyInputGaussianProcess, MultiInputSingleOutputWithoutGradientObservation
         ERL_BLOCK_TIMER_MSG("gp.Test()");
         auto result = gp.Test(pts, true);
         result->GetMean(0, z_pred, true);
-        result->GetGradient(0, gradient_pred, true);
+        (void) result->GetGradient(0, gradient_pred, true);
     }
     Eigen::VectorXd grad_x_pred = gradient_pred.row(0).transpose();
     Eigen::VectorXd grad_y_pred = gradient_pred.row(1).transpose();
