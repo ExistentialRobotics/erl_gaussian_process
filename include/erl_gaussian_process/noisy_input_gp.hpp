@@ -162,7 +162,7 @@ namespace erl::gaussian_process {
 
         protected:
             void
-            PrepareAlphaTest();
+            PrepareAlphaTest(bool parallel);
         };
 
         struct TrainSet {

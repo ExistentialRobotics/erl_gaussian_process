@@ -238,8 +238,7 @@ namespace erl::gaussian_process {
     NoisyInputGaussianProcess<Dtype>::TestResult::GetMeanVariance(
         Eigen::Ref<VectorX> vec_var_out,
         const bool parallel) const {
-        (void) parallel;
-        const_cast<TestResult*>(this)->PrepareAlphaTest();
+        const_cast<TestResult*>(this)->PrepareAlphaTest(parallel);
         Dtype* var = vec_var_out.data();
 #pragma omp parallel for if (parallel) default(none) shared(var)
         for (long i = 0; i < m_num_test_; ++i) {
@@ -253,7 +252,7 @@ namespace erl::gaussian_process {
     template<typename Dtype>
     void
     NoisyInputGaussianProcess<Dtype>::TestResult::GetMeanVariance(long index, Dtype& var) const {
-        const_cast<TestResult*>(this)->PrepareAlphaTest();
+        const_cast<TestResult*>(this)->PrepareAlphaTest(false);
         var = m_mat_alpha_test_.col(index).squaredNorm();  // variance of h(x)
         if (m_reduced_rank_kernel_) { return; }
         var = 1.0f - var;  // variance of h(x)
@@ -264,11 +263,10 @@ namespace erl::gaussian_process {
     NoisyInputGaussianProcess<Dtype>::TestResult::GetGradientVariance(
         Eigen::Ref<MatrixX> mat_var_out,
         const bool parallel) const {
-        (void) parallel;
         ERL_DEBUG_ASSERT(
             m_support_gradient_,
             "m_support_gradient_ = false, it should be true to call GetGradient().");
-        const_cast<TestResult*>(this)->PrepareAlphaTest();
+        const_cast<TestResult*>(this)->PrepareAlphaTest(parallel);
         const Dtype scale_square = m_gp_->m_three_over_scale_square_;
         const long cols = m_mat_alpha_test_.cols();
 #pragma omp parallel for if (parallel) default(none) shared(mat_var_out, scale_square, cols)
@@ -289,7 +287,7 @@ namespace erl::gaussian_process {
         ERL_DEBUG_ASSERT(
             m_support_gradient_,
             "m_support_gradient_ = false, it should be true to call GetGradient().");
-        const_cast<TestResult*>(this)->PrepareAlphaTest();
+        const_cast<TestResult*>(this)->PrepareAlphaTest(false);
         const Dtype scale_square = m_gp_->m_three_over_scale_square_;
         const long cols = m_mat_alpha_test_.cols();
         for (long jj = index + m_num_test_; jj < cols; jj += m_num_test_, ++var) {
@@ -304,7 +302,6 @@ namespace erl::gaussian_process {
     NoisyInputGaussianProcess<Dtype>::TestResult::GetCovariance(
         Eigen::Ref<MatrixX> mat_cov_out,
         const bool parallel) const {
-        (void) parallel;
         ERL_DEBUG_ASSERT(
             m_support_gradient_,
             "m_support_gradient_ = false, it should be true to call GetGradient().");
@@ -319,7 +316,7 @@ namespace erl::gaussian_process {
             mat_cov_out.cols(),
             m_num_test_);
 
-        const_cast<TestResult*>(this)->PrepareAlphaTest();
+        const_cast<TestResult*>(this)->PrepareAlphaTest(parallel);
 #pragma omp parallel for if (parallel) default(none) shared(mat_cov_out)
         for (long index = 0; index < m_num_test_; ++index) {
             Dtype* cov = mat_cov_out.col(index).data();
@@ -350,7 +347,7 @@ namespace erl::gaussian_process {
             m_num_test_);
         ERL_DEBUG_ASSERT(cov != nullptr, "cov should not be nullptr.");
 
-        const_cast<TestResult*>(this)->PrepareAlphaTest();
+        const_cast<TestResult*>(this)->PrepareAlphaTest(false);
         for (long j = 0, jj = index + m_num_test_; j < m_x_dim_; ++j, jj += m_num_test_) {
             VectorX col_jj = m_mat_alpha_test_.col(jj);
             if (!m_reduced_rank_kernel_) { col_jj = -col_jj; }
@@ -363,13 +360,15 @@ namespace erl::gaussian_process {
 
     template<typename Dtype>
     void
-    NoisyInputGaussianProcess<Dtype>::TestResult::PrepareAlphaTest() {
+    NoisyInputGaussianProcess<Dtype>::TestResult::PrepareAlphaTest(const bool parallel) {
+        (void) parallel;
         if (m_mat_alpha_test_.size() > 0) { return; }
         const long rows = m_mat_k_test_.rows();
         m_mat_alpha_test_.resize(rows, m_mat_k_test_.cols());
         auto mat_l =
             m_gp_->m_mat_l_.topLeftCorner(rows, rows).template triangularView<Eigen::Lower>();
-#pragma omp parallel for default(none) shared(mat_l)
+
+#pragma omp parallel for if (parallel) default(none) shared(mat_l)
         for (long i = 0; i < m_mat_k_test_.cols(); ++i) {
             m_mat_alpha_test_.col(i) = mat_l.solve(m_mat_k_test_.col(i));
         }
