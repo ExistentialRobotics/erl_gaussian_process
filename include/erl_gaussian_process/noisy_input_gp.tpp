@@ -5,6 +5,8 @@
 #include "erl_common/serialization.hpp"
 #include "erl_common/template_helper.hpp"
 
+#include <utility>
+
 namespace erl::gaussian_process {
     template<typename Dtype>
     YAML::Node

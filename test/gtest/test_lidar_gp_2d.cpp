@@ -113,14 +113,17 @@ public:
     }
 };
 
-#define DEFAULT_OBSGP_SCALE_PARAM double(0.5)
-#define DEFAULT_OBSGP_NOISE_PARAM double(0.01)
-#define DEFAULT_OBSGP_OVERLAP_SZ  6
-#define DEFAULT_OBSGP_GROUP_SZ    20
-// #define DEFAULT_OBSGP_MARGIN      double(0.0175)
-#define GPISMAP_OBS_VAR_THRE double(0.1)
-#define ANGLE_MIN            double(-135.0 / 180.0 * M_PI)
-#define ANGLE_MAX            2.33874  // double(135.0 / 180.0 * M_PI)
+constexpr double OBSGP_SCALE_PARAM = 0.05;
+constexpr double OBSGP_NOISE_PARAM = 0.01;
+constexpr double OBSGP_DISCON_NOISE_PARAM = 100.0;
+constexpr long OBSGP_OVERLAP_SZ = 6;
+constexpr long OBSGP_GROUP_SZ = 20;
+constexpr long OBSGP_MARGIN = 1;
+constexpr double GPISMAP_OBS_VAR_THRE = 0.1;
+constexpr double ANGLE_MIN = -135.0 / 180.0 * M_PI;
+constexpr double ANGLE_MAX = 2.33874;  // double(135.0 / 180.0 * M_PI)
+constexpr double RANGE_MIN = 0.1;
+constexpr double RANGE_MAX = 30.0;
 
 TEST(LidarGaussianProcess2D, Build) {
     GTEST_PREPARE_OUTPUT_DIR();
@@ -133,18 +136,20 @@ TEST(LidarGaussianProcess2D, Build) {
 
     using LidarGp2D = LidarGaussianProcess2D<double>;
     auto setting = std::make_shared<LidarGp2D::Setting>();
-    setting->group_size = DEFAULT_OBSGP_GROUP_SZ + DEFAULT_OBSGP_OVERLAP_SZ;
-    setting->overlap_size = DEFAULT_OBSGP_OVERLAP_SZ;
-    setting->margin = 1;
+    setting->group_size = OBSGP_GROUP_SZ + OBSGP_OVERLAP_SZ;
+    setting->overlap_size = OBSGP_OVERLAP_SZ;
+    setting->margin = OBSGP_MARGIN;
     setting->init_variance = 1.0e6;
-    setting->sensor_range_var = DEFAULT_OBSGP_NOISE_PARAM;
+    setting->sensor_range_var = OBSGP_NOISE_PARAM;
+    setting->discontinuity_var = OBSGP_DISCON_NOISE_PARAM;
     setting->max_valid_range_var = GPISMAP_OBS_VAR_THRE;
-    setting->sensor_frame->valid_range_min;
-    setting->sensor_frame->num_rays = n;
+    setting->sensor_frame->valid_range_min = RANGE_MIN;
+    setting->sensor_frame->valid_range_max = RANGE_MAX;
     setting->sensor_frame->angle_min = df.angles[0];
     setting->sensor_frame->angle_max = df.angles[n - 1];
+    setting->sensor_frame->num_rays = n;
     setting->gp->kernel_type = type_name<erl::covariance::OrnsteinUhlenbeck1d>();
-    setting->gp->kernel->scale = DEFAULT_OBSGP_SCALE_PARAM;
+    setting->gp->kernel->scale = OBSGP_SCALE_PARAM;
     setting->mapping->type = MappingType::kIdentity;
     setting->partition_on_hit_rays = false;
     setting->symmetric_partitions = false;
@@ -158,24 +163,27 @@ TEST(LidarGaussianProcess2D, Build) {
             lidar_gp->Train(Eigen::Matrix2d::Identity(), Eigen::Vector2d::Zero(), df.distances));
     }
 
-    Eigen::VectorXd distance_pred(df.distances.size()), distance_pred_var;
+    Eigen::VectorXd distance_pred(df.distances.size()), distance_pred_var(distance_pred.size());
     {
         ERL_BLOCK_TIMER_MSG("gp.Test");
         auto test_result = lidar_gp->Test(df.angles, false /*angles_are_local*/, true /*un_map*/);
         Eigen::VectorXb success = test_result->GetMean(distance_pred, true /*parallel*/);
         ASSERT_TRUE(success.any());
+        success = test_result->GetVariance(distance_pred_var, true);
+        ASSERT_TRUE(success.any());
     }
 
     Eigen::VectorXd error = distance_pred - df.distances;
+    double mae = error.cwiseAbs().mean();
+    ERL_INFO("mean absolute error: {}", mae);
 
     PlplotFig fig(640, 480, true);
-    PlplotFig::LegendOpt legend_opt(3, {"train", "pred", "error"});
-    legend_opt
-        .SetTextColors({PlplotFig::Color0::Red, PlplotFig::Color0::Green, PlplotFig::Color0::Blue})
-        .SetStyles({PL_LEGEND_LINE, PL_LEGEND_LINE, PL_LEGEND_LINE})
+    PlplotFig::LegendOpt legend_opt(2, {"train", "pred"});
+    legend_opt.SetTextColors({PlplotFig::Color0::Red, PlplotFig::Color0::Green})
+        .SetStyles({PL_LEGEND_LINE, PL_LEGEND_LINE})
         .SetLineColors(legend_opt.text_colors)
-        .SetLineStyles({1, 1, 1})
-        .SetLineWidths({1.0, 1.0, 1.0})
+        .SetLineStyles({1, 1})
+        .SetLineWidths({1.0, 1.0})
         .SetBoxStyle(PL_LEGEND_BOUNDING_BOX)
         .SetBgColor0(PlplotFig::Color0::Gray)
         .SetLegendBoxLineColor0(PlplotFig::Color0::Black);
@@ -187,9 +195,7 @@ TEST(LidarGaussianProcess2D, Build) {
             std::min(df.distances.minCoeff(), distance_pred.minCoeff()) - 0.1,
             std::max(df.distances.maxCoeff(), distance_pred.maxCoeff()) + 0.1)
         .SetCurrentColor(PlplotFig::Color0::Black)
-        .DrawAxesBox(
-            PlplotFig::AxisOpt().DrawTopRightEdge(),
-            PlplotFig::AxisOpt().DrawPerpendicularTickLabels())
+        .DrawAxesBox(PlplotFig::AxisOpt(), PlplotFig::AxisOpt().DrawPerpendicularTickLabels())
         .SetAxisLabelX("x")
         .SetAxisLabelY("y")
         .SetCurrentColor(PlplotFig::Color0::Red)
@@ -199,12 +205,37 @@ TEST(LidarGaussianProcess2D, Build) {
         .SetCurrentColor(PlplotFig::Color0::Green)
         .SetPenWidth(2)
         .DrawLine(n, df.angles.data(), distance_pred.data())
+        .Legend(legend_opt);
+
+    try {
+        cv::imshow(fmt::format("{}: pred", test_info_->name()), fig.ToCvMat());
+    } catch (const std::exception &e) { ERL_WARN("Failed to show image: {}", e.what()); }
+    cv::imwrite(test_output_dir / "lidar_gp_2d_pred.png", fig.ToCvMat());
+
+    legend_opt.SetTexts({"error", "variance"})
+        .SetTextColors({PlplotFig::Color0::Blue, PlplotFig::Color0::Magenta})
+        .SetLineColors(legend_opt.text_colors);
+    fig.Clear(1.0, 1.0, 1.0)
+        .SetMargin(0.15, 0.85, 0.15, 0.85)
         .SetAxisLimits(
             df.angles.minCoeff() - 0.1,
             df.angles.maxCoeff() + 0.1,
             error.minCoeff() - 0.1,
             error.maxCoeff() + 0.1)
         .SetCurrentColor(PlplotFig::Color0::Black)
+        .DrawAxesBox(
+            PlplotFig::AxisOpt().DrawTopRightEdge(),
+            PlplotFig::AxisOpt().DrawPerpendicularTickLabels())
+        .SetAxisLabelY("error")
+        .SetCurrentColor(PlplotFig::Color0::Blue)
+        .SetPenWidth(1)
+        .DrawLine(n, df.angles.data(), error.data())
+        .SetCurrentColor(PlplotFig::Color0::Black)
+        .SetAxisLimits(
+            df.angles.minCoeff() - 0.1,
+            df.angles.maxCoeff() + 0.1,
+            distance_pred_var.minCoeff() - 0.01,
+            distance_pred_var.maxCoeff() + 0.01)
         .DrawAxesBox(
             PlplotFig::AxisOpt::Off(),
             PlplotFig::AxisOpt::Off()
@@ -213,22 +244,20 @@ TEST(LidarGaussianProcess2D, Build) {
                 .DrawTickMajor()
                 .DrawTickMinor()
                 .DrawPerpendicularTickLabels())
-        .SetAxisLabelY("error", true)
-        .SetCurrentColor(PlplotFig::Color0::Blue)
+        .SetAxisLabelY("variance", true)
         .SetPenWidth(1)
-        .DrawLine(n, df.angles.data(), error.data())
+        .SetCurrentColor(PlplotFig::Color0::Magenta)
+        .DrawLine(n, df.angles.data(), distance_pred_var.data())
         .Legend(legend_opt);
 
-    double mae = error.cwiseAbs().mean();
-    ERL_INFO("mean absolute error: {}", mae);
-
-    cv::imwrite(test_output_dir / "lidar_gp_2d.png", fig.ToCvMat());
     try {
-        cv::imshow(test_info_->name(), fig.ToCvMat());
+        cv::imshow(fmt::format("{}: error", test_info_->name()), fig.ToCvMat());
         cv::waitKey(1000);
     } catch (const std::exception &e) { ERL_WARN("Failed to show image: {}", e.what()); }
+    cv::imwrite(test_output_dir / "lidar_gp_2d_error.png", fig.ToCvMat());
 
-    ASSERT_TRUE(mae < 0.022);  // 0.02135875277600203
+    // ASSERT_TRUE(mae < 0.022);  // 0.02135875277600203 (when discontinuity_detection is off)
+    ASSERT_TRUE(mae < 0.08);  // 0.07934015284014925
 
     ASSERT_TRUE(Serialization<LidarGp2D>::Write("lidar_gp_2d.bin", lidar_gp));
     LidarGp2D lidar_gp_read(std::make_shared<LidarGp2D::Setting>());

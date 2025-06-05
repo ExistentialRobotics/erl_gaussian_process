@@ -14,6 +14,7 @@ namespace erl::gaussian_process {
         ERL_YAML_SAVE_ATTR(node, setting, margin);
         ERL_YAML_SAVE_ATTR(node, setting, init_variance);
         ERL_YAML_SAVE_ATTR(node, setting, sensor_range_var);
+        ERL_YAML_SAVE_ATTR(node, setting, discontinuity_var);
         ERL_YAML_SAVE_ATTR(node, setting, max_valid_range_var);
         ERL_YAML_SAVE_ATTR(node, setting, occ_test_temperature);
         ERL_YAML_SAVE_ATTR(node, setting, sensor_frame);
@@ -35,6 +36,7 @@ namespace erl::gaussian_process {
         ERL_YAML_LOAD_ATTR(node, setting, margin);
         ERL_YAML_LOAD_ATTR(node, setting, init_variance);
         ERL_YAML_LOAD_ATTR(node, setting, sensor_range_var);
+        ERL_YAML_LOAD_ATTR(node, setting, discontinuity_var);
         ERL_YAML_LOAD_ATTR(node, setting, max_valid_range_var);
         ERL_YAML_LOAD_ATTR(node, setting, occ_test_temperature);
         ERL_YAML_LOAD_ATTR(node, setting, sensor_frame);
@@ -209,6 +211,12 @@ namespace erl::gaussian_process {
     std::shared_ptr<const typename LidarGaussianProcess2D<Dtype>::LidarFrame2D>
     LidarGaussianProcess2D<Dtype>::GetSensorFrame() const {
         return m_sensor_frame_;
+    }
+
+    template<typename Dtype>
+    std::shared_ptr<const typename LidarGaussianProcess2D<Dtype>::MappingDtype>
+    LidarGaussianProcess2D<Dtype>::GetMapping() const {
+        return m_mapping_;
     }
 
     template<typename Dtype>
@@ -389,12 +397,19 @@ namespace erl::gaussian_process {
             long cnt = 0;
             auto &train_set = gp->GetTrainSet();
             const Eigen::VectorXb &mask_hit = m_sensor_frame_->GetHitMask();
+            const Eigen::VectorXb &mask_con = m_sensor_frame_->GetContinuityMask();
+            const bool discon_detection = m_setting_->sensor_frame->discontinuity_detection;
+            const Dtype discon_var = m_setting_->discontinuity_var;
             const VectorX &angles = m_sensor_frame_->GetAnglesInFrame();
             for (long j = index_left; j < index_right; ++j) {
                 if (!mask_hit[j]) { continue; }
                 train_set.x(0, cnt) = angles[j];
                 train_set.y.col(0)[cnt] = m_mapped_distances_[j];
-                train_set.var[cnt] = m_setting_->sensor_range_var;
+                if (discon_detection && !mask_con[j]) {
+                    train_set.var[cnt] = discon_var;
+                } else {
+                    train_set.var[cnt] = m_setting_->sensor_range_var;
+                }
                 ++cnt;
             }
             train_set.num_samples = cnt;

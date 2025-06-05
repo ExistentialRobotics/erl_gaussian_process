@@ -5,8 +5,6 @@
 #include "erl_covariance/covariance.hpp"
 #include "erl_covariance/reduced_rank_covariance.hpp"
 
-#include <utility>
-
 namespace erl::gaussian_process {
 
     template<typename Dtype>

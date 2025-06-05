@@ -42,6 +42,9 @@ namespace erl::gaussian_process {
             Dtype init_variance = 1e6f;
             // variance of the sensor range measurement.
             Dtype sensor_range_var = 0.01f;
+            // if sensor_frame->discontinuity_detection is true, this value is used when a
+            // discontinuity is detected in the sensor frame.
+            Dtype discontinuity_var = 10.0f;
             // if the distance variance is greater than this threshold, the prediction is invalid
             // and should be discarded.
             Dtype max_valid_range_var = 0.1f;
@@ -133,6 +136,9 @@ namespace erl::gaussian_process {
 
         [[nodiscard]] std::shared_ptr<const LidarFrame2D>
         GetSensorFrame() const;
+
+        [[nodiscard]] std::shared_ptr<const MappingDtype>
+        GetMapping() const;
 
         [[nodiscard]] Vector2
         GlobalToLocalSo2(const Vector2 &dir_global) const;
