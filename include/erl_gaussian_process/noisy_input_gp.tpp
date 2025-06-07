@@ -31,7 +31,7 @@ namespace erl::gaussian_process {
         ERL_YAML_LOAD_ATTR(node, setting, kernel_type);
         ERL_YAML_LOAD_ATTR(node, setting, kernel_setting_type);
         setting.kernel = YamlableBase::Create<CovarianceSetting>(setting.kernel_setting_type);
-        ERL_YAML_LOAD_ATTR(node, setting, kernel);
+        if (!ERL_YAML_LOAD_ATTR(node, setting, kernel)) { return false; }
         ERL_YAML_LOAD_ATTR(node, setting, max_num_samples);
         ERL_YAML_LOAD_ATTR(node, setting, no_gradient_observation);
         return true;

@@ -47,10 +47,9 @@ namespace erl::gaussian_process {
         using SensorFrameSetting = typename geometry::RangeSensorFrame3D<Dtype>::Setting;
         setting.sensor_frame =
             common::YamlableBase::Create<SensorFrameSetting>(setting.sensor_frame_setting_type);
-        if (!setting.sensor_frame->FromYamlNode(node["sensor_frame"])) { return false; }
-        ERL_YAML_LOAD_ATTR(node, setting, gp);
-        ERL_YAML_LOAD_ATTR(node, setting, mapping);
-        return true;
+        if (!ERL_YAML_LOAD_ATTR(node, setting, sensor_frame)) { return false; }
+        if (!ERL_YAML_LOAD_ATTR(node, setting, gp)) { return false; }
+        return ERL_YAML_LOAD_ATTR(node, setting, mapping);
     }
 
     template<typename Dtype>
@@ -184,6 +183,15 @@ namespace erl::gaussian_process {
               m_setting_->sensor_frame_type,
               m_setting_->sensor_frame)),
           m_mapping_(MappingDtype::Create(m_setting_->mapping)) {
+
+        ERL_ASSERTM(
+            m_setting_->row_overlap_size % 2 == 0,
+            "row_overlap_size must be even, got %ld.",
+            m_setting_->row_overlap_size);
+        ERL_ASSERTM(
+            m_setting_->col_overlap_size % 2 == 0,
+            "col_overlap_size must be even, got %ld.",
+            m_setting_->col_overlap_size);
 
         const Eigen::MatrixX<Vector2> &frame_coords = m_sensor_frame_->GetFrameCoords();
         const long num_rows = frame_coords.rows();

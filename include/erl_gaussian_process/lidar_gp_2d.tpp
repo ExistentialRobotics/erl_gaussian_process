@@ -39,10 +39,9 @@ namespace erl::gaussian_process {
         ERL_YAML_LOAD_ATTR(node, setting, discontinuity_var);
         ERL_YAML_LOAD_ATTR(node, setting, max_valid_range_var);
         ERL_YAML_LOAD_ATTR(node, setting, occ_test_temperature);
-        ERL_YAML_LOAD_ATTR(node, setting, sensor_frame);
-        ERL_YAML_LOAD_ATTR(node, setting, gp);
-        ERL_YAML_LOAD_ATTR(node, setting, mapping);
-        return true;
+        if (!ERL_YAML_LOAD_ATTR(node, setting, sensor_frame)) { return false; }
+        if (!ERL_YAML_LOAD_ATTR(node, setting, gp)) { return false; }
+        return ERL_YAML_LOAD_ATTR(node, setting, mapping);
     }
 
     template<typename Dtype>

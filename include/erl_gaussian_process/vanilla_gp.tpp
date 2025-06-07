@@ -27,7 +27,7 @@ namespace erl::gaussian_process {
         using namespace common;
         using CovarianceSetting = typename Covariance::Setting;
         setting.kernel = YamlableBase::Create<CovarianceSetting>(setting.kernel_setting_type);
-        ERL_YAML_LOAD_ATTR(node, setting, kernel);
+        if (!ERL_YAML_LOAD_ATTR(node, setting, kernel)) { return false; }
         ERL_YAML_LOAD_ATTR(node, setting, max_num_samples);
         return true;
     }
