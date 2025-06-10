@@ -201,9 +201,10 @@ namespace erl::gaussian_process {
 
     using VanillaGaussianProcessD = VanillaGaussianProcess<double>;
     using VanillaGaussianProcessF = VanillaGaussianProcess<float>;
-}  // namespace erl::gaussian_process
 
-#include "vanilla_gp.tpp"
+    extern template class VanillaGaussianProcess<double>;
+    extern template class VanillaGaussianProcess<float>;
+}  // namespace erl::gaussian_process
 
 template<>
 struct YAML::convert<erl::gaussian_process::VanillaGaussianProcessD::Setting>

@@ -1,4 +1,4 @@
-#pragma once
+#include "erl_gaussian_process/vanilla_gp.hpp"
 
 #include "erl_common/serialization.hpp"
 #include "erl_common/template_helper.hpp"
@@ -790,4 +790,7 @@ namespace erl::gaussian_process {
             if (m_reduced_rank_kernel_) { rank_reduced_kernel->BuildSpectralDensities(); }
         }
     }
+
+    template class VanillaGaussianProcess<double>;
+    template class VanillaGaussianProcess<float>;
 }  // namespace erl::gaussian_process

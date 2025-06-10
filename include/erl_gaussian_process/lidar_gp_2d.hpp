@@ -205,9 +205,10 @@ namespace erl::gaussian_process {
 
     using LidarGaussianProcess2Dd = LidarGaussianProcess2D<double>;
     using LidarGaussianProcess2Df = LidarGaussianProcess2D<float>;
-}  // namespace erl::gaussian_process
 
-#include "lidar_gp_2d.tpp"
+    extern template class LidarGaussianProcess2D<double>;
+    extern template class LidarGaussianProcess2D<float>;
+}  // namespace erl::gaussian_process
 
 template<>
 struct YAML::convert<erl::gaussian_process::LidarGaussianProcess2Dd::Setting>

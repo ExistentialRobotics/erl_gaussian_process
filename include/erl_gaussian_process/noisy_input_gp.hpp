@@ -296,9 +296,10 @@ namespace erl::gaussian_process {
 
     using NoisyInputGaussianProcessD = NoisyInputGaussianProcess<double>;
     using NoisyInputGaussianProcessF = NoisyInputGaussianProcess<float>;
-}  // namespace erl::gaussian_process
 
-#include "noisy_input_gp.tpp"
+    extern template class NoisyInputGaussianProcess<double>;
+    extern template class NoisyInputGaussianProcess<float>;
+}  // namespace erl::gaussian_process
 
 template<>
 struct YAML::convert<erl::gaussian_process::NoisyInputGaussianProcessD::Setting>

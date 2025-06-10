@@ -1,4 +1,4 @@
-#pragma once
+#include "erl_gaussian_process/lidar_gp_2d.hpp"
 
 #include "erl_common/serialization.hpp"
 
@@ -651,4 +651,7 @@ namespace erl::gaussian_process {
         };
         return ReadTokens(s, this, token_function_pairs);
     }
+
+    template class LidarGaussianProcess2D<double>;
+    template class LidarGaussianProcess2D<float>;
 }  // namespace erl::gaussian_process

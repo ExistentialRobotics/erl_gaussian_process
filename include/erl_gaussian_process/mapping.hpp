@@ -78,9 +78,10 @@ namespace erl::gaussian_process {
 
     using MappingD = Mapping<double>;
     using MappingF = Mapping<float>;
-}  // namespace erl::gaussian_process
 
-#include "mapping.tpp"
+    extern template class Mapping<double>;
+    extern template class Mapping<float>;
+}  // namespace erl::gaussian_process
 
 template<>
 struct YAML::convert<erl::gaussian_process::MappingD::Setting>
