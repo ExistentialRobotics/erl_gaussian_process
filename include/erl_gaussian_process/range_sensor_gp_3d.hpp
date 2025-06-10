@@ -196,9 +196,10 @@ namespace erl::gaussian_process {
 
     using RangeSensorGaussianProcess3Dd = RangeSensorGaussianProcess3D<double>;
     using RangeSensorGaussianProcess3Df = RangeSensorGaussianProcess3D<float>;
-}  // namespace erl::gaussian_process
 
-#include "range_sensor_gp_3d.tpp"
+    extern template class RangeSensorGaussianProcess3D<double>;
+    extern template class RangeSensorGaussianProcess3D<float>;
+}  // namespace erl::gaussian_process
 
 template<>
 struct YAML::convert<erl::gaussian_process::RangeSensorGaussianProcess3Dd::Setting>

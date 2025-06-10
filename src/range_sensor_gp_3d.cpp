@@ -1,4 +1,4 @@
-#pragma once
+#include "erl_gaussian_process/range_sensor_gp_3d.hpp"
 
 #include "erl_common/block_timer.hpp"
 #include "erl_common/logging.hpp"
@@ -179,9 +179,10 @@ namespace erl::gaussian_process {
     RangeSensorGaussianProcess3D<Dtype>::RangeSensorGaussianProcess3D(
         std::shared_ptr<Setting> setting)
         : m_setting_(std::move(setting)),
-          m_sensor_frame_(geometry::RangeSensorFrame3D<Dtype>::Create(
-              m_setting_->sensor_frame_type,
-              m_setting_->sensor_frame)),
+          m_sensor_frame_(
+              geometry::RangeSensorFrame3D<Dtype>::Create(
+                  m_setting_->sensor_frame_type,
+                  m_setting_->sensor_frame)),
           m_mapping_(MappingDtype::Create(m_setting_->mapping)) {
 
         ERL_ASSERTM(
@@ -355,7 +356,7 @@ namespace erl::gaussian_process {
         Reset();
 
         if (!StoreData(rotation, translation, std::move(ranges))) {
-            ERL_DEBUG("No training data is stored.");
+            ERL_WARN("No training data is stored.");
             return false;
         }
 
@@ -679,4 +680,7 @@ namespace erl::gaussian_process {
         };
         return ReadTokens(s, this, token_function_pairs);
     }
+
+    template class RangeSensorGaussianProcess3D<double>;
+    template class RangeSensorGaussianProcess3D<float>;
 }  // namespace erl::gaussian_process
