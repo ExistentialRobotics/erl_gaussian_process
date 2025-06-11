@@ -2,6 +2,7 @@
 
 #include "erl_common/block_timer.hpp"
 #include "erl_common/logging.hpp"
+#include "erl_common/serialization.hpp"
 
 namespace erl::gaussian_process {
     template<typename Dtype>
