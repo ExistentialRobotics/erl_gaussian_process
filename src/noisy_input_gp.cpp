@@ -240,7 +240,7 @@ namespace erl::gaussian_process {
         const bool parallel) const {
         const_cast<TestResult*>(this)->PrepareAlphaTest(parallel);
         Dtype* var = vec_var_out.data();
-#pragma omp parallel for if (parallel) default(none) shared(var)
+#pragma omp parallel for if (parallel) default(none) shared(var) schedule(static)
         for (long i = 0; i < m_num_test_; ++i) {
             Dtype& var_i = var[i];
             var_i = m_mat_alpha_test_.col(i).squaredNorm();  // variance of h(x)
@@ -368,7 +368,7 @@ namespace erl::gaussian_process {
         auto mat_l =
             m_gp_->m_mat_l_.topLeftCorner(rows, rows).template triangularView<Eigen::Lower>();
 
-#pragma omp parallel for if (parallel) default(none) shared(mat_l)
+#pragma omp parallel for if (parallel) default(none) shared(mat_l) schedule(static)
         for (long i = 0; i < m_mat_k_test_.cols(); ++i) {
             m_mat_alpha_test_.col(i) = mat_l.solve(m_mat_k_test_.col(i));
         }

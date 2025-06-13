@@ -48,10 +48,6 @@ namespace erl::gaussian_process {
             };
         };
 
-    private:
-        inline static const volatile bool kSettingRegistered =
-            common::YamlableBase::Register<Setting>();
-
     protected:
         std::shared_ptr<Setting> m_setting_;
 
