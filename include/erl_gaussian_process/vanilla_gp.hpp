@@ -146,6 +146,9 @@ namespace erl::gaussian_process {
         void
         Reset(long max_num_samples, long x_dim, long y_dim);
 
+        [[nodiscard]] std::pair<long, long>
+        GetKtrainSize() const;
+
         [[nodiscard]] std::shared_ptr<Covariance>
         GetKernel() const;
 
@@ -158,17 +161,29 @@ namespace erl::gaussian_process {
         [[nodiscard]] const MatrixX &
         GetKtrain() const;
 
+        [[nodiscard]] MatrixX &
+        GetKtrain();
+
         [[nodiscard]] const MatrixX &
         GetCholeskyDecomposition() const;
 
+        [[nodiscard]] MatrixX &
+        GetCholeskyDecomposition();
+
         [[nodiscard]] const MatrixX &
         GetAlpha() const;
+
+        [[nodiscard]] MatrixX &
+        GetAlpha();
 
         [[nodiscard]] std::size_t
         GetMemoryUsage() const;
 
         bool
         UpdateKtrain();
+
+        void
+        Solve();
 
         [[nodiscard]] bool
         Train();

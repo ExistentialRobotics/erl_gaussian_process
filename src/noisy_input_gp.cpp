@@ -750,15 +750,41 @@ namespace erl::gaussian_process {
     }
 
     template<typename Dtype>
+    typename NoisyInputGaussianProcess<Dtype>::MatrixX&
+    NoisyInputGaussianProcess<Dtype>::GetKtrain() {
+        return m_mat_k_train_;
+    }
+
+    template<typename Dtype>
     const typename NoisyInputGaussianProcess<Dtype>::MatrixX&
     NoisyInputGaussianProcess<Dtype>::GetKtrain() const {
         return m_mat_k_train_;
     }
 
     template<typename Dtype>
-    const typename NoisyInputGaussianProcess<Dtype>::MatrixX&
+    typename NoisyInputGaussianProcess<Dtype>::MatrixX
+    NoisyInputGaussianProcess<Dtype>::GetKtrainSized() const {
+        if (m_k_train_rows_ <= 0 || m_k_train_cols_ <= 0) { return {}; }
+        return m_mat_k_train_.topRows(m_k_train_rows_).leftCols(m_k_train_cols_);
+    }
+
+    template<typename Dtype>
+    typename NoisyInputGaussianProcess<Dtype>::MatrixX&
     NoisyInputGaussianProcess<Dtype>::GetAlpha() {
         return m_mat_alpha_;
+    }
+
+    template<typename Dtype>
+    const typename NoisyInputGaussianProcess<Dtype>::MatrixX&
+    NoisyInputGaussianProcess<Dtype>::GetAlpha() const {
+        return m_mat_alpha_;
+    }
+
+    template<typename Dtype>
+    typename NoisyInputGaussianProcess<Dtype>::MatrixX
+    NoisyInputGaussianProcess<Dtype>::GetAlphaSized() {
+        if (m_k_train_rows_ <= 0) { return {}; }
+        return m_mat_alpha_.topRows(m_k_train_rows_);
     }
 
     template<typename Dtype>

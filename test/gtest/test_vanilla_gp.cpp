@@ -1,5 +1,6 @@
 #include "erl_common/block_timer.hpp"
 #include "erl_common/plplot_fig.hpp"
+#include "erl_common/serialization.hpp"
 #include "erl_common/test_helper.hpp"
 #include "erl_covariance/radial_bias_function.hpp"
 #include "erl_gaussian_process/vanilla_gp.hpp"

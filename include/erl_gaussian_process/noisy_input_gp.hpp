@@ -93,7 +93,7 @@ namespace erl::gaussian_process {
              * @param parallel Whether to use parallel computation.
              * @return A vector indicating whether the gradients are valid (true) or not (false).
              */
-            virtual Eigen::VectorXb
+            [[nodiscard]] virtual Eigen::VectorXb
             GetGradient(long y_index, Eigen::Ref<MatrixX> mat_grad_out, bool parallel) const;
 
             /**
@@ -253,11 +253,23 @@ namespace erl::gaussian_process {
         [[nodiscard]] const TrainSet &
         GetTrainSet() const;
 
+        [[nodiscard]] MatrixX &
+        GetKtrain();
+
         [[nodiscard]] const MatrixX &
         GetKtrain() const;
 
-        [[nodiscard]] const MatrixX &
+        [[nodiscard]] MatrixX
+        GetKtrainSized() const;
+
+        [[nodiscard]] MatrixX &
         GetAlpha();
+
+        [[nodiscard]] const MatrixX &
+        GetAlpha() const;
+
+        [[nodiscard]] MatrixX
+        GetAlphaSized();
 
         [[nodiscard]] const MatrixX &
         GetCholeskyDecomposition();

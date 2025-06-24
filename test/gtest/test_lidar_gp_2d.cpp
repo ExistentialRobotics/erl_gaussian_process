@@ -1,6 +1,7 @@
 #include "erl_common/binary_file.hpp"
 #include "erl_common/block_timer.hpp"
 #include "erl_common/plplot_fig.hpp"
+#include "erl_common/serialization.hpp"
 #include "erl_common/test_helper.hpp"
 #include "erl_covariance/ornstein_uhlenbeck.hpp"
 #include "erl_gaussian_process/lidar_gp_2d.hpp"

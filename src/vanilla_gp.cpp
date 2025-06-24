@@ -396,6 +396,12 @@ namespace erl::gaussian_process {
     }
 
     template<typename Dtype>
+    std::pair<long, long>
+    VanillaGaussianProcess<Dtype>::GetKtrainSize() const {
+        return {m_k_train_rows_, m_k_train_cols_};
+    }
+
+    template<typename Dtype>
     std::shared_ptr<typename VanillaGaussianProcess<Dtype>::Covariance>
     VanillaGaussianProcess<Dtype>::GetKernel() const {
         return m_kernel_;
@@ -420,14 +426,32 @@ namespace erl::gaussian_process {
     }
 
     template<typename Dtype>
+    typename VanillaGaussianProcess<Dtype>::MatrixX &
+    VanillaGaussianProcess<Dtype>::GetKtrain() {
+        return m_mat_k_train_;
+    }
+
+    template<typename Dtype>
     const typename VanillaGaussianProcess<Dtype>::MatrixX &
     VanillaGaussianProcess<Dtype>::GetCholeskyDecomposition() const {
         return m_mat_l_;
     }
 
     template<typename Dtype>
+    typename VanillaGaussianProcess<Dtype>::MatrixX &
+    VanillaGaussianProcess<Dtype>::GetCholeskyDecomposition() {
+        return m_mat_l_;
+    }
+
+    template<typename Dtype>
     const typename VanillaGaussianProcess<Dtype>::MatrixX &
     VanillaGaussianProcess<Dtype>::GetAlpha() const {
+        return m_mat_alpha_;
+    }
+
+    template<typename Dtype>
+    typename VanillaGaussianProcess<Dtype>::MatrixX &
+    VanillaGaussianProcess<Dtype>::GetAlpha() {
         return m_mat_alpha_;
     }
 
@@ -462,16 +486,8 @@ namespace erl::gaussian_process {
     }
 
     template<typename Dtype>
-    bool
-    VanillaGaussianProcess<Dtype>::Train() {
-
-        if (m_trained_) {
-            ERL_WARN("The model has been trained. Please reset the model before training.");
-            return false;
-        }
-        m_trained_ = m_trained_once_;
-        if (!UpdateKtrain()) { return false; }
-
+    void
+    VanillaGaussianProcess<Dtype>::Solve() {
         const auto mat_ktrain = m_mat_k_train_.topLeftCorner(m_k_train_rows_, m_k_train_cols_);
         auto &&mat_l = m_mat_l_.topLeftCorner(m_k_train_rows_, m_k_train_cols_);
         auto alpha = m_mat_alpha_.topRows(m_k_train_cols_);
@@ -482,6 +498,19 @@ namespace erl::gaussian_process {
         mat_l.transpose().template triangularView<Eigen::Upper>().solveInPlace(alpha);
         m_trained_once_ = true;
         m_trained_ = true;
+    }
+
+    template<typename Dtype>
+    bool
+    VanillaGaussianProcess<Dtype>::Train() {
+
+        if (m_trained_) {
+            ERL_WARN("The model has been trained. Please reset the model before training.");
+            return false;
+        }
+        m_trained_ = m_trained_once_;
+        if (!UpdateKtrain()) { return false; }
+        Solve();
         return true;
     }
 
