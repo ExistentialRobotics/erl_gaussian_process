@@ -3,22 +3,27 @@
 #include "erl_common/serialization.hpp"
 #include "erl_common/test_helper.hpp"
 #include "erl_covariance/radial_bias_function.hpp"
-#include "erl_gaussian_process/vanilla_gp.hpp"
+#include "erl_gaussian_process/sparse_pseudo_input_gp.hpp"
 
 using namespace erl::common;
-using namespace erl::gaussian_process;
-
 constexpr double kNoiseVar = 0.001;
 
-TEST(VanillaGaussianProcess, SingleInputSingleOutput) {
+TEST(SparsePseudoInputGaussianProcess, SingleInputSingleOutput) {
     GTEST_PREPARE_OUTPUT_DIR();
-    constexpr long n = 100;
-    const auto setting = std::make_shared<VanillaGaussianProcessD::Setting>();
-    setting->kernel->scale = 0.5;
+
+    using SpGp = erl::gaussian_process::SparsePseudoInputGaussianProcess<double>;
+
+    constexpr long m = 20;
+    constexpr long n = 1000;
+
+    const auto setting = std::make_shared<SpGp::Setting>();
+    setting->kernel->scale = 0.6;
     setting->kernel->x_dim = 1;
     setting->kernel_type = type_name<erl::covariance::RadialBiasFunction1d>();
     setting->max_num_samples = n;
-    VanillaGaussianProcessD gp(setting);
+    setting->use_sparse = false;
+    Eigen::MatrixXd pseudo_points = Eigen::VectorXd::LinSpaced(m, 0, 2 * M_PI).transpose();
+    SpGp gp(setting, pseudo_points);
 
     Eigen::VectorXd x = Eigen::VectorXd::LinSpaced(n, 0, 2 * M_PI);
     Eigen::VectorXd y = x.unaryExpr([](const double a) { return std::sin(a); });
@@ -31,7 +36,7 @@ TEST(VanillaGaussianProcess, SingleInputSingleOutput) {
         train_set.y.col(0).head(n) = y;
         train_set.var.head(n).setConstant(kNoiseVar);
         train_set.num_samples = n;
-        ASSERT_TRUE(gp.Train());
+        ASSERT_TRUE(gp.Update(true));
     }
 
     constexpr long n_test = 200;
@@ -100,17 +105,21 @@ TEST(VanillaGaussianProcess, SingleInputSingleOutput) {
     cv::waitKey(1000);
 
     const double mae = error.cwiseAbs().mean();
-    ERL_INFO("mean absolute error: {}.", mae);  // 0.00024246430481069056
-    ASSERT_TRUE(mae < 3.0e-4);
+    ERL_INFO("mean absolute error: {}.", mae);
+    // 0.00013951539277877418
+    // use_sparse = true, 0.00013615527178628909
+    EXPECT_TRUE(mae < 4.02e-4);
 
-    ASSERT_TRUE(Serialization<VanillaGaussianProcessD>::Write("vanilla_gp.bin", &gp));
-    VanillaGaussianProcessD gp_read(std::make_shared<VanillaGaussianProcessD::Setting>());
-    ASSERT_TRUE(Serialization<VanillaGaussianProcessD>::Read("vanilla_gp.bin", &gp_read));
+    ASSERT_TRUE(Serialization<SpGp>::Write("sp_gp.bin", &gp));
+    SpGp gp_read(setting, pseudo_points);
+    ASSERT_TRUE(Serialization<SpGp>::Read("sp_gp.bin", &gp_read));
     EXPECT_TRUE(gp == gp_read);
 }
 
-TEST(VanillaGaussianProcess, MultiInputSingleOutput) {
+TEST(SparsePseudoInputGaussianProcess, MultiInputSingleOutput) {
     GTEST_PREPARE_OUTPUT_DIR();
+    using SpGp = erl::gaussian_process::SparsePseudoInputGaussianProcess<double>;
+
     auto compute_z = [](const Eigen::VectorXd &x,
                         const Eigen::VectorXd &y,
                         Eigen::VectorXd &z,
@@ -127,13 +136,20 @@ TEST(VanillaGaussianProcess, MultiInputSingleOutput) {
     constexpr double x_max = 1.0;
     constexpr double y_min = -1.0;
     constexpr double y_max = 1.0;
+    constexpr long m = 20;
     constexpr long n = 50;
-    const auto setting = std::make_shared<VanillaGaussianProcessD::Setting>();
-    setting->kernel->scale = 0.1;
+    const auto setting = std::make_shared<SpGp::Setting>();
+    setting->kernel->scale = 0.17;
     setting->kernel->x_dim = 2;
     setting->kernel_type = type_name<erl::covariance::RadialBiasFunction2d>();
     setting->max_num_samples = n * n;
-    VanillaGaussianProcessD gp(setting);
+    setting->use_sparse = false;
+    Eigen::MatrixXd pseudo_points = GridMapInfo2Dd(
+                                        Eigen::Vector2i(m, m),
+                                        Eigen::Vector2d(x_min, y_min),
+                                        Eigen::Vector2d(x_max, y_max))
+                                        .GenerateMeterCoordinates(true);
+    SpGp gp(setting, pseudo_points);
 
     // Eigen::VectorXd x = Eigen::VectorXd::Random(n).array() * (x_max - x_min) + x_min;
     // Eigen::VectorXd y = Eigen::VectorXd::Random(n).array() * (y_max - y_min) + y_min;
@@ -151,7 +167,7 @@ TEST(VanillaGaussianProcess, MultiInputSingleOutput) {
         train_set.y.col(0).head(pts.cols()) = z;
         train_set.var.head(pts.cols()).setConstant(kNoiseVar);
         train_set.num_samples = pts.cols();
-        ASSERT_TRUE(gp.Train());
+        ASSERT_TRUE(gp.Update(true));
     }
 
     constexpr long n_test = 100;
@@ -211,17 +227,19 @@ TEST(VanillaGaussianProcess, MultiInputSingleOutput) {
     cv::waitKey(1000);
 
     const double mae = error.cwiseAbs().mean();
-    ERL_INFO("mean absolute error: {}.", mae);  // 0.0005035569336460338
-    ASSERT_TRUE(mae < 5.1e-4);
+    ERL_INFO("mean absolute error: {}.", mae);  // 0.0017531063928863074
+    EXPECT_TRUE(mae < 1.8e-3);
 
-    ASSERT_TRUE(Serialization<VanillaGaussianProcessD>::Write("vanilla_gp.bin", &gp));
-    VanillaGaussianProcessD gp_read(std::make_shared<VanillaGaussianProcessD::Setting>());
-    ASSERT_TRUE(Serialization<VanillaGaussianProcessD>::Read("vanilla_gp.bin", &gp_read));
+    ASSERT_TRUE(Serialization<SpGp>::Write("sp_gp.bin", &gp));
+    SpGp gp_read(setting, pseudo_points);
+    ASSERT_TRUE(Serialization<SpGp>::Read("sp_gp.bin", &gp_read));
     EXPECT_TRUE(gp == gp_read);
 }
 
-TEST(VanillaGaussianProcess, MultiInputMultiOutput) {
+TEST(SparsePseudoInputGaussianProcess, MultiInputMultiOutput) {
     GTEST_PREPARE_OUTPUT_DIR();
+    using SpGp = erl::gaussian_process::SparsePseudoInputGaussianProcess<double>;
+
     auto compute_z = [](const Eigen::VectorXd &x,
                         const Eigen::VectorXd &y,
                         Eigen::VectorXd &z1,
@@ -240,13 +258,20 @@ TEST(VanillaGaussianProcess, MultiInputMultiOutput) {
     constexpr double x_max = 1.0;
     constexpr double y_min = -1.0;
     constexpr double y_max = 1.0;
+    constexpr long m = 20;
     constexpr long n = 50;
-    const auto setting = std::make_shared<VanillaGaussianProcessD::Setting>();
-    setting->kernel->scale = 5 * x_max / static_cast<double>(n);
+    const auto setting = std::make_shared<SpGp::Setting>();
+    setting->kernel->scale = 0.17;
     setting->kernel->x_dim = 2;
     setting->kernel_type = type_name<erl::covariance::RadialBiasFunction2d>();
     setting->max_num_samples = n * n;
-    VanillaGaussianProcessD gp(setting);
+    setting->use_sparse = false;
+    Eigen::MatrixXd pseudo_points = GridMapInfo2Dd(
+                                        Eigen::Vector2i(m, m),
+                                        Eigen::Vector2d(x_min, y_min),
+                                        Eigen::Vector2d(x_max, y_max))
+                                        .GenerateMeterCoordinates(true);
+    SpGp gp(setting, pseudo_points);
 
     // Eigen::VectorXd x = Eigen::VectorXd::Random(n).array() * (x_max - x_min) + x_min;
     // Eigen::VectorXd y = Eigen::VectorXd::Random(n).array() * (y_max - y_min) + y_min;
@@ -266,7 +291,7 @@ TEST(VanillaGaussianProcess, MultiInputMultiOutput) {
         train_set.y.col(1).head(pts.cols()) = z2;
         train_set.var.head(pts.cols()).setConstant(kNoiseVar);
         train_set.num_samples = pts.cols();
-        ASSERT_TRUE(gp.Train());
+        ASSERT_TRUE(gp.Update(true));
     }
 
     constexpr long n_test = 100;
@@ -363,18 +388,11 @@ TEST(VanillaGaussianProcess, MultiInputMultiOutput) {
     const double mae1 = error1.cwiseAbs().mean();
     const double mae2 = error2.cwiseAbs().mean();
     ERL_INFO("mean absolute error: {}, {}.", mae1, mae2);
-    ASSERT_TRUE(mae1 < 5.1e-4);  // 0.0005035569336460478
-    ASSERT_TRUE(mae2 < 1.2e-3);  // 0.0011257545588707807
+    ASSERT_TRUE(mae1 < 1.8e-3);  // 0.0017531063919674229
+    ASSERT_TRUE(mae2 < 3.5e-3);  // 0.0034844129064230487
 
-    ASSERT_TRUE(Serialization<VanillaGaussianProcessD>::Write("vanilla_gp.bin", &gp));
-    VanillaGaussianProcessD gp_read(std::make_shared<VanillaGaussianProcessD::Setting>());
-    ASSERT_TRUE(Serialization<VanillaGaussianProcessD>::Read("vanilla_gp.bin", &gp_read));
+    ASSERT_TRUE(Serialization<SpGp>::Write("sp_gp.bin", &gp));
+    SpGp gp_read(setting, pseudo_points);
+    ASSERT_TRUE(Serialization<SpGp>::Read("sp_gp.bin", &gp_read));
     EXPECT_TRUE(gp == gp_read);
-}
-
-int
-main(int argc, char *argv[]) {
-    Init();
-    ::testing::InitGoogleTest(&argc, argv);
-    return RUN_ALL_TESTS();
 }

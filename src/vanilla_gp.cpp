@@ -111,7 +111,7 @@ namespace erl::gaussian_process {
         (void) parallel;
         // var = ktest(xt, xt) - ktest(xt, X) @ (ktest(X, X) + sigma * I).m_inv_() @ ktest(X, xt)
         //     = ktest(xt, xt) - ktest(xt, X) @ (m_l_ @ m_l_.T).m_inv_() @ ktest(X, xt)
-        const_cast<TestResult *>(this)->PrepareAlphaTest();
+        const_cast<TestResult *>(this)->PrepareForVariance(parallel);
         Dtype *var = vec_var_out.data();
 #pragma omp parallel for if (parallel) default(none) shared(var)
         for (long i = 0; i < m_num_test_; ++i) {
@@ -125,7 +125,7 @@ namespace erl::gaussian_process {
     template<typename Dtype>
     void
     VanillaGaussianProcess<Dtype>::TestResult::GetVariance(long index, Dtype &var) const {
-        const_cast<TestResult *>(this)->PrepareAlphaTest();
+        const_cast<TestResult *>(this)->PrepareForVariance(true);
         var = m_mat_alpha_test_.col(index).squaredNorm();
         if (m_reduced_rank_kernel_) { return; }
         var = 1.0f - var;  // variance of h(x)
@@ -133,16 +133,20 @@ namespace erl::gaussian_process {
 
     template<typename Dtype>
     void
-    VanillaGaussianProcess<Dtype>::TestResult::PrepareAlphaTest() {
+    VanillaGaussianProcess<Dtype>::TestResult::PrepareForVariance(const bool parallel) {
         if (m_mat_alpha_test_.size() > 0) { return; }
         const long rows = m_mat_k_test_.rows();
         auto mat_l =
             m_gp_->m_mat_l_.topLeftCorner(rows, rows).template triangularView<Eigen::Lower>();
-        m_mat_alpha_test_.resize(rows, m_mat_k_test_.cols());
+        if (parallel) {
+            m_mat_alpha_test_.resize(rows, m_mat_k_test_.cols());
 #pragma omp parallel for default(none) shared(mat_l)
-        for (long i = 0; i < m_mat_k_test_.cols(); ++i) {
-            m_mat_alpha_test_.col(i) = mat_l.solve(m_mat_k_test_.col(i));
+            for (long i = 0; i < m_mat_k_test_.cols(); ++i) {
+                m_mat_alpha_test_.col(i) = mat_l.solve(m_mat_k_test_.col(i));
+            }
+            return;
         }
+        m_mat_alpha_test_ = mat_l.solve(m_mat_k_test_);
     }
 
     template<typename Dtype>
@@ -375,14 +379,14 @@ namespace erl::gaussian_process {
         const long max_num_samples,
         const long x_dim,
         const long y_dim) {
-        ERL_DEBUG_ASSERT(max_num_samples > 0, "max_num_samples should be > 0.");
-        ERL_DEBUG_ASSERT(x_dim > 0, "x_dim should be > 0.");
-        ERL_DEBUG_ASSERT(y_dim > 0, "y_dim should be > 0.");
-        ERL_DEBUG_ASSERT(
+        ERL_ASSERTM(max_num_samples > 0, "max_num_samples should be > 0.");
+        ERL_ASSERTM(x_dim > 0, "x_dim should be > 0.");
+        ERL_ASSERTM(y_dim > 0, "y_dim should be > 0.");
+        ERL_ASSERTM(
             m_setting_->kernel->x_dim == -1 || m_setting_->kernel->x_dim == x_dim,
             "x_dim should be {}.",
             m_setting_->kernel->x_dim);
-        ERL_DEBUG_ASSERT(
+        ERL_ASSERTM(
             m_setting_->max_num_samples < 0 || max_num_samples <= m_setting_->max_num_samples,
             "max_num_samples should be <= {}.",
             m_setting_->max_num_samples);
@@ -567,6 +571,11 @@ namespace erl::gaussian_process {
         if (m_k_train_updated_ != other.m_k_train_updated_) { return false; }
         if (m_k_train_rows_ != other.m_k_train_rows_) { return false; }
         if (m_k_train_cols_ != other.m_k_train_cols_) { return false; }
+        if (m_kernel_ == nullptr && other.m_kernel_ != nullptr) { return false; }
+        if (m_kernel_ != nullptr &&
+            (other.m_kernel_ == nullptr || *m_kernel_ != *other.m_kernel_)) {
+            return false;
+        }
         if (m_reduced_rank_kernel_ != other.m_reduced_rank_kernel_) { return false; }
         if (m_train_set_ != other.m_train_set_) { return false; }
         if (other.m_mat_k_train_.rows() < m_k_train_rows_ ||

@@ -71,7 +71,7 @@ namespace erl::gaussian_process {
 
         protected:
             void
-            PrepareAlphaTest();
+            PrepareForVariance(bool parallel);
         };
 
         struct TrainSet {
@@ -100,7 +100,7 @@ namespace erl::gaussian_process {
 
     protected:
         std::shared_ptr<Setting> m_setting_ = nullptr;    // setting
-        bool m_trained_ = true;                           // true if the GP is trained
+        bool m_trained_ = false;                          // true if the GP is trained
         bool m_trained_once_ = false;                     // true if the GP is trained at least once
         bool m_k_train_updated_ = false;                  // true if Ktrain is updated
         long m_k_train_rows_ = 0;                         // number of rows of Ktrain
