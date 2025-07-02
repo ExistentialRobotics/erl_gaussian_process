@@ -2,6 +2,8 @@
 
 #include "erl_common/serialization.hpp"
 
+#include <open3d/core/Dtype.h>
+
 namespace erl::gaussian_process {
     template<typename Dtype>
     YAML::Node
@@ -14,6 +16,7 @@ namespace erl::gaussian_process {
         ERL_YAML_SAVE_ATTR(node, setting, max_num_samples);
         ERL_YAML_SAVE_ATTR(node, setting, sparse_zero_threshold);
         ERL_YAML_SAVE_ATTR(node, setting, use_sparse);
+        ERL_YAML_SAVE_ATTR(node, setting, diagonal_qm);
         return node;
     }
 
@@ -32,43 +35,99 @@ namespace erl::gaussian_process {
         ERL_YAML_LOAD_ATTR(node, setting, max_num_samples);
         ERL_YAML_LOAD_ATTR(node, setting, sparse_zero_threshold);
         ERL_YAML_LOAD_ATTR(node, setting, use_sparse);
+        ERL_YAML_LOAD_ATTR(node, setting, diagonal_qm);
         return true;
     }
 
     template<typename Dtype>
     SparsePseudoInputGaussianProcess<Dtype>::TestResult::TestResult(
         const SparsePseudoInputGaussianProcess *gp,
-        const Eigen::Ref<const MatrixX> &mat_x_test)
+        const Eigen::Ref<const MatrixX> &mat_x_test,
+        const bool will_predict_gradient)
         : m_gp_(NotNull(gp, true, "gp = nullptr.")),
           m_num_test_(mat_x_test.cols()),
+          m_support_gradient_(will_predict_gradient),
           m_use_sparse_(m_gp_->m_setting_->use_sparse),
           m_x_dim_(m_gp_->m_train_set_.x_dim),
           m_y_dim_(m_gp_->m_train_set_.y_dim) {
 
         auto &pseudo_points = m_gp_->m_pseudo_points_;
+        const long n = m_num_test_ * (m_support_gradient_ ? m_x_dim_ + 1 : 1);
         if (m_use_sparse_) {
-            m_sparse_mat_k_test_ = SparseMatrix(pseudo_points.cols(), m_num_test_);
-            (void) m_gp_->m_kernel_->ComputeKtestSparse(
-                pseudo_points,
-                pseudo_points.cols(),
-                mat_x_test,
-                m_num_test_,
-                m_gp_->m_setting_->sparse_zero_threshold,
-                m_sparse_mat_k_test_);
+            m_sparse_mat_k_test_ = SparseMatrix(pseudo_points.cols(), n);
+            if (m_support_gradient_) {
+                Eigen::VectorXl grad_flags = Eigen::VectorXl::Zero(pseudo_points.cols());
+                (void) m_gp_->m_kernel_->ComputeKtestWithGradientSparse(
+                    pseudo_points,
+                    pseudo_points.cols(),
+                    grad_flags,
+                    mat_x_test,
+                    m_num_test_,
+                    true, /*predict_gradient*/
+                    m_gp_->m_setting_->sparse_zero_threshold,
+                    m_sparse_mat_k_test_);
+            } else {
+                (void) m_gp_->m_kernel_->ComputeKtestSparse(
+                    pseudo_points,
+                    pseudo_points.cols(),
+                    mat_x_test,
+                    m_num_test_,
+                    m_gp_->m_setting_->sparse_zero_threshold,
+                    m_sparse_mat_k_test_);
+            }
         } else {
-            m_mat_k_test_.resize(pseudo_points.cols(), m_num_test_);
-            (void) m_gp_->m_kernel_->ComputeKtest(
-                pseudo_points,
-                pseudo_points.cols(),
-                mat_x_test,
-                m_num_test_,
-                m_mat_k_test_);
+            m_mat_k_test_.resize(pseudo_points.cols(), n);
+            if (m_support_gradient_) {
+                Eigen::VectorXl grad_flags = Eigen::VectorXl::Zero(pseudo_points.cols());
+                (void) m_gp_->m_kernel_->ComputeKtestWithGradient(
+                    pseudo_points,
+                    pseudo_points.cols(),
+                    grad_flags,
+                    mat_x_test,
+                    m_num_test_,
+                    true, /*predict_gradient*/
+                    m_mat_k_test_);
+            } else {
+                (void) m_gp_->m_kernel_->ComputeKtest(
+                    pseudo_points,
+                    pseudo_points.cols(),
+                    mat_x_test,
+                    m_num_test_,
+                    m_mat_k_test_);
+            }
         }
 
-        m_mat_alpha_ =
-            m_gp_->m_mat_l_qm_.template triangularView<Eigen::Lower>().solve(m_gp_->m_mat_alpha_);
-        m_gp_->m_mat_l_qm_.transpose().template triangularView<Eigen::Upper>().solveInPlace(
-            m_mat_alpha_);
+        if (m_gp_->m_setting_->diagonal_qm) {
+            m_mat_alpha_ = m_gp_->m_mat_alpha_.array().colwise() / m_gp_->m_mat_qm_.col(0).array();
+        } else {
+            m_mat_alpha_ = m_gp_->m_mat_l_qm_
+                               .template triangularView<Eigen::Lower>()  //
+                               .solve(m_gp_->m_mat_alpha_);
+            m_gp_->m_mat_l_qm_.transpose()
+                .template triangularView<Eigen::Upper>()  //
+                .solveInPlace(m_mat_alpha_);
+        }
+
+        // VectorX qm_diagonal = m_gp_->m_mat_qm_.diagonal();
+        // m_mat_alpha_ = m_gp_->m_mat_alpha_.array().colwise() / qm_diagonal.array();
+    }
+
+    template<typename Dtype>
+    long
+    SparsePseudoInputGaussianProcess<Dtype>::TestResult::GetNumTest() const {
+        return m_num_test_;
+    }
+
+    template<typename Dtype>
+    long
+    SparsePseudoInputGaussianProcess<Dtype>::TestResult::GetDimX() const {
+        return m_x_dim_;
+    }
+
+    template<typename Dtype>
+    long
+    SparsePseudoInputGaussianProcess<Dtype>::TestResult::GetDimY() const {
+        return m_y_dim_;
     }
 
     template<typename Dtype>
@@ -76,7 +135,7 @@ namespace erl::gaussian_process {
     SparsePseudoInputGaussianProcess<Dtype>::TestResult::GetMean(
         long y_index,
         Eigen::Ref<VectorX> vec_f_out,
-        bool parallel) const {
+        const bool parallel) const {
         (void) parallel;
         ERL_DEBUG_ASSERT(
             y_index >= 0 && y_index < m_y_dim_,
@@ -126,10 +185,103 @@ namespace erl::gaussian_process {
     }
 
     template<typename Dtype>
+    Eigen::VectorXb
+    SparsePseudoInputGaussianProcess<Dtype>::TestResult::GetGradient(
+        const long y_index,
+        Eigen::Ref<MatrixX> mat_grad_out,
+        const bool parallel) const {
+        (void) parallel;
+        ERL_DEBUG_ASSERT(
+            m_support_gradient_,
+            "m_support_gradient_ = false, it should be true to call GetGradient().");
+        ERL_DEBUG_ASSERT(
+            y_index >= 0 && y_index < m_y_dim_,
+            "y_index = {}, it should be in [0, {}).",
+            y_index,
+            m_y_dim_);
+        ERL_DEBUG_ASSERT(
+            mat_grad_out.rows() >= m_x_dim_,
+            "mat_grad_out.rows() = {}, it should be >= {}.",
+            mat_grad_out.rows(),
+            m_x_dim_);
+        ERL_DEBUG_ASSERT(
+            mat_grad_out.cols() >= m_num_test_,
+            "mat_grad_out.cols() = {}, it should be >= {}.",
+            mat_grad_out.cols(),
+            m_num_test_);
+        const auto alpha = m_gp_->m_mat_alpha_.col(y_index);
+        Eigen::VectorXb valid_gradients(m_num_test_);
+        if (m_use_sparse_) {
+#pragma omp parallel for if (parallel) default(none) shared(alpha, mat_grad_out, valid_gradients)
+            for (long index = 0; index < m_num_test_; ++index) {
+                Dtype *grad = mat_grad_out.col(index).data();
+                for (long j = 0, jj = index + m_num_test_; j < m_x_dim_; ++j, jj += m_num_test_) {
+                    *grad = m_sparse_mat_k_test_.col(jj).dot(alpha);
+                    if (!std::isfinite(*grad)) {
+                        valid_gradients[index] = false;
+                        break;
+                    }
+                    ++grad;
+                }
+            }
+        } else {
+#pragma omp parallel for if (parallel) default(none) shared(alpha, mat_grad_out, valid_gradients)
+            for (long index = 0; index < m_num_test_; ++index) {
+                Dtype *grad = mat_grad_out.col(index).data();
+                for (long j = 0, jj = index + m_num_test_; j < m_x_dim_; ++j, jj += m_num_test_) {
+                    *grad = m_mat_k_test_.col(jj).dot(alpha);
+                    if (!std::isfinite(*grad)) {
+                        valid_gradients[index] = false;
+                        break;
+                    }
+                    ++grad;
+                }
+            }
+        }
+        return valid_gradients;
+    }
+
+    template<typename Dtype>
+    bool
+    SparsePseudoInputGaussianProcess<Dtype>::TestResult::GetGradient(
+        const long index,
+        const long y_index,
+        Dtype *grad) const {
+        ERL_DEBUG_ASSERT(
+            m_support_gradient_,
+            "m_support_gradient_ = false, it should be true to call GetGradient().");
+        ERL_DEBUG_ASSERT(
+            index >= 0 && index < m_num_test_,
+            "index = {}, it should be in [0, {}).",
+            index,
+            m_num_test_);
+        ERL_DEBUG_ASSERT(
+            y_index >= 0 && y_index < m_y_dim_,
+            "y_index = {}, it should be in [0, {}).",
+            y_index,
+            m_y_dim_);
+        const auto alpha = m_mat_alpha_.col(y_index);
+        if (m_use_sparse_) {
+            for (long j = 0, jj = index + m_num_test_; j < m_x_dim_; ++j, jj += m_num_test_) {
+                *grad = m_sparse_mat_k_test_.col(jj).dot(alpha);
+                if (!std::isfinite(*grad)) { return false; }  // gradient is not valid
+                ++grad;
+            }
+        } else {
+            for (long j = 0, jj = index + m_num_test_; j < m_x_dim_; ++j, jj += m_num_test_) {
+                *grad = m_mat_k_test_.col(jj).dot(alpha);
+                if (!std::isfinite(*grad)) { return false; }  // gradient is not valid
+                ++grad;
+            }
+        }
+        return true;
+    }
+
+    template<typename Dtype>
     void
     SparsePseudoInputGaussianProcess<Dtype>::TestResult::GetVariance(
         Eigen::Ref<VectorX> vec_var_out,
-        bool parallel) const {
+        const bool parallel) const {
         (void) parallel;
         const_cast<TestResult *>(this)->PrepareForVariance();
         Dtype *var = vec_var_out.data();
@@ -186,12 +338,16 @@ namespace erl::gaussian_process {
         const long m = m_pseudo_points_.cols();
         m_mat_km_ = MatrixX::Zero(m, m);
         (void) m_kernel_->ComputeKtest(m_pseudo_points_, m, m_pseudo_points_, m, m_mat_km_);
+        m_mat_l_km_ = m_mat_km_.llt().matrixL();
         if (m_setting_->use_sparse) {
             m_sparse_mat_km_ = m_mat_km_.sparseView(m_setting_->sparse_zero_threshold);
             m_sparse_mat_km_.makeCompressed();
         }
-        m_mat_qm_ = m_mat_km_;
-        m_mat_l_km_ = m_mat_km_.llt().matrixL();
+        if (m_setting_->diagonal_qm) {
+            m_mat_qm_ = MatrixX::Ones(m, 1);
+        } else {
+            m_mat_qm_ = m_mat_km_;
+        }
 
         ERL_DEBUG_ASSERT(!m_mat_km_.hasNaN(), "m_mat_km_ has NaN values.");
         ERL_DEBUG_ASSERT(
@@ -203,6 +359,12 @@ namespace erl::gaussian_process {
     std::shared_ptr<const typename SparsePseudoInputGaussianProcess<Dtype>::Setting>
     SparsePseudoInputGaussianProcess<Dtype>::GetSetting() const {
         return m_setting_;
+    }
+
+    template<typename Dtype>
+    bool
+    SparsePseudoInputGaussianProcess<Dtype>::IsTrained() const {
+        return m_trained_;
     }
 
     template<typename Dtype>
@@ -233,6 +395,12 @@ namespace erl::gaussian_process {
     }
 
     template<typename Dtype>
+    std::shared_ptr<typename SparsePseudoInputGaussianProcess<Dtype>::Covariance>
+    SparsePseudoInputGaussianProcess<Dtype>::GetKernel() const {
+        return m_kernel_;
+    }
+
+    template<typename Dtype>
     void
     SparsePseudoInputGaussianProcess<Dtype>::Reset(long max_num_samples, long x_dim, long y_dim) {
         ERL_DEBUG_ASSERT(max_num_samples > 0, "max_num_samples should be > 0.");
@@ -251,8 +419,6 @@ namespace erl::gaussian_process {
         const long m = m_pseudo_points_.cols();
         m_train_set_.Reset(max_num_samples, x_dim, y_dim);
         if (m_mat_alpha_.size() == 0) { m_mat_alpha_.setConstant(m, y_dim, 0); }
-        // TODO: reset other matrices if needed
-
         ERL_ASSERTM(
             m_mat_alpha_.cols() == y_dim,
             "m_mat_alpha_ is initialized for {} dimensions, but y_dim is {}.",
@@ -264,6 +430,42 @@ namespace erl::gaussian_process {
     const typename SparsePseudoInputGaussianProcess<Dtype>::MatrixX &
     SparsePseudoInputGaussianProcess<Dtype>::GetPseudoPoints() const {
         return m_pseudo_points_;
+    }
+
+    template<typename Dtype>
+    const typename SparsePseudoInputGaussianProcess<Dtype>::MatrixX &
+    SparsePseudoInputGaussianProcess<Dtype>::GetMatKm() const {
+        return m_mat_km_;
+    }
+
+    template<typename Dtype>
+    const typename SparsePseudoInputGaussianProcess<Dtype>::SparseMatrix &
+    SparsePseudoInputGaussianProcess<Dtype>::GetSparseMatKm() const {
+        return m_sparse_mat_km_;
+    }
+
+    template<typename Dtype>
+    const typename SparsePseudoInputGaussianProcess<Dtype>::MatrixX &
+    SparsePseudoInputGaussianProcess<Dtype>::GetMatLKm() const {
+        return m_mat_l_km_;
+    }
+
+    template<typename Dtype>
+    const typename SparsePseudoInputGaussianProcess<Dtype>::MatrixX &
+    SparsePseudoInputGaussianProcess<Dtype>::GetMatQm() const {
+        return m_mat_qm_;
+    }
+
+    template<typename Dtype>
+    const typename SparsePseudoInputGaussianProcess<Dtype>::MatrixX &
+    SparsePseudoInputGaussianProcess<Dtype>::GetMatLQm() const {
+        return m_mat_l_qm_;
+    }
+
+    template<typename Dtype>
+    const typename SparsePseudoInputGaussianProcess<Dtype>::MatrixX &
+    SparsePseudoInputGaussianProcess<Dtype>::GetMatAlpha() const {
+        return m_mat_alpha_;
     }
 
     template<typename Dtype>
@@ -280,7 +482,8 @@ namespace erl::gaussian_process {
 
     template<typename Dtype>
     bool
-    SparsePseudoInputGaussianProcess<Dtype>::Update(bool parallel) {
+    SparsePseudoInputGaussianProcess<Dtype>::Update(const bool parallel) {
+        if (m_trained_) { return true; }
         if (m_setting_->use_sparse) { return UpdateSparse(parallel); }
         return UpdateDense(parallel);
     }
@@ -288,9 +491,10 @@ namespace erl::gaussian_process {
     template<typename Dtype>
     std::shared_ptr<typename SparsePseudoInputGaussianProcess<Dtype>::TestResult>
     SparsePseudoInputGaussianProcess<Dtype>::Test(
-        const Eigen::Ref<const MatrixX> &mat_x_test) const {
+        const Eigen::Ref<const MatrixX> &mat_x_test,
+        const bool predict_gradient) const {
         const_cast<SparsePseudoInputGaussianProcess *>(this)->PrepareLqm();
-        return std::make_shared<TestResult>(this, mat_x_test);
+        return std::make_shared<TestResult>(this, mat_x_test, predict_gradient);
     }
 
     template<typename Dtype>
@@ -312,13 +516,13 @@ namespace erl::gaussian_process {
         }
         if (m_reduced_rank_kernel_ != other.m_reduced_rank_kernel_) { return false; }
         if (m_pseudo_points_ != other.m_pseudo_points_) { return false; }
-        if (m_mat_km_ != other.m_mat_km_) { return false; }
-        if (!common::SafeSparseEigenMatrixEqual(m_sparse_mat_km_, other.m_sparse_mat_km_)) {
-            return false;
-        }
-        if (m_mat_l_km_ != other.m_mat_l_km_) { return false; }
-        if (m_mat_qm_ != other.m_mat_qm_) { return false; }
-        if (m_mat_alpha_ != other.m_mat_alpha_) { return false; }
+        using namespace common;
+        if (!SafeEigenMatrixEqual(m_mat_km_, other.m_mat_km_)) { return false; }
+        if (!SafeSparseEigenMatrixEqual(m_sparse_mat_km_, other.m_sparse_mat_km_)) { return false; }
+        if (!SafeEigenMatrixEqual(m_mat_l_km_, other.m_mat_l_km_)) { return false; }
+        if (!SafeEigenMatrixEqual(m_mat_qm_, other.m_mat_qm_)) { return false; }
+        if (!SafeEigenMatrixEqual(m_mat_l_qm_, other.m_mat_l_qm_)) { return false; }
+        if (!SafeEigenMatrixEqual(m_mat_alpha_, other.m_mat_alpha_)) { return false; }
         if (m_train_set_ != other.m_train_set_) { return false; }
         return true;
     }
@@ -546,15 +750,18 @@ namespace erl::gaussian_process {
 
     template<typename Dtype>
     bool
-    SparsePseudoInputGaussianProcess<Dtype>::UpdateDense(bool parallel) {
+    SparsePseudoInputGaussianProcess<Dtype>::UpdateDense(const bool parallel) {
         (void) parallel;
         m_trained_ = m_trained_once_;
         if (!m_train_set_.num_samples) { return false; }  // no training samples
+
+        // compute K_MN
         const long m = m_pseudo_points_.cols();
         MatrixX mat_kmn(m, m_train_set_.num_samples);
-        // compute K_MN
         (void) m_kernel_
             ->ComputeKtest(m_pseudo_points_, m, m_train_set_.x, m_train_set_.num_samples, mat_kmn);
+
+        // update Q_M and alpha
         MatrixX mat_kmn_scaled = mat_kmn;
         auto mat_l_km = m_mat_l_km_.template triangularView<Eigen::Lower>();
         const Dtype *var = m_train_set_.var.data();
@@ -565,8 +772,13 @@ namespace erl::gaussian_process {
             Dtype lambda = 1.0f - beta.squaredNorm();
             mat_kmn_scaled.col(i) *= 1.0f / (lambda + var[i]);
         }
-        m_mat_qm_ += mat_kmn_scaled * mat_kmn.transpose();  // update Q_M
-        m_mat_alpha_ += mat_kmn_scaled * m_train_set_.y;    // update alpha
+        if (m_setting_->diagonal_qm) {
+            m_mat_qm_ += mat_kmn_scaled.cwiseProduct(mat_kmn).rowwise().sum();
+        } else {
+            m_mat_qm_ += mat_kmn_scaled * mat_kmn.transpose();
+        }
+        m_mat_alpha_ += mat_kmn_scaled * m_train_set_.y.topRows(m_train_set_.num_samples);  // alpha
+
         m_trained_once_ = true;
         m_trained_ = true;
 
@@ -580,7 +792,7 @@ namespace erl::gaussian_process {
 
     template<typename Dtype>
     bool
-    SparsePseudoInputGaussianProcess<Dtype>::UpdateSparse(bool parallel) {
+    SparsePseudoInputGaussianProcess<Dtype>::UpdateSparse(const bool parallel) {
         (void) parallel;
         m_trained_ = m_trained_once_;
         if (!m_train_set_.num_samples) { return false; }  // no training samples
@@ -594,6 +806,8 @@ namespace erl::gaussian_process {
             m_train_set_.num_samples,
             m_setting_->sparse_zero_threshold,
             mat_kmn);
+
+        // update Q_M
         SparseMatrix mat_kmn_scaled = mat_kmn;
         auto mat_l_km = m_mat_l_km_.template triangularView<Eigen::Lower>();
         const Dtype *var = m_train_set_.var.data();
@@ -604,8 +818,14 @@ namespace erl::gaussian_process {
             Dtype lambda = 1.0f - beta.squaredNorm();
             mat_kmn_scaled.col(i) *= 1.0f / (lambda + var[i]);
         }
-        m_mat_qm_ += mat_kmn_scaled * mat_kmn.transpose();  // update Q_M
-        m_mat_alpha_ += mat_kmn_scaled * m_train_set_.y;    // update alpha
+        if (m_setting_->diagonal_qm) {
+            for (long i = 0; i < m_train_set_.num_samples; ++i) {
+                m_mat_qm_ += mat_kmn_scaled.col(i).cwiseProduct(mat_kmn.col(i));
+            }
+        } else {
+            m_mat_qm_ += mat_kmn_scaled * mat_kmn.transpose();
+        }
+        m_mat_alpha_ += mat_kmn_scaled * m_train_set_.y.topRows(m_train_set_.num_samples);  // alpha
         m_trained_once_ = true;
         m_trained_ = true;
         return true;
@@ -616,7 +836,7 @@ namespace erl::gaussian_process {
     SparsePseudoInputGaussianProcess<Dtype>::PrepareLqm() {
         std::lock_guard<std::mutex> lock(m_mutex_);
         if (!m_mat_l_qm_updated_) {
-            m_mat_l_qm_ = m_mat_qm_.llt().matrixL();
+            if (!m_setting_->diagonal_qm) { m_mat_l_qm_ = m_mat_qm_.llt().matrixL(); }
             m_mat_l_qm_updated_ = true;
         }
     }

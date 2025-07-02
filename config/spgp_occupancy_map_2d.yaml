@@ -1,0 +1,15 @@
+sp_gp:
+    kernel_type: erl::covariance::Covariance<float>
+    kernel_setting_type: erl::covariance::Covariance<float>::Setting
+    kernel:
+        x_dim: 2
+        scale: 1
+        scale_mix: 1
+        weights: []
+    max_num_samples: 256
+    sparse_zero_threshold: 9.99999997e-07
+    use_sparse: false
+max_distance: 30
+free_points_per_meter: 2
+free_sampling_margin: 0.0500000007
+parallel: true

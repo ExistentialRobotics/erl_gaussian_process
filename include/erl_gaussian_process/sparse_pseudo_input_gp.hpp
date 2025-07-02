@@ -53,6 +53,8 @@ namespace erl::gaussian_process {
             Dtype sparse_zero_threshold = 1e-6f;
             // if true, use sparse matrix to speed up the computation.
             bool use_sparse = false;
+            // if true, assume Q_M is diagonal.
+            bool diagonal_qm = false;
 
             struct YamlConvertImpl {
                 static YAML::Node
@@ -67,6 +69,7 @@ namespace erl::gaussian_process {
         protected:
             const SparsePseudoInputGaussianProcess *m_gp_;
             const long m_num_test_;
+            const bool m_support_gradient_;  // whether support gradient prediction
             const bool m_use_sparse_;
             const long m_x_dim_;
             const long m_y_dim_;
@@ -79,13 +82,29 @@ namespace erl::gaussian_process {
         public:
             TestResult(
                 const SparsePseudoInputGaussianProcess *gp,
-                const Eigen::Ref<const MatrixX> &mat_x_test);
+                const Eigen::Ref<const MatrixX> &mat_x_test,
+                bool will_predict_gradient);
+
+            [[nodiscard]] long
+            GetNumTest() const;
+
+            [[nodiscard]] long
+            GetDimX() const;
+
+            [[nodiscard]] long
+            GetDimY() const;
 
             void
             GetMean(long y_index, Eigen::Ref<VectorX> vec_f_out, bool parallel) const;
 
             void
             GetMean(long index, long y_index, Dtype &f) const;
+
+            [[nodiscard]] Eigen::VectorXb
+            GetGradient(long y_index, Eigen::Ref<MatrixX> mat_grad_out, bool parallel) const;
+
+            [[nodiscard]] bool
+            GetGradient(long index, long y_index, Dtype *grad) const;
 
             void
             GetVariance(Eigen::Ref<VectorX> vec_var_out, bool parallel) const;
@@ -137,6 +156,9 @@ namespace erl::gaussian_process {
         GetSetting() const;
 
         [[nodiscard]] bool
+        IsTrained() const;
+
+        [[nodiscard]] bool
         UsingReducedRankKernel() const;
 
         [[nodiscard]] VectorX
@@ -145,11 +167,32 @@ namespace erl::gaussian_process {
         void
         SetKernelCoordOrigin(const VectorX &coord_origin) const;
 
+        [[nodiscard]] std::shared_ptr<Covariance>
+        GetKernel() const;
+
         void
         Reset(long max_num_samples, long x_dim, long y_dim);
 
         [[nodiscard]] const MatrixX &
         GetPseudoPoints() const;
+
+        [[nodiscard]] const MatrixX &
+        GetMatKm() const;
+
+        [[nodiscard]] const SparseMatrix &
+        GetSparseMatKm() const;
+
+        [[nodiscard]] const MatrixX &
+        GetMatLKm() const;
+
+        [[nodiscard]] const MatrixX &
+        GetMatQm() const;
+
+        [[nodiscard]] const MatrixX &
+        GetMatLQm() const;
+
+        [[nodiscard]] const MatrixX &
+        GetMatAlpha() const;
 
         [[nodiscard]] TrainSet &
         GetTrainSet();
@@ -161,7 +204,7 @@ namespace erl::gaussian_process {
         Update(bool parallel);
 
         [[nodiscard]] std::shared_ptr<TestResult>
-        Test(const Eigen::Ref<const MatrixX> &mat_x_test) const;
+        Test(const Eigen::Ref<const MatrixX> &mat_x_test, bool predict_gradient) const;
 
         [[nodiscard]] bool
         operator==(const SparsePseudoInputGaussianProcess &other) const;

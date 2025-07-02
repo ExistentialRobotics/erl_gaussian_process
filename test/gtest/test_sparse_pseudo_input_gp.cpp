@@ -45,7 +45,7 @@ TEST(SparsePseudoInputGaussianProcess, SingleInputSingleOutput) {
     Eigen::VectorXd y_pred(n_test);
     {
         ERL_BLOCK_TIMER_MSG("gp.Test");
-        auto test_result = gp.Test(x_test.transpose());
+        auto test_result = gp.Test(x_test.transpose(), false);
         ASSERT_TRUE(test_result != nullptr);
         test_result->GetMean(0, y_pred, true);
     }
@@ -179,7 +179,7 @@ TEST(SparsePseudoInputGaussianProcess, MultiInputSingleOutput) {
     Eigen::VectorXd z_pred(z_test.size());
     {
         ERL_BLOCK_TIMER_MSG("gp.Test");
-        auto test_result = gp.Test(pts);
+        auto test_result = gp.Test(pts, false);
         ASSERT_TRUE(test_result != nullptr);
         test_result->GetMean(0, z_pred, true);
     }
@@ -305,7 +305,7 @@ TEST(SparsePseudoInputGaussianProcess, MultiInputMultiOutput) {
     Eigen::VectorXd z2_pred(n_test * n_test);
     {
         ERL_BLOCK_TIMER_MSG("gp.Test");
-        auto test_result = gp.Test(pts);
+        auto test_result = gp.Test(pts, false);
         ASSERT_TRUE(test_result != nullptr);
         test_result->GetMean(0, z1_pred, true);
         test_result->GetMean(1, z2_pred, true);
