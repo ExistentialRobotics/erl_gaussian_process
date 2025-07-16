@@ -1,5 +1,6 @@
 <?xml version="1.0"?>
-<package format="2">
+<?xml-model href="http://download.ros.org/schema/package_format3.xsd" schematypens="http://www.w3.org/2001/XMLSchema"?>
+<package format="3">
     <name>erl_gaussian_process</name>
     <version>0.1.0</version>
     <description>erl_gaussian_process is a C++ implementation of Gaussian Process.</description>
@@ -8,7 +9,8 @@
     <license>MIT</license>
     <url type="repository">https://github.com/ExistentialRobotics/erl_gaussian_process.git</url>
 
-    <buildtool_depend>catkin</buildtool_depend>
+    <buildtool_depend condition="$ROS_VERSION == 1">catkin</buildtool_depend>
+    <buildtool_depend condition="$ROS_VERSION == 2">ament_cmake</buildtool_depend>
 
     <build_depend>erl_common</build_depend>
     <build_depend>erl_covariance</build_depend>
@@ -17,5 +19,9 @@
     <build_export_depend>erl_common</build_export_depend>
     <build_export_depend>erl_covariance</build_export_depend>
     <build_export_depend>erl_geometry</build_export_depend>
+
+    <export>
+        <build_type condition="$ROS_VERSION == 2">ament_cmake</build_type>
+    </export>
 
 </package>

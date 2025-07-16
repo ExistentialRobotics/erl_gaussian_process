@@ -261,7 +261,7 @@ TestImpl2D(const int hinged_grid_size, const int test_grid_size, const std::stri
     GTEST_PREPARE_OUTPUT_DIR();
     auto setting = std::make_shared<typename SpGpOccupancyMap<Dtype, 2>::Setting>();
     if (std::filesystem::exists(config_file)) {
-        setting->FromYamlFile(config_file);
+        ASSERT_TRUE(setting->FromYamlFile(config_file));
     } else {
         setting->AsYamlFile(config_file);
     }

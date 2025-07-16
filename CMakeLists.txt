@@ -11,19 +11,13 @@ if (NOT COMMAND erl_project_setup)
 endif ()
 
 erl_project_setup(
-        ${PROJECT_NAME}
         ERL_PACKAGES erl_common erl_covariance erl_geometry
 )
-erl_setup_ros()
-erl_catkin_package(
-        INCLUDE_DIRS include
-        LIBRARIES ${PROJECT_NAME} py${PROJECT_NAME}
-        CATKIN_DEPENDS ${${PROJECT_NAME}_CATKIN_DEPENDS}
-        DEPENDS ${${PROJECT_NAME}_DEPENDS})
+erl_setup_ros(LIBRARIES ${PROJECT_NAME})
 
-if (NOT TARGET Open3D::Open3D)
-    erl_config_open3d()
-endif ()
+# if (NOT TARGET Open3D::Open3D)
+#     erl_config_open3d()
+# endif ()
 # ######################################################################################################################
 # BUILD
 # ######################################################################################################################
@@ -38,16 +32,17 @@ target_include_directories(${PROJECT_NAME}
         PUBLIC
         $<BUILD_INTERFACE:${${PROJECT_NAME}_INCLUDE_DIR}>
         $<INSTALL_INTERFACE:${${PROJECT_NAME}_INSTALL_INCLUDE_DIR}>)
+erl_target_dependencies(${PROJECT_NAME})
 if (ERL_USE_LIBTORCH)
     target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC ${TORCH_INCLUDE_DIRS})
     target_link_libraries(${PROJECT_NAME} PUBLIC ${TORCH_LIBRARIES})
 endif ()
-if (ROS1_ACTIVATED)
-    target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC ${catkin_INCLUDE_DIRS})
-    target_link_libraries(${PROJECT_NAME} PUBLIC ${catkin_LIBRARIES})
-else ()
-    target_link_libraries(${PROJECT_NAME} PUBLIC ${${PROJECT_NAME}_ERL_PACKAGES})
-endif ()
+# if (ROS1_ACTIVATED)
+#     target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC ${catkin_INCLUDE_DIRS})
+#     target_link_libraries(${PROJECT_NAME} PUBLIC ${catkin_LIBRARIES})
+# else ()
+#     target_link_libraries(${PROJECT_NAME} PUBLIC ${${PROJECT_NAME}_ERL_PACKAGES})
+# endif ()
 
 # ##################
 # Python bindings #
@@ -55,12 +50,9 @@ endif ()
 erl_add_pybind_module(
         PYBIND_MODULE_NAME py${PROJECT_NAME}
         PYBIND_SRC_DIR ${${PROJECT_NAME}_PYTHON_BINDING_DIR}
-        PYTHON_PKG_DIR ${${PROJECT_NAME}_PYTHON_DIR}/${PROJECT_NAME}
         LIBRARIES ${PROJECT_NAME}
 )
-erl_add_python_package(
-        PYTHON_PKG_DIR ${${PROJECT_NAME}_PYTHON_DIR}/${PROJECT_NAME}
-        DEPENDS_PYTHON_PKGS ${${PROJECT_NAME}_ERL_PACKAGES})
+erl_add_python_package()
 
 # ######################################################################################################################
 # INSTALL
@@ -80,4 +72,4 @@ erl_add_tests(
 # ######################################################################################################################
 # export variables
 # ######################################################################################################################
-erl_mark_project_found(${PROJECT_NAME})
+erl_mark_project_found()
