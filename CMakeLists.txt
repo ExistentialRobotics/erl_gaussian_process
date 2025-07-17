@@ -28,6 +28,7 @@ erl_setup_ros(LIBRARIES ${PROJECT_NAME})
 file(GLOB_RECURSE SRC_FILES src/*.cpp)
 add_library(${PROJECT_NAME} SHARED ${SRC_FILES})
 add_library(${PROJECT_NAME}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
+erl_collect_targets(LIBRARIES ${PROJECT_NAME})
 target_include_directories(${PROJECT_NAME}
         PUBLIC
         $<BUILD_INTERFACE:${${PROJECT_NAME}_INCLUDE_DIR}>
@@ -58,7 +59,8 @@ erl_add_python_package()
 # INSTALL
 # ######################################################################################################################
 erl_install(
-        LIBRARIES ${PROJECT_NAME}
+        EXECUTABLES ${${PROJECT_NAME}_COLLECTED_EXECUTABLES}
+        LIBRARIES ${${PROJECT_NAME}_COLLECTED_LIBRARIES}
         PYBIND_MODULES py${PROJECT_NAME})
 
 # ######################################################################################################################
