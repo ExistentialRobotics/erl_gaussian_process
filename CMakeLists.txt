@@ -7,17 +7,17 @@ project(erl_gaussian_process
 message(STATUS "Configuring ${PROJECT_NAME} ${PROJECT_VERSION}")
 
 if (NOT COMMAND erl_project_setup)
-    find_package(erl_common REQUIRED)
+    find_package(erl_cmake_tools REQUIRED)
 endif ()
-
 erl_project_setup(
         ERL_PACKAGES erl_common erl_covariance erl_geometry
 )
-erl_setup_ros(LIBRARIES ${PROJECT_NAME})
+include(cmake/erl_gaussian_process_dependencies.cmake)
+erl_setup_ros(
+        LIBRARIES ${PROJECT_NAME}
+        CFG_EXTRAS erl_gaussian_process_dependencies.cmake
+)
 
-# if (NOT TARGET Open3D::Open3D)
-#     erl_config_open3d()
-# endif ()
 # ######################################################################################################################
 # BUILD
 # ######################################################################################################################
@@ -38,12 +38,6 @@ if (ERL_USE_LIBTORCH)
     target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC ${TORCH_INCLUDE_DIRS})
     target_link_libraries(${PROJECT_NAME} PUBLIC ${TORCH_LIBRARIES})
 endif ()
-# if (ROS1_ACTIVATED)
-#     target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC ${catkin_INCLUDE_DIRS})
-#     target_link_libraries(${PROJECT_NAME} PUBLIC ${catkin_LIBRARIES})
-# else ()
-#     target_link_libraries(${PROJECT_NAME} PUBLIC ${${PROJECT_NAME}_ERL_PACKAGES})
-# endif ()
 
 # ##################
 # Python bindings #
