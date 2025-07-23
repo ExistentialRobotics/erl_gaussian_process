@@ -9,6 +9,7 @@ namespace erl::gaussian_process {
     SpGpOccupancyMap<Dtype, Dim>::Setting::YamlConvertImpl::encode(const Setting &setting) {
         YAML::Node node;
         ERL_YAML_SAVE_ATTR(node, setting, sp_gp);
+        ERL_YAML_SAVE_ATTR(node, setting, min_distance);
         ERL_YAML_SAVE_ATTR(node, setting, max_distance);
         ERL_YAML_SAVE_ATTR(node, setting, free_points_per_meter);
         ERL_YAML_SAVE_ATTR(node, setting, free_sampling_margin);
@@ -26,6 +27,7 @@ namespace erl::gaussian_process {
         Setting &setting) {
         if (!node.IsMap()) { return false; }
         if (!ERL_YAML_LOAD_ATTR(node, setting, sp_gp)) { return false; }
+        ERL_YAML_LOAD_ATTR(node, setting, min_distance);
         ERL_YAML_LOAD_ATTR(node, setting, max_distance);
         ERL_YAML_LOAD_ATTR(node, setting, free_points_per_meter);
         ERL_YAML_LOAD_ATTR(node, setting, free_sampling_margin);
@@ -64,6 +66,7 @@ namespace erl::gaussian_process {
             point_indices,
             m_map_boundary_,
             m_generator_,
+            m_setting_->min_distance,
             m_setting_->max_distance,
             m_setting_->free_sampling_margin,
             m_setting_->free_points_per_meter,

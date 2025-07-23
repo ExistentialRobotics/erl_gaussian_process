@@ -1,15 +1,20 @@
 sp_gp:
-    kernel_type: erl::covariance::Covariance<float>
+    kernel_type: erl::covariance::Matern32<float, 2>
     kernel_setting_type: erl::covariance::Covariance<float>::Setting
     kernel:
         x_dim: 2
-        scale: 1
+        scale: 0.18
         scale_mix: 1
-        weights: []
-    max_num_samples: 256
-    sparse_zero_threshold: 9.99999997e-07
+        weights: [ ]
+    max_num_samples: 2000
+    sparse_zero_threshold: 1e-6
     use_sparse: false
+    diagonal_qm: false
+min_distance: 0.0
 max_distance: 30
-free_points_per_meter: 2
-free_sampling_margin: 0.0500000007
+free_points_per_meter: 3
+free_sampling_margin: 0.01
 parallel: true
+logodd_free: -1
+logodd_occupied: 1
+logodd_variance: 1.0e-4

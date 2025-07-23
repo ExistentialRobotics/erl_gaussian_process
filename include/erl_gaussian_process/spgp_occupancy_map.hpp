@@ -19,6 +19,8 @@ namespace erl::gaussian_process {
 
         struct Setting : common::Yamlable<Setting> {
             std::shared_ptr<SpGpSetting> sp_gp = std::make_shared<SpGpSetting>();
+            // minimum distance from the sensor to consider a point as occupied.
+            Dtype min_distance = 0.5f;
             // maximum distance from the sensor to consider a point as occupied.
             Dtype max_distance = 30.0f;
             // number of free points to sample per meter from the sensor.

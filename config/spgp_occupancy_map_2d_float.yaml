@@ -10,6 +10,7 @@ sp_gp:
     sparse_zero_threshold: 1e-6
     use_sparse: false
     diagonal_qm: false
+min_distance: 0.0
 max_distance: 30
 free_points_per_meter: 3
 free_sampling_margin: 0.01
