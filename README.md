@@ -1,13 +1,12 @@
-erl_gaussian_process
-====================
+# erl_gaussian_process
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![ROS1](https://img.shields.io/badge/ROS1-noetic-blue)](http://wiki.ros.org/)
 [![ROS2](https://img.shields.io/badge/ROS2-humble-blue)](https://docs.ros.org/)
 
-`erl_gaussian_process` which is a C++ library for Gaussian process regression and applications of Gaussian processes.
+**`erl_gaussian_process` is a C++ library for Gaussian process regression and applications of Gaussian processes.**
 
-## Gaussian Process Implementations
+## Available Functionalities
 
 - [Vanilla Gaussian Process](include/erl_gaussian_process/vanilla_gp.hpp) - Standard Gaussian process regression
 - [Lidar Gaussian Process 2D](include/erl_gaussian_process/lidar_gp_2d.hpp) - Multi-partition Gaussian process regression for 2D lidar data
@@ -18,26 +17,42 @@ erl_gaussian_process
 - [SPGP Occupancy Map](include/erl_gaussian_process/spgp_occupancy_map.hpp) - Sparse GP for occupancy mapping
 - [Mapping](include/erl_gaussian_process/mapping.hpp) - General mapping utilities to transform input and output data
 
-# Install Dependencies
+## Getting Started
 
-- CMake >= 3.16
+### Prerequisites
+
 - C++17 compatible compiler
+- CMake 3.24 or higher
+
+### Create Workspace
+
+```bash
+cd <your_workspace>
+mkdir -p src
+vcs import --input https://raw.githubusercontent.com/ExistentialRobotics/erl_gaussian_process/refs/head/main/erl_gaussian_process.repos src
+```
+
+### Dependencies
+
 - [erl_cmake_tools](https://github.com/ExistentialRobotics/erl_cmake_tools)
 - [erl_common](https://github.com/ExistentialRobotics/erl_common)
 - [erl_covariance](https://github.com/ExistentialRobotics/erl_covariance)
 - [erl_geometry](https://github.com/ExistentialRobotics/erl_geometry)
 
-# Getting Started
-
-## Create Workspace
-
 ```bash
-cd <your_workspace>
-mkdir -p src
-vcs import --input https://raw.githubusercontent.com/ExistentialRobotics/erl_gaussian_process/main/erl_gaussian_process.repos src
+# Ubuntu 20.04
+wget -qO - https://raw.githubusercontent.com/ExistentialRobotics/erl_common/refs/heads/main/scripts/setup_ubuntu_20.04.bash | bash
+wget -qO - https://raw.githubusercontent.com/ExistentialRobotics/erl_geometry/refs/heads/main/scripts/setup_ubuntu_20.04.bash | bash
+# Ubuntu 22.04, 24.04
+wget -qO - https://raw.githubusercontent.com/ExistentialRobotics/erl_common/refs/heads/main/scripts/setup_ubuntu_22.04_24.04.bash | bash
+wget -qO - https://raw.githubusercontent.com/ExistentialRobotics/erl_geometry/refs/heads/main/scripts/setup_ubuntu_22.04_24.04.bash | bash
 ```
 
-## Use as a standard CMake package
+### Docker Option
+
+The easiest way to get started is to use the provided [Docker files](https://github.com/ExistentialRobotics/erl_geometry/tree/main/docker), which contains all dependencies.
+
+### Use as a standard CMake package
 
 ```bash
 cd <your_workspace>
@@ -47,7 +62,7 @@ touch CMakeLists.txt
 Add the following lines to your `CMakeLists.txt`:
 
 ```cmake
-cmake_minimum_required(VERSION 3.16)
+cmake_minimum_required(VERSION 3.24)
 project(<your_project_name>)
 add_subdirectory(src/erl_cmake_tools)
 add_subdirectory(src/erl_common)
@@ -56,7 +71,16 @@ add_subdirectory(src/erl_geometry)
 add_subdirectory(src/erl_gaussian_process)
 ```
 
-## Use as a ROS package
+Then run the following commands:
+
+```bash
+mkdir -p build
+cd build
+cmake .. -DCMAKE_BUILD_TYPE=Release
+make -j`nproc`
+```
+
+### Use as a ROS package
 
 ```bash
 cd <your_workspace>/src
@@ -64,7 +88,7 @@ catkin build erl_gaussian_process # for ROS1
 colcon build --packages-up-to erl_gaussian_process # for ROS2
 ```
 
-## Install as a Python package
+### Install as a Python package
 
 - Make sure you have installed all dependencies.
 - Make sure you have the correct Python environment activated, `pipenv` is recommended.

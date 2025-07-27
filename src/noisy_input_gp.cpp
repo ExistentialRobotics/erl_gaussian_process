@@ -665,13 +665,6 @@ namespace erl::gaussian_process {
     }
 
     template<typename Dtype>
-    template<typename T>
-    std::shared_ptr<const T>
-    NoisyInputGaussianProcess<Dtype>::GetSetting() const {
-        return std::dynamic_pointer_cast<const T>(m_setting_);
-    }
-
-    template<typename Dtype>
     bool
     NoisyInputGaussianProcess<Dtype>::IsTrained() const {
         return m_trained_;

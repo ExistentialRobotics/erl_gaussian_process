@@ -227,7 +227,9 @@ namespace erl::gaussian_process {
 
         template<typename T = Setting>
         [[nodiscard]] std::shared_ptr<const T>
-        GetSetting() const;
+        GetSetting() const {
+            return std::dynamic_pointer_cast<const T>(m_setting_);
+        }
 
         [[nodiscard]] bool
         IsTrained() const;
