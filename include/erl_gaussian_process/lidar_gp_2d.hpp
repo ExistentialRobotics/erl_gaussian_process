@@ -140,18 +140,6 @@ namespace erl::gaussian_process {
         [[nodiscard]] std::shared_ptr<const MappingDtype>
         GetMapping() const;
 
-        [[nodiscard]] Vector2
-        GlobalToLocalSo2(const Vector2 &dir_global) const;
-
-        [[nodiscard]] Vector2
-        LocalToGlobalSo2(const Vector2 &dir_local) const;
-
-        [[nodiscard]] Vector2
-        GlobalToLocalSe2(const Vector2 &xy_global) const;
-
-        [[nodiscard]] Vector2
-        LocalToGlobalSe2(const Vector2 &xy_local) const;
-
         void
         Reset();
 
@@ -181,14 +169,14 @@ namespace erl::gaussian_process {
 
         /**
          * Compute the occupancy of a point in the local frame.
-         * @param angle_local Ray angle in the local frame.
-         * @param r Distance between the sensor and the surface point.
+         * @param pos_local Query point in the local frame.
+         * @param dist_pos Distance between the sensor and the query point.
          * @param range_pred Range prediction by the GP.
          * @param occ Occupancy prediction.
          * @return if the computation is successful.
          */
         [[nodiscard]] bool
-        ComputeOcc(const Scalar &angle_local, Dtype r, Dtype &range_pred, Dtype &occ) const;
+        ComputeOcc(const Vector2 &pos_local, Dtype &dist_pos, Dtype &range_pred, Dtype &occ) const;
 
         [[nodiscard]] bool
         operator==(const LidarGaussianProcess2D &other) const;

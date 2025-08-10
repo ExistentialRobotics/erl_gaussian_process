@@ -219,30 +219,6 @@ namespace erl::gaussian_process {
     }
 
     template<typename Dtype>
-    typename LidarGaussianProcess2D<Dtype>::Vector2
-    LidarGaussianProcess2D<Dtype>::GlobalToLocalSo2(const Vector2 &dir_global) const {
-        return m_sensor_frame_->DirWorldToFrame(dir_global);
-    }
-
-    template<typename Dtype>
-    typename LidarGaussianProcess2D<Dtype>::Vector2
-    LidarGaussianProcess2D<Dtype>::LocalToGlobalSo2(const Vector2 &dir_local) const {
-        return m_sensor_frame_->DirFrameToWorld(dir_local);
-    }
-
-    template<typename Dtype>
-    typename LidarGaussianProcess2D<Dtype>::Vector2
-    LidarGaussianProcess2D<Dtype>::GlobalToLocalSe2(const Vector2 &xy_global) const {
-        return m_sensor_frame_->PosWorldToFrame(xy_global);
-    }
-
-    template<typename Dtype>
-    typename LidarGaussianProcess2D<Dtype>::Vector2
-    LidarGaussianProcess2D<Dtype>::LocalToGlobalSe2(const Vector2 &xy_local) const {
-        return m_sensor_frame_->PosFrameToWorld(xy_local);
-    }
-
-    template<typename Dtype>
     void
     LidarGaussianProcess2D<Dtype>::Reset() {
         m_trained_ = false;
@@ -422,6 +398,7 @@ namespace erl::gaussian_process {
     template<typename Dtype>
     long
     LidarGaussianProcess2D<Dtype>::SearchPartition(const Dtype angle_local) const {
+        if (!std::isfinite(angle_local)) { return -1; }
         long idx = 0;
         const long n = m_angle_partitions_.size();
         for (; idx < n; ++idx) {
@@ -451,12 +428,17 @@ namespace erl::gaussian_process {
     template<typename Dtype>
     bool
     LidarGaussianProcess2D<Dtype>::ComputeOcc(
-        const Scalar &angle_local,
-        const Dtype r,
+        const Vector2 &pos_local,
+        Dtype &dist_pos,
         Dtype &range_pred,
         Dtype &occ) const {
 
         if (!m_trained_) { return false; }
+
+        Scalar angle_local;
+        dist_pos = pos_local.norm();
+        angle_local[0] = std::atan2(pos_local.y(), pos_local.x());
+
         const long idx = SearchPartition(angle_local[0]);
         if (idx < 0) { return false; }
         const Gp &gp = *m_gps_[idx];
@@ -470,8 +452,8 @@ namespace erl::gaussian_process {
         if (range_pred_var > m_setting_->max_valid_range_var) { return false; }
 
         test_result.GetMean(0, 0, range_pred);
-        const Dtype a = r * m_setting_->occ_test_temperature;
-        occ = 2.0f / (1.0f + std::exp(a * (range_pred - m_mapping_->map(r)))) - 1.0f;
+        const Dtype a = dist_pos * m_setting_->occ_test_temperature;
+        occ = 2.0f / (1.0f + std::exp(a * (range_pred - m_mapping_->map(dist_pos)))) - 1.0f;
         range_pred = m_mapping_->inv(range_pred);
         return true;
     }

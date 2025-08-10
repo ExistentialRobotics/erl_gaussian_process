@@ -39,6 +39,8 @@ namespace erl::gaussian_process {
             // number of points in the overlap region
             long col_overlap_size = 2;
             long col_margin = 0;
+            // minimum number of samples per group, used to avoid training with too few samples
+            long min_num_samples_per_group = 32;
             // large value to initialize variance results in case of computation failure
             Dtype init_variance = 1e6f;
             // variance of the sensor range measurement
@@ -145,21 +147,6 @@ namespace erl::gaussian_process {
         [[nodiscard]] std::shared_ptr<const MappingDtype>
         GetMapping() const;
 
-        [[nodiscard]] Vector3
-        GlobalToLocalSo3(const Vector3 &dir_global) const;
-
-        [[nodiscard]] Vector3
-        LocalToGlobalSo3(const Vector3 &dir_local) const;
-
-        [[nodiscard]] Vector3
-        GlobalToLocalSe3(const Vector3 &xyz_global) const;
-
-        [[nodiscard]] Vector3
-        LocalToGlobalSe3(const Vector3 &xyz_local) const;
-
-        [[nodiscard]] Vector2
-        ComputeFrameCoords(const Vector3 &xyz_frame) const;
-
         void
         Reset();
 
@@ -177,7 +164,7 @@ namespace erl::gaussian_process {
             const;
 
         bool
-        ComputeOcc(const Vector3 &dir_local, Dtype r, Dtype &range_pred, Dtype &occ) const;
+        ComputeOcc(const Vector3 &pos_local, Dtype &dist_pos, Dtype &range_pred, Dtype &occ) const;
 
         [[nodiscard]] bool
         operator==(const RangeSensorGaussianProcess3D &other) const;

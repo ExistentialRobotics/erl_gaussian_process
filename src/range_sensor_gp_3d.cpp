@@ -15,6 +15,7 @@ namespace erl::gaussian_process {
         ERL_YAML_SAVE_ATTR(node, setting, col_group_size);
         ERL_YAML_SAVE_ATTR(node, setting, col_overlap_size);
         ERL_YAML_SAVE_ATTR(node, setting, col_margin);
+        ERL_YAML_SAVE_ATTR(node, setting, min_num_samples_per_group);
         ERL_YAML_SAVE_ATTR(node, setting, init_variance);
         ERL_YAML_SAVE_ATTR(node, setting, sensor_range_var);
         ERL_YAML_SAVE_ATTR(node, setting, max_valid_range_var);
@@ -39,6 +40,7 @@ namespace erl::gaussian_process {
         ERL_YAML_LOAD_ATTR(node, setting, col_group_size);
         ERL_YAML_LOAD_ATTR(node, setting, col_overlap_size);
         ERL_YAML_LOAD_ATTR(node, setting, col_margin);
+        ERL_YAML_LOAD_ATTR(node, setting, min_num_samples_per_group);
         ERL_YAML_LOAD_ATTR(node, setting, init_variance);
         ERL_YAML_LOAD_ATTR(node, setting, sensor_range_var);
         ERL_YAML_LOAD_ATTR(node, setting, max_valid_range_var);
@@ -76,12 +78,11 @@ namespace erl::gaussian_process {
         auto &gps = m_gp_->m_gps_;
 
         for (long i = 0; i < n; ++i) {
-            Vector3 direction_local = directions.col(i);
-            if (!directions_are_local) {
-                direction_local = sensor_frame->DirWorldToFrame(direction_local);
-            }
-            if (!sensor_frame->PointIsInFrame(direction_local)) { continue; }
-            const Vector2 frame_coords = sensor_frame->ComputeFrameCoords(direction_local);
+            Vector3 dir_local = directions.col(i);
+            if (!directions_are_local) { dir_local = sensor_frame->DirWorldToFrame(dir_local); }
+            Vector2 frame_coords;
+            Dtype dist;
+            if (!sensor_frame->ComputeFrameCoords(dir_local, dist, frame_coords)) { continue; }
             auto [partition_row_index, partition_col_index] = m_gp_->SearchPartition(frame_coords);
             if (partition_row_index < 0 || partition_col_index < 0) { continue; }
             const Gp *partition_gp = gps(partition_row_index, partition_col_index).get();
@@ -301,36 +302,6 @@ namespace erl::gaussian_process {
     }
 
     template<typename Dtype>
-    typename RangeSensorGaussianProcess3D<Dtype>::Vector3
-    RangeSensorGaussianProcess3D<Dtype>::GlobalToLocalSo3(const Vector3 &dir_global) const {
-        return m_sensor_frame_->DirWorldToFrame(dir_global);
-    }
-
-    template<typename Dtype>
-    typename RangeSensorGaussianProcess3D<Dtype>::Vector3
-    RangeSensorGaussianProcess3D<Dtype>::LocalToGlobalSo3(const Vector3 &dir_local) const {
-        return m_sensor_frame_->DirFrameToWorld(dir_local);
-    }
-
-    template<typename Dtype>
-    typename RangeSensorGaussianProcess3D<Dtype>::Vector3
-    RangeSensorGaussianProcess3D<Dtype>::GlobalToLocalSe3(const Vector3 &xyz_global) const {
-        return m_sensor_frame_->PosWorldToFrame(xyz_global);
-    }
-
-    template<typename Dtype>
-    typename RangeSensorGaussianProcess3D<Dtype>::Vector3
-    RangeSensorGaussianProcess3D<Dtype>::LocalToGlobalSe3(const Vector3 &xyz_local) const {
-        return m_sensor_frame_->PosFrameToWorld(xyz_local);
-    }
-
-    template<typename Dtype>
-    typename RangeSensorGaussianProcess3D<Dtype>::Vector2
-    RangeSensorGaussianProcess3D<Dtype>::ComputeFrameCoords(const Vector3 &xyz_frame) const {
-        return m_sensor_frame_->ComputeFrameCoords(xyz_frame);
-    }
-
-    template<typename Dtype>
     void
     RangeSensorGaussianProcess3D<Dtype>::Reset() {
         m_trained_ = false;
@@ -353,7 +324,6 @@ namespace erl::gaussian_process {
         const Matrix3 &rotation,
         const Vector3 &translation,
         MatrixX ranges) {
-        ERL_BLOCK_TIMER();
         Reset();
 
         if (!StoreData(rotation, translation, std::move(ranges))) {
@@ -385,7 +355,7 @@ namespace erl::gaussian_process {
                     }
                 }
                 train_set.num_samples = cnt;
-                if (cnt > 0) { (void) gp->Train(); }
+                if (cnt > m_setting_->min_num_samples_per_group) { (void) gp->Train(); }
             }
         }
 
@@ -439,14 +409,16 @@ namespace erl::gaussian_process {
     template<typename Dtype>
     bool
     RangeSensorGaussianProcess3D<Dtype>::ComputeOcc(
-        const Vector3 &dir_local,
-        const Dtype r,
+        const Vector3 &pos_local,
+        Dtype &dist_pos,
         Dtype &range_pred,
         Dtype &occ) const {
 
         if (!m_trained_) { return false; }
-        if (!m_sensor_frame_->PointIsInFrame(dir_local)) { return false; }
-        const Vector2 frame_coords = m_sensor_frame_->ComputeFrameCoords(dir_local);
+        Vector2 frame_coords;
+        const bool valid = m_sensor_frame_->ComputeFrameCoords(pos_local, dist_pos, frame_coords);
+        if (!valid) { return false; }
+        if (!m_sensor_frame_->CoordsIsInFrame(frame_coords)) { return false; }
         const auto [partition_row_index, partition_col_index] = SearchPartition(frame_coords);
         if (partition_row_index < 0 || partition_col_index < 0) { return false; }
         const Gp &gp = *m_gps_(partition_row_index, partition_col_index);
@@ -460,8 +432,8 @@ namespace erl::gaussian_process {
         if (range_pred_var > m_setting_->max_valid_range_var) { return false; }
 
         test_result.GetMean(0, 0, range_pred);
-        const Dtype a = r * m_setting_->occ_test_temperature;
-        occ = 2.0f / (1.0f + std::exp(a * (range_pred - m_mapping_->map(r)))) - 1.0f;
+        const Dtype a = dist_pos * m_setting_->occ_test_temperature;
+        occ = 2.0f / (1.0f + std::exp(a * (range_pred - m_mapping_->map(dist_pos)))) - 1.0f;
         range_pred = m_mapping_->inv(range_pred);
         return true;
     }
