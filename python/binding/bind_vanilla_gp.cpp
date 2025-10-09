@@ -34,7 +34,8 @@ BindVanillaGaussianProcessImpl(const py::module &m, const char *name) {
                 return vec_f_out;
             },
             py::arg("y_index"),
-            py::arg("parallel"))
+            py::arg("parallel"),
+            py::call_guard<py::gil_scoped_release>())
         .def(
             "get_mean",
             [](const typename T::TestResult &self, long index, long y_index) {
@@ -51,7 +52,8 @@ BindVanillaGaussianProcessImpl(const py::module &m, const char *name) {
                 self.GetVariance(vec_var_out, parallel);
                 return vec_var_out;
             },
-            py::arg("parallel"))
+            py::arg("parallel"),
+            py::call_guard<py::gil_scoped_release>())
         .def(
             "get_variance",
             [](const typename T::TestResult &self, long index) {

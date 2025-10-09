@@ -36,7 +36,8 @@ BindNoisyInputGaussianProcessImpl(const py::module &m, const char *name) {
                 return vec_f_out;
             },
             py::arg("y_index"),
-            py::arg("parallel"))
+            py::arg("parallel"),
+            py::call_guard<py::gil_scoped_release>())
         .def(
             "get_mean",
             [](const typename T::TestResult &self, const long index, const long y_index) {
@@ -54,7 +55,8 @@ BindNoisyInputGaussianProcessImpl(const py::module &m, const char *name) {
                 return mat_grad_out;
             },
             py::arg("y_index"),
-            py::arg("parallel"))
+            py::arg("parallel"),
+            py::call_guard<py::gil_scoped_release>())
         .def(
             "get_gradient",
             [](const typename T::TestResult &self, const long index, const long y_index) {
@@ -71,7 +73,8 @@ BindNoisyInputGaussianProcessImpl(const py::module &m, const char *name) {
                 self.GetMeanVariance(vec_var_out, parallel);
                 return vec_var_out;
             },
-            py::arg("parallel"))
+            py::arg("parallel"),
+            py::call_guard<py::gil_scoped_release>())
         .def(
             "get_mean_variance",
             [](const typename T::TestResult &self, const long index) {
@@ -87,7 +90,8 @@ BindNoisyInputGaussianProcessImpl(const py::module &m, const char *name) {
                 self.GetGradientVariance(mat_var_out, parallel);
                 return mat_var_out;
             },
-            py::arg("parallel"))
+            py::arg("parallel"),
+            py::call_guard<py::gil_scoped_release>())
         .def(
             "get_gradient_variance",
             [](const typename T::TestResult &self, const long index) {
@@ -104,7 +108,8 @@ BindNoisyInputGaussianProcessImpl(const py::module &m, const char *name) {
                 self.GetCovariance(mat_cov_out, parallel);
                 return mat_cov_out;
             },
-            py::arg("parallel"))
+            py::arg("parallel"),
+            py::call_guard<py::gil_scoped_release>())
         .def("get_covariance", [](const typename T::TestResult &self, const long index) {
             const long dim = self.GetDimX();
             VectorX vec_cov_out(dim * (dim + 1) / 2);

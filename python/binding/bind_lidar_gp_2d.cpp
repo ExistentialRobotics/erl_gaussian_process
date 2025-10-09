@@ -9,6 +9,7 @@ void
 BindLidarGaussianProcess2DImpl(const py::module &m, const char *name) {
 
     using T = LidarGaussianProcess2D<Dtype>;
+    using Vector2 = Eigen::Vector2<Dtype>;
     using VectorX = Eigen::VectorX<Dtype>;
 
     auto py_lidar_gp = py::class_<T, std::shared_ptr<T>>(m, name);
@@ -40,7 +41,11 @@ BindLidarGaussianProcess2DImpl(const py::module &m, const char *name) {
             "get_mean",
             [](const typename T::TestResult &self, bool parallel) {
                 VectorX vec_f_out(self.GetNumTest());
-                Eigen::VectorXb success = self.GetMean(vec_f_out, parallel);
+                Eigen::VectorXb success;
+                {
+                    py::gil_scoped_release release;
+                    success = self.GetMean(vec_f_out, parallel);
+                }
                 return py::make_tuple(success, vec_f_out);
             },
             py::arg("parallel"))
@@ -55,7 +60,11 @@ BindLidarGaussianProcess2DImpl(const py::module &m, const char *name) {
             "get_variance",
             [](const typename T::TestResult &self, bool parallel) {
                 VectorX vec_var_out(self.GetNumTest());
-                Eigen::VectorXb success = self.GetVariance(vec_var_out, parallel);
+                Eigen::VectorXb success;
+                {
+                    py::gil_scoped_release release;
+                    success = self.GetVariance(vec_var_out, parallel);
+                }
                 return py::make_tuple(success, vec_var_out);
             },
             py::arg("parallel"))
@@ -72,10 +81,6 @@ BindLidarGaussianProcess2DImpl(const py::module &m, const char *name) {
         .def_property_readonly("gps", &T::GetGps)
         .def_property_readonly("angle_partitions", &T::GetAnglePartitions)
         .def_property_readonly("sensor_frame", &T::GetSensorFrame)
-        .def("global_to_local_so2", &T::GlobalToLocalSo2, py::arg("dir_global"))
-        .def("local_to_global_so2", &T::LocalToGlobalSo2, py::arg("dir_local"))
-        .def("global_to_local_se2", &T::GlobalToLocalSe2, py::arg("xy_global"))
-        .def("local_to_global_se2", &T::LocalToGlobalSe2, py::arg("xy_local"))
         .def("reset", &T::Reset)
         .def(
             "store_data",
@@ -90,15 +95,17 @@ BindLidarGaussianProcess2DImpl(const py::module &m, const char *name) {
         .def("test", &T::Test, py::arg("angles"), py::arg("angles_are_local"), py::arg("un_map"))
         .def(
             "compute_occ",
-            [](const T &gp, const Dtype angle_local, const Dtype r) {
-                Dtype range_pred, occ;
-                Eigen::Scalar<Dtype> scalar_angle;
-                scalar_angle << angle_local;
-                bool success = gp.ComputeOcc(scalar_angle, r, range_pred, occ);
-                return py::make_tuple(success, range_pred, occ);
+            [](T &gp, const Vector2 &pos_local) {
+                Dtype range_pred, occ, dist_pos;
+                bool success = gp.ComputeOcc(pos_local, dist_pos, range_pred, occ);
+                py::dict out;
+                out["success"] = success;
+                out["dist_pos"] = dist_pos;
+                out["range_pred"] = range_pred;
+                out["occ"] = occ;
+                return out;
             },
-            py::arg("angle_local"),
-            py::arg("r"));
+            py::arg("pos_local"));
 }
 
 void

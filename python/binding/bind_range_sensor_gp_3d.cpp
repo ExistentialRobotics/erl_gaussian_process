@@ -43,7 +43,11 @@ BindRangeSensorGaussianProcess3DImpl(const py::module &m, const char *name) {
             "get_mean",
             [](const typename T::TestResult &self, bool parallel) {
                 VectorX vec_f_out(self.GetNumTest());
-                Eigen::VectorXb success = self.GetMean(vec_f_out, parallel);
+                Eigen::VectorXb success;
+                {
+                    py::gil_scoped_release release;
+                    success = self.GetMean(vec_f_out, parallel);
+                }
                 return py::make_tuple(success, vec_f_out);
             },
             py::arg("parallel"))
@@ -58,7 +62,11 @@ BindRangeSensorGaussianProcess3DImpl(const py::module &m, const char *name) {
             "get_variance",
             [](const typename T::TestResult &self, bool parallel) {
                 VectorX vec_var_out(self.GetNumTest());
-                Eigen::VectorXb success = self.GetVariance(vec_var_out, parallel);
+                Eigen::VectorXb success;
+                {
+                    py::gil_scoped_release release;
+                    success = self.GetVariance(vec_var_out, parallel);
+                }
                 return py::make_tuple(success, vec_var_out);
             },
             py::arg("parallel"))
@@ -88,11 +96,6 @@ BindRangeSensorGaussianProcess3DImpl(const py::module &m, const char *name) {
         .def_property_readonly("col_partitions", &T::GetColPartitions)
         .def_property_readonly("sensor_frame", &T::GetSensorFrame)
         .def_property_readonly("mapping", &T::GetMapping)
-        .def("global_to_local_so3", &T::GlobalToLocalSo3, py::arg("dir_global"))
-        .def("local_to_global_so3", &T::LocalToGlobalSo3, py::arg("dir_local"))
-        .def("global_to_local_se3", &T::GlobalToLocalSe3, py::arg("xyz_global"))
-        .def("local_to_global_se3", &T::LocalToGlobalSe3, py::arg("xyz_local"))
-        .def("compute_frame_coords", &T::ComputeFrameCoords, py::arg("xyz_frame"))
         .def("reset", &T::Reset)
         .def(
             "store_data",
@@ -110,13 +113,17 @@ BindRangeSensorGaussianProcess3DImpl(const py::module &m, const char *name) {
             py::arg("un_map"))
         .def(
             "compute_occ",
-            [](const T &gp, const Vector3 &dir_local, const Dtype r) {
-                Dtype range_pred, occ;
-                bool success = gp.ComputeOcc(dir_local, r, range_pred, occ);
-                return py::make_tuple(success, range_pred, occ);
+            [](const T &gp, const Vector3 &pos_local) {
+                Dtype range_pred, occ, dist_pos;
+                bool success = gp.ComputeOcc(pos_local, dist_pos, range_pred, occ);
+                py::dict out;
+                out["success"] = success;
+                out["dist_pos"] = dist_pos;
+                out["range_pred"] = range_pred;
+                out["occ"] = occ;
+                return out;
             },
-            py::arg("dir_local"),
-            py::arg("r"));
+            py::arg("pos_local"));
 }
 
 void

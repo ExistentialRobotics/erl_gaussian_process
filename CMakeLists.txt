@@ -18,13 +18,13 @@ erl_setup_ros(
         CFG_EXTRAS erl_gaussian_process_dependencies.cmake
 )
 
-# ######################################################################################################################
-# BUILD
-# ######################################################################################################################
+# #######
+# BUILD #
+# #######
 
-# #######################
+# ######################
 # define the libraries #
-# #######################
+# ######################
 file(GLOB_RECURSE SRC_FILES src/*.cpp)
 add_library(${PROJECT_NAME} SHARED ${SRC_FILES})
 add_library(${PROJECT_NAME}::${PROJECT_NAME} ALIAS ${PROJECT_NAME})
@@ -38,10 +38,11 @@ if (ERL_USE_LIBTORCH)
     target_include_directories(${PROJECT_NAME} SYSTEM PUBLIC ${TORCH_INCLUDE_DIRS})
     target_link_libraries(${PROJECT_NAME} PUBLIC ${TORCH_LIBRARIES})
 endif ()
+erl_dump_compile_definitions(include/${PROJECT_NAME}/compile_definitions.hpp)
 
-# ##################
+# #################
 # Python bindings #
-# ##################
+# #################
 erl_add_pybind_module(
         PYBIND_MODULE_NAME py${PROJECT_NAME}
         PYBIND_SRC_DIR ${${PROJECT_NAME}_PYTHON_BINDING_DIR}
@@ -49,23 +50,23 @@ erl_add_pybind_module(
 )
 erl_add_python_package()
 
-# ######################################################################################################################
-# INSTALL
-# ######################################################################################################################
+# #########
+# INSTALL #
+# #########
 erl_install(
         EXECUTABLES ${${PROJECT_NAME}_COLLECTED_EXECUTABLES}
         LIBRARIES ${${PROJECT_NAME}_COLLECTED_LIBRARIES}
         PYBIND_MODULES py${PROJECT_NAME})
 
-# ######################################################################################################################
-# TEST
-# ######################################################################################################################
+# ######
+# TEST #
+# ######
 erl_add_tests(
         LIBRARIES ${PROJECT_NAME}
         EXCLUDE_FROM_ALL test_range_sensor_gp_3d
 )
 
-# ######################################################################################################################
-# export variables
-# ######################################################################################################################
+# ##################
+# export variables #
+# ##################
 erl_mark_project_found()
