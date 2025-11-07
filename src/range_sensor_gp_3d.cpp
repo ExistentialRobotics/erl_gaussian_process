@@ -1,59 +1,9 @@
 #include "erl_gaussian_process/range_sensor_gp_3d.hpp"
 
-#include "erl_common/block_timer.hpp"
 #include "erl_common/logging.hpp"
 #include "erl_common/serialization.hpp"
 
 namespace erl::gaussian_process {
-    template<typename Dtype>
-    YAML::Node
-    RangeSensorGaussianProcess3D<Dtype>::Setting::YamlConvertImpl::encode(const Setting &setting) {
-        YAML::Node node;
-        ERL_YAML_SAVE_ATTR(node, setting, row_group_size);
-        ERL_YAML_SAVE_ATTR(node, setting, row_overlap_size);
-        ERL_YAML_SAVE_ATTR(node, setting, row_margin);
-        ERL_YAML_SAVE_ATTR(node, setting, col_group_size);
-        ERL_YAML_SAVE_ATTR(node, setting, col_overlap_size);
-        ERL_YAML_SAVE_ATTR(node, setting, col_margin);
-        ERL_YAML_SAVE_ATTR(node, setting, min_num_samples_per_group);
-        ERL_YAML_SAVE_ATTR(node, setting, init_variance);
-        ERL_YAML_SAVE_ATTR(node, setting, sensor_range_var);
-        ERL_YAML_SAVE_ATTR(node, setting, max_valid_range_var);
-        ERL_YAML_SAVE_ATTR(node, setting, occ_test_temperature);
-        ERL_YAML_SAVE_ATTR(node, setting, sensor_frame_type);
-        ERL_YAML_SAVE_ATTR(node, setting, sensor_frame_setting_type);
-        ERL_YAML_SAVE_ATTR(node, setting, sensor_frame);
-        ERL_YAML_SAVE_ATTR(node, setting, gp);
-        ERL_YAML_SAVE_ATTR(node, setting, mapping);
-        return node;
-    }
-
-    template<typename Dtype>
-    bool
-    RangeSensorGaussianProcess3D<Dtype>::Setting::YamlConvertImpl::decode(
-        const YAML::Node &node,
-        Setting &setting) {
-        if (!node.IsMap()) { return false; }
-        ERL_YAML_LOAD_ATTR(node, setting, row_group_size);
-        ERL_YAML_LOAD_ATTR(node, setting, row_overlap_size);
-        ERL_YAML_LOAD_ATTR(node, setting, row_margin);
-        ERL_YAML_LOAD_ATTR(node, setting, col_group_size);
-        ERL_YAML_LOAD_ATTR(node, setting, col_overlap_size);
-        ERL_YAML_LOAD_ATTR(node, setting, col_margin);
-        ERL_YAML_LOAD_ATTR(node, setting, min_num_samples_per_group);
-        ERL_YAML_LOAD_ATTR(node, setting, init_variance);
-        ERL_YAML_LOAD_ATTR(node, setting, sensor_range_var);
-        ERL_YAML_LOAD_ATTR(node, setting, max_valid_range_var);
-        ERL_YAML_LOAD_ATTR(node, setting, occ_test_temperature);
-        ERL_YAML_LOAD_ATTR(node, setting, sensor_frame_type);
-        ERL_YAML_LOAD_ATTR(node, setting, sensor_frame_setting_type);
-        using SensorFrameSetting = typename geometry::RangeSensorFrame3D<Dtype>::Setting;
-        setting.sensor_frame =
-            common::YamlableBase::Create<SensorFrameSetting>(setting.sensor_frame_setting_type);
-        if (!ERL_YAML_LOAD_ATTR(node, setting, sensor_frame)) { return false; }
-        if (!ERL_YAML_LOAD_ATTR(node, setting, gp)) { return false; }
-        return ERL_YAML_LOAD_ATTR(node, setting, mapping);
-    }
 
     template<typename Dtype>
     RangeSensorGaussianProcess3D<Dtype>::TestResult::TestResult(
@@ -61,8 +11,7 @@ namespace erl::gaussian_process {
         const Eigen::Ref<const Matrix3X> &directions,
         const bool directions_are_local,
         const std::shared_ptr<MappingDtype> &mapping)
-        : m_gp_(NotNull(gp, true, "gp = nullptr.")),
-          m_mapping_(mapping) {
+        : m_gp_(NotNull(gp, true, "gp = nullptr.")), m_mapping_(mapping) {
 
         const long n = directions.cols();
         ERL_DEBUG_ASSERT(m_gp_->IsTrained(), "The model has not been trained.");
@@ -367,7 +316,7 @@ namespace erl::gaussian_process {
     std::pair<long, long>
     RangeSensorGaussianProcess3D<Dtype>::SearchPartition(const Vector2 &frame_coords) const {
         // row
-        const Dtype &row_coord = frame_coords.x();
+        const Dtype &row_coord = frame_coords[0];
         long partition_row_index = 0;
         for (; partition_row_index < static_cast<long>(m_row_partitions_.size());
              ++partition_row_index) {
@@ -379,7 +328,7 @@ namespace erl::gaussian_process {
         }
         if (partition_row_index >= static_cast<long>(m_row_partitions_.size())) { return {-1, -1}; }
         // col
-        const Dtype &col_coord = frame_coords.y();
+        const Dtype &col_coord = frame_coords[1];
         long partition_col_index = 0;
         for (; partition_col_index < static_cast<long>(m_col_partitions_.size());
              ++partition_col_index) {
@@ -473,6 +422,7 @@ namespace erl::gaussian_process {
     bool
     RangeSensorGaussianProcess3D<Dtype>::Write(std::ostream &s) const {
         using namespace common;
+        using namespace common::serialization;
         static const TokenWriteFunctionPairs<RangeSensorGaussianProcess3D> token_function_pairs = {
             {
                 "setting",
@@ -567,6 +517,7 @@ namespace erl::gaussian_process {
     bool
     RangeSensorGaussianProcess3D<Dtype>::Read(std::istream &s) {
         using namespace common;
+        using namespace common::serialization;
         static const TokenReadFunctionPairs<RangeSensorGaussianProcess3D> token_function_pairs = {
             {
                 "setting",

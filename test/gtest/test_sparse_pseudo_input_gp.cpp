@@ -110,9 +110,9 @@ TEST(SparsePseudoInputGaussianProcess, SingleInputSingleOutput) {
     // use_sparse = true, 0.00013615527178628909
     EXPECT_TRUE(mae < 4.02e-4);
 
-    ASSERT_TRUE(Serialization<SpGp>::Write("sp_gp.bin", &gp));
+    ASSERT_TRUE(serialization::Serialization<SpGp>::Write("sp_gp.bin", &gp));
     SpGp gp_read(setting, pseudo_points);
-    ASSERT_TRUE(Serialization<SpGp>::Read("sp_gp.bin", &gp_read));
+    ASSERT_TRUE(serialization::Serialization<SpGp>::Read("sp_gp.bin", &gp_read));
     EXPECT_TRUE(gp == gp_read);
 }
 
@@ -230,9 +230,9 @@ TEST(SparsePseudoInputGaussianProcess, MultiInputSingleOutput) {
     ERL_INFO("mean absolute error: {}.", mae);  // 0.0017531063928863074
     EXPECT_TRUE(mae < 1.8e-3);
 
-    ASSERT_TRUE(Serialization<SpGp>::Write("sp_gp.bin", &gp));
+    ASSERT_TRUE(serialization::Serialization<SpGp>::Write("sp_gp.bin", &gp));
     SpGp gp_read(setting, pseudo_points);
-    ASSERT_TRUE(Serialization<SpGp>::Read("sp_gp.bin", &gp_read));
+    ASSERT_TRUE(serialization::Serialization<SpGp>::Read("sp_gp.bin", &gp_read));
     EXPECT_TRUE(gp == gp_read);
 }
 
@@ -391,8 +391,8 @@ TEST(SparsePseudoInputGaussianProcess, MultiInputMultiOutput) {
     ASSERT_TRUE(mae1 < 1.8e-3);  // 0.0017531063919674229
     ASSERT_TRUE(mae2 < 3.5e-3);  // 0.0034844129064230487
 
-    ASSERT_TRUE(Serialization<SpGp>::Write("sp_gp.bin", &gp));
+    ASSERT_TRUE(serialization::Serialization<SpGp>::Write("sp_gp.bin", &gp));
     SpGp gp_read(setting, pseudo_points);
-    ASSERT_TRUE(Serialization<SpGp>::Read("sp_gp.bin", &gp_read));
+    ASSERT_TRUE(serialization::Serialization<SpGp>::Read("sp_gp.bin", &gp_read));
     EXPECT_TRUE(gp == gp_read);
 }

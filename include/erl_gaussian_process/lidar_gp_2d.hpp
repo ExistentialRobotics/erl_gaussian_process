@@ -61,13 +61,21 @@ namespace erl::gaussian_process {
                 return mapping_setting;
             }();
 
-            struct YamlConvertImpl {
-                static YAML::Node
-                encode(const Setting &setting);
-
-                static bool
-                decode(const YAML::Node &node, Setting &setting);
-            };
+            ERL_REFLECT_SCHEMA(
+                Setting,
+                ERL_REFLECT_MEMBER(Setting, partition_on_hit_rays),
+                ERL_REFLECT_MEMBER(Setting, symmetric_partitions),
+                ERL_REFLECT_MEMBER(Setting, group_size),
+                ERL_REFLECT_MEMBER(Setting, overlap_size),
+                ERL_REFLECT_MEMBER(Setting, margin),
+                ERL_REFLECT_MEMBER(Setting, init_variance),
+                ERL_REFLECT_MEMBER(Setting, sensor_range_var),
+                ERL_REFLECT_MEMBER(Setting, discontinuity_var),
+                ERL_REFLECT_MEMBER(Setting, max_valid_range_var),
+                ERL_REFLECT_MEMBER(Setting, occ_test_temperature),
+                ERL_REFLECT_MEMBER(Setting, sensor_frame),
+                ERL_REFLECT_MEMBER(Setting, gp),
+                ERL_REFLECT_MEMBER(Setting, mapping));
         };
 
         class TestResult {
@@ -197,11 +205,3 @@ namespace erl::gaussian_process {
     extern template class LidarGaussianProcess2D<double>;
     extern template class LidarGaussianProcess2D<float>;
 }  // namespace erl::gaussian_process
-
-template<>
-struct YAML::convert<erl::gaussian_process::LidarGaussianProcess2Dd::Setting>
-    : erl::gaussian_process::LidarGaussianProcess2Dd::Setting::YamlConvertImpl {};
-
-template<>
-struct YAML::convert<erl::gaussian_process::LidarGaussianProcess2Df::Setting>
-    : erl::gaussian_process::LidarGaussianProcess2Df::Setting::YamlConvertImpl {};

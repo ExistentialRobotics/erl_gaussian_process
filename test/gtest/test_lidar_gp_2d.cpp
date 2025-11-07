@@ -260,9 +260,9 @@ TEST(LidarGaussianProcess2D, Build) {
     // ASSERT_TRUE(mae < 0.022);  // 0.02135875277600203 (when discontinuity_detection is off)
     ASSERT_TRUE(mae < 0.08);  // 0.07934015284014925
 
-    ASSERT_TRUE(Serialization<LidarGp2D>::Write("lidar_gp_2d.bin", lidar_gp));
+    ASSERT_TRUE(serialization::Serialization<LidarGp2D>::Write("lidar_gp_2d.bin", lidar_gp));
     LidarGp2D lidar_gp_read(std::make_shared<LidarGp2D::Setting>());
-    ASSERT_TRUE(Serialization<LidarGp2D>::Read("lidar_gp_2d.bin", &lidar_gp_read));
+    ASSERT_TRUE(serialization::Serialization<LidarGp2D>::Read("lidar_gp_2d.bin", &lidar_gp_read));
     EXPECT_TRUE(*lidar_gp == lidar_gp_read);
 }
 

@@ -6,6 +6,7 @@
 #include "erl_gaussian_process/noisy_input_gp.hpp"
 
 using namespace erl::common;
+using namespace erl::common::serialization;
 using namespace erl::gaussian_process;
 
 constexpr double kNoiseVar = 0.0001;
@@ -58,7 +59,7 @@ TEST(NoisyInputGaussianProcess, SingleInputSingleOutputWithGradientObservation) 
         ERL_BLOCK_TIMER_MSG("gp.Test()");
         auto result = gp.Test(x_test.transpose(), true);
         result->GetMean(0, y_pred, true);
-        result->GetGradient(0, grad_pred.transpose(), true);
+        (void) result->GetGradient(0, grad_pred.transpose(), true);
     }
     Eigen::VectorXd error = y_pred - y_test;
     Eigen::VectorXd grad_error = grad_pred - grad_test;
@@ -77,11 +78,11 @@ TEST(NoisyInputGaussianProcess, SingleInputSingleOutputWithGradientObservation) 
         .SetLineWidths({1.0, 1.0, 1.0, 1.0})
         .SetBoxStyle(PL_LEGEND_BOUNDING_BOX)
         .SetBgColor0(PlplotFig::Color0::Gray)
-        .SetLegendBoxLineColor0(PlplotFig::Color0::White);
+        .SetLegendBoxLineColor0(PlplotFig::Color0::Black);
     fig.Clear()
         .SetMargin(0.15, 0.85, 0.15, 0.85)
         .SetAxisLimits(-0.1, 2 * M_PI + 0.1, y_test.minCoeff() - 0.1, y_test.maxCoeff() + 0.1)
-        .SetCurrentColor(PlplotFig::Color0::White)
+        .SetCurrentColor(PlplotFig::Color0::Black)
         .DrawAxesBox(
             PlplotFig::AxisOpt().DrawTopRightEdge(),
             PlplotFig::AxisOpt().DrawPerpendicularTickLabels())
@@ -97,7 +98,7 @@ TEST(NoisyInputGaussianProcess, SingleInputSingleOutputWithGradientObservation) 
         .SetLineStyle(2)
         .DrawLine(n_test, x_test.data(), y_pred.data())
         .SetAxisLimits(-0.1, 2 * M_PI + 0.1, error.minCoeff() - 0.001, error.maxCoeff() + 0.001)
-        .SetCurrentColor(PlplotFig::Color0::White)
+        .SetCurrentColor(PlplotFig::Color0::Black)
         .DrawAxesBox(
             PlplotFig::AxisOpt::Off(),
             PlplotFig::AxisOpt::Off()
@@ -126,11 +127,11 @@ TEST(NoisyInputGaussianProcess, SingleInputSingleOutputWithGradientObservation) 
         .SetLineWidths({1.0, 1.0, 1.0, 1.0})
         .SetBoxStyle(PL_LEGEND_BOUNDING_BOX)
         .SetBgColor0(PlplotFig::Color0::Gray)
-        .SetLegendBoxLineColor0(PlplotFig::Color0::White);
+        .SetLegendBoxLineColor0(PlplotFig::Color0::Black);
     fig.Clear()
         .SetMargin(0.15, 0.85, 0.15, 0.85)
         .SetAxisLimits(-0.1, 2 * M_PI + 0.1, grad_test.minCoeff() - 0.1, grad_test.maxCoeff() + 0.1)
-        .SetCurrentColor(PlplotFig::Color0::White)
+        .SetCurrentColor(PlplotFig::Color0::Black)
         .DrawAxesBox(
             PlplotFig::AxisOpt().DrawTopRightEdge(),
             PlplotFig::AxisOpt().DrawPerpendicularTickLabels())
@@ -150,7 +151,7 @@ TEST(NoisyInputGaussianProcess, SingleInputSingleOutputWithGradientObservation) 
             2 * M_PI + 0.1,
             grad_error.minCoeff() - 0.001,
             grad_error.maxCoeff() + 0.001)
-        .SetCurrentColor(PlplotFig::Color0::White)
+        .SetCurrentColor(PlplotFig::Color0::Black)
         .DrawAxesBox(
             PlplotFig::AxisOpt::Off(),
             PlplotFig::AxisOpt::Off()
@@ -232,7 +233,7 @@ TEST(NoisyInputGaussianProcess, SingleInputSingleOutputWithoutGradientObservatio
     ReportTime<std::chrono::microseconds>("ans", 10, false, [&]() -> void {
         auto result = gp.Test(x_test.transpose(), true);
         result->GetMean(0, y_pred, true);
-        result->GetGradient(0, grad_pred.transpose(), true);
+        (void) result->GetGradient(0, grad_pred.transpose(), true);
     });
     Eigen::VectorXd error = y_pred - y_test;
     Eigen::VectorXd grad_error = grad_pred - grad_test;
@@ -251,11 +252,11 @@ TEST(NoisyInputGaussianProcess, SingleInputSingleOutputWithoutGradientObservatio
         .SetLineWidths({1.0, 1.0, 1.0, 1.0})
         .SetBoxStyle(PL_LEGEND_BOUNDING_BOX)
         .SetBgColor0(PlplotFig::Color0::Gray)
-        .SetLegendBoxLineColor0(PlplotFig::Color0::White);
+        .SetLegendBoxLineColor0(PlplotFig::Color0::Black);
     fig.Clear()
         .SetMargin(0.15, 0.85, 0.15, 0.85)
         .SetAxisLimits(-0.1, 2 * M_PI + 0.1, y_test.minCoeff() - 0.1, y_test.maxCoeff() + 0.1)
-        .SetCurrentColor(PlplotFig::Color0::White)
+        .SetCurrentColor(PlplotFig::Color0::Black)
         .DrawAxesBox(
             PlplotFig::AxisOpt().DrawTopRightEdge(),
             PlplotFig::AxisOpt().DrawPerpendicularTickLabels())
@@ -271,7 +272,7 @@ TEST(NoisyInputGaussianProcess, SingleInputSingleOutputWithoutGradientObservatio
         .SetLineStyle(2)
         .DrawLine(n_test, x_test.data(), y_pred.data())
         .SetAxisLimits(-0.1, 2 * M_PI + 0.1, error.minCoeff() - 0.001, error.maxCoeff() + 0.001)
-        .SetCurrentColor(PlplotFig::Color0::White)
+        .SetCurrentColor(PlplotFig::Color0::Black)
         .DrawAxesBox(
             PlplotFig::AxisOpt::Off(),
             PlplotFig::AxisOpt::Off()
@@ -300,11 +301,11 @@ TEST(NoisyInputGaussianProcess, SingleInputSingleOutputWithoutGradientObservatio
         .SetLineWidths({1.0, 1.0, 1.0, 1.0})
         .SetBoxStyle(PL_LEGEND_BOUNDING_BOX)
         .SetBgColor0(PlplotFig::Color0::Gray)
-        .SetLegendBoxLineColor0(PlplotFig::Color0::White);
+        .SetLegendBoxLineColor0(PlplotFig::Color0::Black);
     fig.Clear()
         .SetMargin(0.15, 0.85, 0.15, 0.85)
         .SetAxisLimits(-0.1, 2 * M_PI + 0.1, grad_test.minCoeff() - 0.1, grad_test.maxCoeff() + 0.1)
-        .SetCurrentColor(PlplotFig::Color0::White)
+        .SetCurrentColor(PlplotFig::Color0::Black)
         .DrawAxesBox(
             PlplotFig::AxisOpt().DrawTopRightEdge(),
             PlplotFig::AxisOpt().DrawPerpendicularTickLabels())
@@ -324,7 +325,7 @@ TEST(NoisyInputGaussianProcess, SingleInputSingleOutputWithoutGradientObservatio
             2 * M_PI + 0.1,
             grad_error.minCoeff() - 0.001,
             grad_error.maxCoeff() + 0.001)
-        .SetCurrentColor(PlplotFig::Color0::White)
+        .SetCurrentColor(PlplotFig::Color0::Black)
         .DrawAxesBox(
             PlplotFig::AxisOpt::Off(),
             PlplotFig::AxisOpt::Off()
@@ -446,7 +447,7 @@ TEST(NoisyInputGaussianProcess, MultiInputSingleOutputWithGradientObservation) {
     fig.Clear()
         .SetMargin(0.15, 0.85, 0.15, 0.85)
         .SetAxisLimits(x_min, x_max, y_min, y_max)
-        .SetCurrentColor(PlplotFig::Color0::White)
+        .SetCurrentColor(PlplotFig::Color0::Black)
         .DrawAxesBox(
             PlplotFig::AxisOpt().DrawTopRightEdge(),
             PlplotFig::AxisOpt().DrawPerpendicularTickLabels())
@@ -463,7 +464,7 @@ TEST(NoisyInputGaussianProcess, MultiInputSingleOutputWithGradientObservation) {
     fig.Clear()
         .SetMargin(0.15, 0.85, 0.15, 0.85)
         .SetAxisLimits(x_min, x_max, y_min, y_max)
-        .SetCurrentColor(PlplotFig::Color0::White)
+        .SetCurrentColor(PlplotFig::Color0::Black)
         .DrawAxesBox(
             PlplotFig::AxisOpt().DrawTopRightEdge(),
             PlplotFig::AxisOpt().DrawPerpendicularTickLabels())
@@ -480,7 +481,7 @@ TEST(NoisyInputGaussianProcess, MultiInputSingleOutputWithGradientObservation) {
     fig.Clear()
         .SetMargin(0.15, 0.85, 0.15, 0.85)
         .SetAxisLimits(x_min, x_max, y_min, y_max)
-        .SetCurrentColor(PlplotFig::Color0::White)
+        .SetCurrentColor(PlplotFig::Color0::Black)
         .DrawAxesBox(
             PlplotFig::AxisOpt().DrawTopRightEdge(),
             PlplotFig::AxisOpt().DrawPerpendicularTickLabels())
@@ -497,7 +498,7 @@ TEST(NoisyInputGaussianProcess, MultiInputSingleOutputWithGradientObservation) {
     fig.Clear()
         .SetMargin(0.15, 0.85, 0.15, 0.85)
         .SetAxisLimits(x_min, x_max, y_min, y_max)
-        .SetCurrentColor(PlplotFig::Color0::White)
+        .SetCurrentColor(PlplotFig::Color0::Black)
         .DrawAxesBox(
             PlplotFig::AxisOpt().DrawTopRightEdge(),
             PlplotFig::AxisOpt().DrawPerpendicularTickLabels())
@@ -514,7 +515,7 @@ TEST(NoisyInputGaussianProcess, MultiInputSingleOutputWithGradientObservation) {
     fig.Clear()
         .SetMargin(0.15, 0.85, 0.15, 0.85)
         .SetAxisLimits(x_min, x_max, y_min, y_max)
-        .SetCurrentColor(PlplotFig::Color0::White)
+        .SetCurrentColor(PlplotFig::Color0::Black)
         .DrawAxesBox(
             PlplotFig::AxisOpt().DrawTopRightEdge(),
             PlplotFig::AxisOpt().DrawPerpendicularTickLabels())
@@ -531,7 +532,7 @@ TEST(NoisyInputGaussianProcess, MultiInputSingleOutputWithGradientObservation) {
     fig.Clear()
         .SetMargin(0.15, 0.85, 0.15, 0.85)
         .SetAxisLimits(x_min, x_max, y_min, y_max)
-        .SetCurrentColor(PlplotFig::Color0::White)
+        .SetCurrentColor(PlplotFig::Color0::Black)
         .DrawAxesBox(
             PlplotFig::AxisOpt().DrawTopRightEdge(),
             PlplotFig::AxisOpt().DrawPerpendicularTickLabels())
@@ -650,7 +651,7 @@ TEST(NoisyInputGaussianProcess, MultiInputSingleOutputWithoutGradientObservation
     fig.Clear()
         .SetMargin(0.15, 0.85, 0.15, 0.85)
         .SetAxisLimits(x_min, x_max, y_min, y_max)
-        .SetCurrentColor(PlplotFig::Color0::White)
+        .SetCurrentColor(PlplotFig::Color0::Black)
         .DrawAxesBox(
             PlplotFig::AxisOpt().DrawTopRightEdge(),
             PlplotFig::AxisOpt().DrawPerpendicularTickLabels())
@@ -667,7 +668,7 @@ TEST(NoisyInputGaussianProcess, MultiInputSingleOutputWithoutGradientObservation
     fig.Clear()
         .SetMargin(0.15, 0.85, 0.15, 0.85)
         .SetAxisLimits(x_min, x_max, y_min, y_max)
-        .SetCurrentColor(PlplotFig::Color0::White)
+        .SetCurrentColor(PlplotFig::Color0::Black)
         .DrawAxesBox(
             PlplotFig::AxisOpt().DrawTopRightEdge(),
             PlplotFig::AxisOpt().DrawPerpendicularTickLabels())
@@ -684,7 +685,7 @@ TEST(NoisyInputGaussianProcess, MultiInputSingleOutputWithoutGradientObservation
     fig.Clear()
         .SetMargin(0.15, 0.85, 0.15, 0.85)
         .SetAxisLimits(x_min, x_max, y_min, y_max)
-        .SetCurrentColor(PlplotFig::Color0::White)
+        .SetCurrentColor(PlplotFig::Color0::Black)
         .DrawAxesBox(
             PlplotFig::AxisOpt().DrawTopRightEdge(),
             PlplotFig::AxisOpt().DrawPerpendicularTickLabels())
@@ -701,7 +702,7 @@ TEST(NoisyInputGaussianProcess, MultiInputSingleOutputWithoutGradientObservation
     fig.Clear()
         .SetMargin(0.15, 0.85, 0.15, 0.85)
         .SetAxisLimits(x_min, x_max, y_min, y_max)
-        .SetCurrentColor(PlplotFig::Color0::White)
+        .SetCurrentColor(PlplotFig::Color0::Black)
         .DrawAxesBox(
             PlplotFig::AxisOpt().DrawTopRightEdge(),
             PlplotFig::AxisOpt().DrawPerpendicularTickLabels())
@@ -718,7 +719,7 @@ TEST(NoisyInputGaussianProcess, MultiInputSingleOutputWithoutGradientObservation
     fig.Clear()
         .SetMargin(0.15, 0.85, 0.15, 0.85)
         .SetAxisLimits(x_min, x_max, y_min, y_max)
-        .SetCurrentColor(PlplotFig::Color0::White)
+        .SetCurrentColor(PlplotFig::Color0::Black)
         .DrawAxesBox(
             PlplotFig::AxisOpt().DrawTopRightEdge(),
             PlplotFig::AxisOpt().DrawPerpendicularTickLabels())
@@ -735,7 +736,7 @@ TEST(NoisyInputGaussianProcess, MultiInputSingleOutputWithoutGradientObservation
     fig.Clear()
         .SetMargin(0.15, 0.85, 0.15, 0.85)
         .SetAxisLimits(x_min, x_max, y_min, y_max)
-        .SetCurrentColor(PlplotFig::Color0::White)
+        .SetCurrentColor(PlplotFig::Color0::Black)
         .DrawAxesBox(
             PlplotFig::AxisOpt().DrawTopRightEdge(),
             PlplotFig::AxisOpt().DrawPerpendicularTickLabels())
@@ -858,8 +859,8 @@ TEST(NoisyInputGaussianProcess, MultiInputMultiOutputWithGradientObservation) {
         auto result = gp.Test(pts, true);
         result->GetMean(0, pred.col(0), true);
         result->GetMean(1, pred.col(1), true);
-        result->GetGradient(0, gradient_pred.topRows<2>(), true);
-        result->GetGradient(1, gradient_pred.bottomRows<2>(), true);
+        (void) result->GetGradient(0, gradient_pred.topRows<2>(), true);
+        (void) result->GetGradient(1, gradient_pred.bottomRows<2>(), true);
     }
 
     PlplotFig fig(640, 480, true);
@@ -884,7 +885,7 @@ TEST(NoisyInputGaussianProcess, MultiInputMultiOutputWithGradientObservation) {
         fig.Clear()
             .SetMargin(0.15, 0.85, 0.15, 0.85)
             .SetAxisLimits(x_min, x_max, y_min, y_max)
-            .SetCurrentColor(PlplotFig::Color0::White)
+            .SetCurrentColor(PlplotFig::Color0::Black)
             .DrawAxesBox(
                 PlplotFig::AxisOpt().DrawTopRightEdge(),
                 PlplotFig::AxisOpt().DrawPerpendicularTickLabels())
@@ -901,7 +902,7 @@ TEST(NoisyInputGaussianProcess, MultiInputMultiOutputWithGradientObservation) {
         fig.Clear()
             .SetMargin(0.15, 0.85, 0.15, 0.85)
             .SetAxisLimits(x_min, x_max, y_min, y_max)
-            .SetCurrentColor(PlplotFig::Color0::White)
+            .SetCurrentColor(PlplotFig::Color0::Black)
             .DrawAxesBox(
                 PlplotFig::AxisOpt().DrawTopRightEdge(),
                 PlplotFig::AxisOpt().DrawPerpendicularTickLabels())
@@ -918,7 +919,7 @@ TEST(NoisyInputGaussianProcess, MultiInputMultiOutputWithGradientObservation) {
         fig.Clear()
             .SetMargin(0.15, 0.85, 0.15, 0.85)
             .SetAxisLimits(x_min, x_max, y_min, y_max)
-            .SetCurrentColor(PlplotFig::Color0::White)
+            .SetCurrentColor(PlplotFig::Color0::Black)
             .DrawAxesBox(
                 PlplotFig::AxisOpt().DrawTopRightEdge(),
                 PlplotFig::AxisOpt().DrawPerpendicularTickLabels())
@@ -935,7 +936,7 @@ TEST(NoisyInputGaussianProcess, MultiInputMultiOutputWithGradientObservation) {
         fig.Clear()
             .SetMargin(0.15, 0.85, 0.15, 0.85)
             .SetAxisLimits(x_min, x_max, y_min, y_max)
-            .SetCurrentColor(PlplotFig::Color0::White)
+            .SetCurrentColor(PlplotFig::Color0::Black)
             .DrawAxesBox(
                 PlplotFig::AxisOpt().DrawTopRightEdge(),
                 PlplotFig::AxisOpt().DrawPerpendicularTickLabels())
@@ -952,7 +953,7 @@ TEST(NoisyInputGaussianProcess, MultiInputMultiOutputWithGradientObservation) {
         fig.Clear()
             .SetMargin(0.15, 0.85, 0.15, 0.85)
             .SetAxisLimits(x_min, x_max, y_min, y_max)
-            .SetCurrentColor(PlplotFig::Color0::White)
+            .SetCurrentColor(PlplotFig::Color0::Black)
             .DrawAxesBox(
                 PlplotFig::AxisOpt().DrawTopRightEdge(),
                 PlplotFig::AxisOpt().DrawPerpendicularTickLabels())
@@ -969,7 +970,7 @@ TEST(NoisyInputGaussianProcess, MultiInputMultiOutputWithGradientObservation) {
         fig.Clear()
             .SetMargin(0.15, 0.85, 0.15, 0.85)
             .SetAxisLimits(x_min, x_max, y_min, y_max)
-            .SetCurrentColor(PlplotFig::Color0::White)
+            .SetCurrentColor(PlplotFig::Color0::Black)
             .DrawAxesBox(
                 PlplotFig::AxisOpt().DrawTopRightEdge(),
                 PlplotFig::AxisOpt().DrawPerpendicularTickLabels())
@@ -1095,8 +1096,8 @@ TEST(NoisyInputGaussianProcess, MultiInputMultiOutputWithoutGradientObservation)
         auto result = gp.Test(pts, true);
         result->GetMean(0, pred.col(0), true);
         result->GetMean(1, pred.col(1), true);
-        result->GetGradient(0, gradient_pred.topRows<2>(), true);
-        result->GetGradient(1, gradient_pred.bottomRows<2>(), true);
+        (void) result->GetGradient(0, gradient_pred.topRows<2>(), true);
+        (void) result->GetGradient(1, gradient_pred.bottomRows<2>(), true);
     }
 
     PlplotFig fig(640, 480, true);
@@ -1121,7 +1122,7 @@ TEST(NoisyInputGaussianProcess, MultiInputMultiOutputWithoutGradientObservation)
         fig.Clear()
             .SetMargin(0.15, 0.85, 0.15, 0.85)
             .SetAxisLimits(x_min, x_max, y_min, y_max)
-            .SetCurrentColor(PlplotFig::Color0::White)
+            .SetCurrentColor(PlplotFig::Color0::Black)
             .DrawAxesBox(
                 PlplotFig::AxisOpt().DrawTopRightEdge(),
                 PlplotFig::AxisOpt().DrawPerpendicularTickLabels())
@@ -1138,7 +1139,7 @@ TEST(NoisyInputGaussianProcess, MultiInputMultiOutputWithoutGradientObservation)
         fig.Clear()
             .SetMargin(0.15, 0.85, 0.15, 0.85)
             .SetAxisLimits(x_min, x_max, y_min, y_max)
-            .SetCurrentColor(PlplotFig::Color0::White)
+            .SetCurrentColor(PlplotFig::Color0::Black)
             .DrawAxesBox(
                 PlplotFig::AxisOpt().DrawTopRightEdge(),
                 PlplotFig::AxisOpt().DrawPerpendicularTickLabels())
@@ -1155,7 +1156,7 @@ TEST(NoisyInputGaussianProcess, MultiInputMultiOutputWithoutGradientObservation)
         fig.Clear()
             .SetMargin(0.15, 0.85, 0.15, 0.85)
             .SetAxisLimits(x_min, x_max, y_min, y_max)
-            .SetCurrentColor(PlplotFig::Color0::White)
+            .SetCurrentColor(PlplotFig::Color0::Black)
             .DrawAxesBox(
                 PlplotFig::AxisOpt().DrawTopRightEdge(),
                 PlplotFig::AxisOpt().DrawPerpendicularTickLabels())
@@ -1172,7 +1173,7 @@ TEST(NoisyInputGaussianProcess, MultiInputMultiOutputWithoutGradientObservation)
         fig.Clear()
             .SetMargin(0.15, 0.85, 0.15, 0.85)
             .SetAxisLimits(x_min, x_max, y_min, y_max)
-            .SetCurrentColor(PlplotFig::Color0::White)
+            .SetCurrentColor(PlplotFig::Color0::Black)
             .DrawAxesBox(
                 PlplotFig::AxisOpt().DrawTopRightEdge(),
                 PlplotFig::AxisOpt().DrawPerpendicularTickLabels())
@@ -1189,7 +1190,7 @@ TEST(NoisyInputGaussianProcess, MultiInputMultiOutputWithoutGradientObservation)
         fig.Clear()
             .SetMargin(0.15, 0.85, 0.15, 0.85)
             .SetAxisLimits(x_min, x_max, y_min, y_max)
-            .SetCurrentColor(PlplotFig::Color0::White)
+            .SetCurrentColor(PlplotFig::Color0::Black)
             .DrawAxesBox(
                 PlplotFig::AxisOpt().DrawTopRightEdge(),
                 PlplotFig::AxisOpt().DrawPerpendicularTickLabels())
@@ -1206,7 +1207,7 @@ TEST(NoisyInputGaussianProcess, MultiInputMultiOutputWithoutGradientObservation)
         fig.Clear()
             .SetMargin(0.15, 0.85, 0.15, 0.85)
             .SetAxisLimits(x_min, x_max, y_min, y_max)
-            .SetCurrentColor(PlplotFig::Color0::White)
+            .SetCurrentColor(PlplotFig::Color0::Black)
             .DrawAxesBox(
                 PlplotFig::AxisOpt().DrawTopRightEdge(),
                 PlplotFig::AxisOpt().DrawPerpendicularTickLabels())

@@ -5,39 +5,6 @@
 #include <open3d/core/Dtype.h>
 
 namespace erl::gaussian_process {
-    template<typename Dtype>
-    YAML::Node
-    SparsePseudoInputGaussianProcess<Dtype>::Setting::YamlConvertImpl::encode(
-        const Setting &setting) {
-        YAML::Node node;
-        ERL_YAML_SAVE_ATTR(node, setting, kernel_type);
-        ERL_YAML_SAVE_ATTR(node, setting, kernel_setting_type);
-        ERL_YAML_SAVE_ATTR(node, setting, kernel);
-        ERL_YAML_SAVE_ATTR(node, setting, max_num_samples);
-        ERL_YAML_SAVE_ATTR(node, setting, sparse_zero_threshold);
-        ERL_YAML_SAVE_ATTR(node, setting, use_sparse);
-        ERL_YAML_SAVE_ATTR(node, setting, diagonal_qm);
-        return node;
-    }
-
-    template<typename Dtype>
-    bool
-    SparsePseudoInputGaussianProcess<Dtype>::Setting::YamlConvertImpl::decode(
-        const YAML::Node &node,
-        Setting &setting) {
-        if (!node.IsMap()) { return false; }
-        ERL_YAML_LOAD_ATTR(node, setting, kernel_type);
-        ERL_YAML_LOAD_ATTR(node, setting, kernel_setting_type);
-        using namespace common;
-        using CovarianceSetting = typename Covariance::Setting;
-        setting.kernel = YamlableBase::Create<CovarianceSetting>(setting.kernel_setting_type);
-        if (!ERL_YAML_LOAD_ATTR(node, setting, kernel)) { return false; }
-        ERL_YAML_LOAD_ATTR(node, setting, max_num_samples);
-        ERL_YAML_LOAD_ATTR(node, setting, sparse_zero_threshold);
-        ERL_YAML_LOAD_ATTR(node, setting, use_sparse);
-        ERL_YAML_LOAD_ATTR(node, setting, diagonal_qm);
-        return true;
-    }
 
     template<typename Dtype>
     SparsePseudoInputGaussianProcess<Dtype>::TestResult::TestResult(
@@ -313,8 +280,7 @@ namespace erl::gaussian_process {
     SparsePseudoInputGaussianProcess<Dtype>::SparsePseudoInputGaussianProcess(
         std::shared_ptr<Setting> setting,
         MatrixX pseudo_points)
-        : m_setting_(std::move(setting)),
-          m_pseudo_points_(std::move(pseudo_points)) {
+        : m_setting_(std::move(setting)), m_pseudo_points_(std::move(pseudo_points)) {
         ERL_ASSERTM(m_setting_ != nullptr, "setting is null");
         ERL_ASSERTM(m_setting_->kernel != nullptr, "setting->kernel is null");
         ERL_ASSERTM(m_pseudo_points_.cols() > 0, "pseudo_points must have at least one column");
@@ -538,6 +504,7 @@ namespace erl::gaussian_process {
     bool
     SparsePseudoInputGaussianProcess<Dtype>::Write(std::ostream &s) const {
         using namespace common;
+        using namespace common::serialization;
         using Self = SparsePseudoInputGaussianProcess;
         static const TokenWriteFunctionPairs<Self> token_function_pairs = {
             {
@@ -640,6 +607,7 @@ namespace erl::gaussian_process {
     bool
     SparsePseudoInputGaussianProcess<Dtype>::Read(std::istream &s) {
         using namespace common;
+        using namespace common::serialization;
         using Self = SparsePseudoInputGaussianProcess;
         static const TokenReadFunctionPairs<Self> token_function_pairs = {
             {

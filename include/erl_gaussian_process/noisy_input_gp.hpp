@@ -23,13 +23,13 @@ namespace erl::gaussian_process {
             long max_num_samples = -1;  // maximum number of training samples, -1 means no limit
             bool no_gradient_observation = false;
 
-            struct YamlConvertImpl {
-                static YAML::Node
-                encode(const Setting &setting);
-
-                static bool
-                decode(const YAML::Node &node, Setting &setting);
-            };
+            ERL_REFLECT_SCHEMA(
+                Setting,
+                ERL_REFLECT_MEMBER(Setting, kernel_type),
+                ERL_REFLECT_MEMBER(Setting, kernel_setting_type),
+                ERL_REFLECT_MEMBER_POLY(Setting, kernel, kernel_setting_type),
+                ERL_REFLECT_MEMBER(Setting, max_num_samples),
+                ERL_REFLECT_MEMBER(Setting, no_gradient_observation));
         };
 
         /**
@@ -180,7 +180,7 @@ namespace erl::gaussian_process {
             Eigen::VectorXl grad_flag;  // true if the corresponding training sample has a gradient.
 
             void
-            Reset(long max_num_samples, long x_dim, long y_dim, bool no_gradient_observation);
+            Reset(long max_num_samples, long x_dim_, long y_dim_, bool no_gradient_observation);
 
             [[nodiscard]] bool
             operator==(const TrainSet &other) const;
@@ -314,11 +314,3 @@ namespace erl::gaussian_process {
     extern template class NoisyInputGaussianProcess<double>;
     extern template class NoisyInputGaussianProcess<float>;
 }  // namespace erl::gaussian_process
-
-template<>
-struct YAML::convert<erl::gaussian_process::NoisyInputGaussianProcessD::Setting>
-    : erl::gaussian_process::NoisyInputGaussianProcessD::Setting::YamlConvertImpl {};
-
-template<>
-struct YAML::convert<erl::gaussian_process::NoisyInputGaussianProcessF::Setting>
-    : erl::gaussian_process::NoisyInputGaussianProcessF::Setting::YamlConvertImpl {};

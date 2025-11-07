@@ -27,13 +27,12 @@ namespace erl::gaussian_process {
                 std::make_shared<typename Covariance::Setting>();
             long max_num_samples = 256;
 
-            struct YamlConvertImpl {
-                static YAML::Node
-                encode(const Setting &setting);
-
-                static bool
-                decode(const YAML::Node &node, Setting &setting);
-            };
+            ERL_REFLECT_SCHEMA(
+                Setting,
+                ERL_REFLECT_MEMBER(Setting, kernel_type),
+                ERL_REFLECT_MEMBER(Setting, kernel_setting_type),
+                ERL_REFLECT_MEMBER_POLY(Setting, kernel, kernel_setting_type),
+                ERL_REFLECT_MEMBER(Setting, max_num_samples));
         };
 
         class TestResult {
@@ -83,7 +82,7 @@ namespace erl::gaussian_process {
             VectorX var;           // variance of y, assumed to be identical across dimensions of y.
 
             void
-            Reset(long max_num_samples, long x_dim, long y_dim);
+            Reset(long max_num_samples, long x_dim_, long y_dim_);
 
             [[nodiscard]] bool
             operator==(const TrainSet &other) const;
@@ -220,11 +219,3 @@ namespace erl::gaussian_process {
     extern template class VanillaGaussianProcess<double>;
     extern template class VanillaGaussianProcess<float>;
 }  // namespace erl::gaussian_process
-
-template<>
-struct YAML::convert<erl::gaussian_process::VanillaGaussianProcessD::Setting>
-    : erl::gaussian_process::VanillaGaussianProcessD::Setting::YamlConvertImpl {};
-
-template<>
-struct YAML::convert<erl::gaussian_process::VanillaGaussianProcessF::Setting>
-    : erl::gaussian_process::VanillaGaussianProcessF::Setting::YamlConvertImpl {};

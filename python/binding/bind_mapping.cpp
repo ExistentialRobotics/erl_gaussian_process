@@ -1,4 +1,5 @@
 #include "erl_common/pybind11.hpp"
+#include "erl_common/pybind11_yaml.hpp"
 #include "erl_gaussian_process/mapping.hpp"
 
 using namespace erl::common;
@@ -10,9 +11,7 @@ BindMappingImpl(const py::module &m, const char *name) {
     using T = Mapping<Dtype>;
 
     auto py_mapping = py::class_<T, std::shared_ptr<T>>(m, name);
-    py::class_<typename T::Setting, std::shared_ptr<typename T::Setting>>(py_mapping, "Setting")
-        .def_readwrite("type", &T::Setting::type)
-        .def_readwrite("scale", &T::Setting::scale);
+    BindYamlable<decltype(py_mapping), typename T::Setting>(py_mapping, "Setting");
 
     py_mapping.def(py::init([] { return T::Create(); }))
         .def(
@@ -31,16 +30,7 @@ BindMappingImpl(const py::module &m, const char *name) {
 
 void
 BindMapping(const py::module &m) {
-    py::enum_<MappingType>(m, "MappingType", py::arithmetic(), "Type of mapping.")
-        .value("kIdentity", MappingType::kIdentity)
-        .value("kInverse", MappingType::kInverse)
-        .value("kInverseSqrt", MappingType::kInverseSqrt)
-        .value("kExp", MappingType::kExp)
-        .value("kLog", MappingType::kLog)
-        .value("kTanh", MappingType::kTanh)
-        .value("kSigmoid", MappingType::kSigmoid)
-        .value("kUnknown", MappingType::kUnknown)
-        .export_values();
+    BindYamlableEnum<decltype(m), MappingType, 8>(m, "MappingType");
     BindMappingImpl<double>(m, "MappingD");
     BindMappingImpl<float>(m, "MappingF");
 }

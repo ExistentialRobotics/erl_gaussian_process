@@ -1,5 +1,7 @@
+#include "erl_common/block_timer.hpp"
 #include "erl_common/opencv.hpp"
 #include "erl_common/random.hpp"
+#include "erl_common/serialization.hpp"
 #include "erl_common/test_helper.hpp"
 #include "erl_covariance/ornstein_uhlenbeck.hpp"
 #include "erl_gaussian_process/range_sensor_gp_3d.hpp"
@@ -32,6 +34,7 @@ static std::filesystem::path kProjectDir = ERL_GAUSSIAN_PROCESS_ROOT_DIR;
 
 TEST(RangeSensorGp3D, Lidar) {
     using namespace erl::common;
+    using namespace erl::common::serialization;
     using namespace erl::geometry;
     GTEST_PREPARE_OUTPUT_DIR();
     const auto gp_setting = std::make_shared<RangeSensorGaussianProcess3D::Setting>();
@@ -47,10 +50,10 @@ TEST(RangeSensorGp3D, Lidar) {
     gp_setting->sensor_frame_setting_type = type_name<LidarFrame::Setting>();
     gp_setting->sensor_frame = lidar_frame_setting;
     gp_setting->row_group_size = 10;
-    gp_setting->row_overlap_size = 3;
+    gp_setting->row_overlap_size = 4;
     gp_setting->row_margin = 0;
     gp_setting->col_group_size = 10;
-    gp_setting->col_overlap_size = 3;
+    gp_setting->col_overlap_size = 4;
     gp_setting->col_margin = 0;
     RangeSensorGaussianProcess3D gp(gp_setting);
     const auto lidar_frame = std::dynamic_pointer_cast<const LidarFrame>(gp.GetSensorFrame());
@@ -202,32 +205,37 @@ TEST(RangeSensorGp3D, Lidar) {
         1600,
         900);
 
-    EXPECT_TRUE(Serialization<RangeSensorGaussianProcess3D>::Write(
-        test_output_dir / "range_sensor_gp_3d_lidar.bin",
-        &gp));
+    EXPECT_TRUE(
+        Serialization<RangeSensorGaussianProcess3D>::Write(
+            test_output_dir / "range_sensor_gp_3d_lidar.bin",
+            &gp));
     RangeSensorGaussianProcess3D gp_read(std::make_shared<RangeSensorGaussianProcess3D::Setting>());
-    ASSERT_TRUE(Serialization<RangeSensorGaussianProcess3D>::Read(
-        test_output_dir / "range_sensor_gp_3d_lidar.bin",
-        &gp_read));
+    ASSERT_TRUE(
+        Serialization<RangeSensorGaussianProcess3D>::Read(
+            test_output_dir / "range_sensor_gp_3d_lidar.bin",
+            &gp_read));
     EXPECT_TRUE(gp == gp_read);
 }
 
 TEST(RangeSensorGp3D, Depth) {
     using namespace erl::common;
+    using namespace erl::common::serialization;
     using namespace erl::geometry;
     GTEST_PREPARE_OUTPUT_DIR();
 
     const auto gp_setting = std::make_shared<RangeSensorGaussianProcess3D::Setting>();
     const auto depth_frame_setting = std::make_shared<DepthFrame::Setting>();
+    depth_frame_setting->valid_range_max = 5.0;
     gp_setting->gp->kernel_type = type_name<erl::covariance::OrnsteinUhlenbeck2d>();
+    gp_setting->gp->kernel->scale = 0.2;
     gp_setting->sensor_frame_type = type_name<DepthFrame>();
     gp_setting->sensor_frame_setting_type = type_name<DepthFrame::Setting>();
     gp_setting->sensor_frame = depth_frame_setting;
     gp_setting->row_group_size = 10;
-    gp_setting->row_overlap_size = 3;
+    gp_setting->row_overlap_size = 4;
     gp_setting->row_margin = 0;
     gp_setting->col_group_size = 10;
-    gp_setting->col_overlap_size = 3;
+    gp_setting->col_overlap_size = 4;
     gp_setting->col_margin = 0;
     std::cout << "gp_setting:\n" << *gp_setting << std::endl;
     RangeSensorGaussianProcess3D gp(gp_setting);
@@ -287,9 +295,11 @@ TEST(RangeSensorGp3D, Depth) {
     const VectorX test_azimuths = (VectorX::Random(n_test).array() * 2.0 - 1.0) * M_PI;
     const VectorX test_elevations = (VectorX::Random(n_test).array() * 2.0 - 1.0) * M_PI_2;
     Matrix3X directions_world(3, test_azimuths.size());
+
     open3d::t::geometry::RaycastingScene scene;
     scene.AddTriangles(open3d::t::geometry::TriangleMesh::FromLegacy(*mesh));
     open3d::core::Tensor rays({test_azimuths.size(), 6}, open3d::core::Dtype::Float32);
+
     for (long i = 0; i < test_azimuths.size(); ++i) {
         directions_world.col(i) = AzimuthElevationToDirection(test_azimuths[i], test_elevations[i]);
         rays[i][0] = optical_translation[0];
@@ -299,11 +309,11 @@ TEST(RangeSensorGp3D, Depth) {
         rays[i][4] = directions_world(1, i);
         rays[i][5] = directions_world(2, i);
     }
+
     auto result = scene.CastRays(rays);
     const VectorX vec_ranges_gt =
-        Eigen::Map<Eigen::VectorXf>(result["t_hit"].GetDataPtr<float>(), test_azimuths.size())
-            .cast<Dtype>();
-    VectorX vec_ranges(test_azimuths.size());
+        Eigen::Map<Eigen::VectorXf>(result["t_hit"].GetDataPtr<float>(), n_test).cast<Dtype>();
+    VectorX vec_ranges(n_test);
     Eigen::VectorXb success;
     {
         ERL_BLOCK_TIMER_MSG("gp.Test");
@@ -320,7 +330,7 @@ TEST(RangeSensorGp3D, Depth) {
         open3d::core::Tensor rays_invalid({n_invalid, 6}, open3d::core::Dtype::Float32);
         auto *rays_invalid_ptr = rays_invalid.GetDataPtr<float>();
         const Eigen::Vector3f &translation_f = optical_translation.cast<float>();
-        for (long i = 0; i < test_azimuths.size(); ++i) {
+        for (long i = 0; i < n_test; ++i) {
             if (success[i]) {
                 mse += std::pow(vec_ranges[i] - vec_ranges_gt[i], 2);
                 continue;
@@ -331,8 +341,8 @@ TEST(RangeSensorGp3D, Depth) {
             std::copy_n(ray_direction.data(), 3, rays_invalid_ptr + 3);
             rays_invalid_ptr += 6;
         }
-        mse /= static_cast<double>(test_azimuths.size() - n_invalid);
-        ERL_INFO("n_invalid: {}/{}", n_invalid, test_azimuths.size());
+        mse /= static_cast<double>(n_test - n_invalid);
+        ERL_INFO("n_invalid: {}/{}", n_invalid, n_test);
         auto result_invalid = scene.CastRays(rays_invalid);
         vec_ranges_invalid =
             Eigen::Map<Eigen::VectorXf>(result_invalid["t_hit"].GetDataPtr<float>(), n_invalid)
@@ -369,8 +379,8 @@ TEST(RangeSensorGp3D, Depth) {
     point_cloud_train->PaintUniformColor({0.0, 1.0, 0.0});
 
     const auto point_cloud_test = std::make_shared<open3d::geometry::PointCloud>();
-    point_cloud_test->points_.reserve(test_azimuths.size() - vec_ranges_invalid.size());
-    for (long i = 0; i < test_azimuths.size(); ++i) {
+    point_cloud_test->points_.reserve(n_test - vec_ranges_invalid.size());
+    for (long i = 0; i < n_test; ++i) {
         if (!success[i]) { continue; }
         point_cloud_test->points_.emplace_back(
             (optical_translation + directions_world.col(i) * vec_ranges[i]).cast<double>());
@@ -404,13 +414,10 @@ TEST(RangeSensorGp3D, Depth) {
         1600,
         900);
 
-    ASSERT_TRUE(Serialization<RangeSensorGaussianProcess3D>::Write(
-        test_output_dir / "range_sensor_gp_3d_depth.bin",
-        &gp));
+    using Serializer = Serialization<RangeSensorGaussianProcess3D>;
+    ASSERT_TRUE(Serializer::Write(test_output_dir / "range_sensor_gp_3d_depth.bin", &gp));
     RangeSensorGaussianProcess3D gp_read(std::make_shared<RangeSensorGaussianProcess3D::Setting>());
-    ASSERT_TRUE(Serialization<RangeSensorGaussianProcess3D>::Read(
-        test_output_dir / "range_sensor_gp_3d_depth.bin",
-        &gp_read));
+    ASSERT_TRUE(Serializer::Read(test_output_dir / "range_sensor_gp_3d_depth.bin", &gp_read));
     EXPECT_TRUE(gp == gp_read);
 }
 

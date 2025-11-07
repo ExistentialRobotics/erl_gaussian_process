@@ -1,4 +1,5 @@
 #include "erl_common/pybind11.hpp"
+#include "erl_common/pybind11_yaml.hpp"
 #include "erl_gaussian_process/lidar_gp_2d.hpp"
 
 using namespace erl::common;
@@ -13,24 +14,7 @@ BindLidarGaussianProcess2DImpl(const py::module &m, const char *name) {
     using VectorX = Eigen::VectorX<Dtype>;
 
     auto py_lidar_gp = py::class_<T, std::shared_ptr<T>>(m, name);
-
-    // Setting
-    py::class_<typename T::Setting, YamlableBase, std::shared_ptr<typename T::Setting>>(
-        py_lidar_gp,
-        "Setting")
-        .def(py::init<>())
-        .def_readwrite("partition_on_hit_rays", &T::Setting::partition_on_hit_rays)
-        .def_readwrite("symmetric_partitions", &T::Setting::symmetric_partitions)
-        .def_readwrite("group_size", &T::Setting::group_size)
-        .def_readwrite("overlap_size", &T::Setting::overlap_size)
-        .def_readwrite("margin", &T::Setting::margin)
-        .def_readwrite("init_variance", &T::Setting::init_variance)
-        .def_readwrite("sensor_range_var", &T::Setting::sensor_range_var)
-        .def_readwrite("max_valid_range_var", &T::Setting::max_valid_range_var)
-        .def_readwrite("occ_test_temperature", &T::Setting::occ_test_temperature)
-        .def_readwrite("sensor_frame", &T::Setting::sensor_frame)
-        .def_readwrite("gp", &T::Setting::gp)
-        .def_readwrite("mapping", &T::Setting::mapping);
+    BindYamlable<decltype(py_lidar_gp), typename T::Setting>(py_lidar_gp, "Setting");
 
     py::class_<typename T::TestResult, std::shared_ptr<typename T::TestResult>>(
         py_lidar_gp,

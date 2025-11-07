@@ -37,13 +37,17 @@ namespace erl::gaussian_process {
             // variance of the logodd values.
             Dtype logodd_variance = 0.0001f;
 
-            struct YamlConvertImpl {
-                static YAML::Node
-                encode(const Setting &setting);
-
-                static bool
-                decode(const YAML::Node &node, Setting &setting);
-            };
+            ERL_REFLECT_SCHEMA(
+                Setting,
+                ERL_REFLECT_MEMBER(Setting, sp_gp),
+                ERL_REFLECT_MEMBER(Setting, min_distance),
+                ERL_REFLECT_MEMBER(Setting, max_distance),
+                ERL_REFLECT_MEMBER(Setting, free_points_per_meter),
+                ERL_REFLECT_MEMBER(Setting, free_sampling_margin),
+                ERL_REFLECT_MEMBER(Setting, parallel),
+                ERL_REFLECT_MEMBER(Setting, logodd_free),
+                ERL_REFLECT_MEMBER(Setting, logodd_occupied),
+                ERL_REFLECT_MEMBER(Setting, logodd_variance));
         };
 
     private:
@@ -149,19 +153,3 @@ namespace erl::gaussian_process {
     extern template class SpGpOccupancyMap<double, 2>;
     extern template class SpGpOccupancyMap<float, 2>;
 }  // namespace erl::gaussian_process
-
-template<>
-struct YAML::convert<erl::gaussian_process::SpGpOccupancyMap2Df::Setting>
-    : erl::gaussian_process::SpGpOccupancyMap2Df::Setting::YamlConvertImpl {};
-
-template<>
-struct YAML::convert<erl::gaussian_process::SpGpOccupancyMap2Dd::Setting>
-    : erl::gaussian_process::SpGpOccupancyMap2Dd::Setting::YamlConvertImpl {};
-
-template<>
-struct YAML::convert<erl::gaussian_process::SpGpOccupancyMap3Df::Setting>
-    : erl::gaussian_process::SpGpOccupancyMap3Df::Setting::YamlConvertImpl {};
-
-template<>
-struct YAML::convert<erl::gaussian_process::SpGpOccupancyMap3Dd::Setting>
-    : erl::gaussian_process::SpGpOccupancyMap3Dd::Setting::YamlConvertImpl {};

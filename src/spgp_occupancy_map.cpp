@@ -3,41 +3,6 @@
 #include "erl_common/serialization.hpp"
 
 namespace erl::gaussian_process {
-
-    template<typename Dtype, int Dim>
-    YAML::Node
-    SpGpOccupancyMap<Dtype, Dim>::Setting::YamlConvertImpl::encode(const Setting &setting) {
-        YAML::Node node;
-        ERL_YAML_SAVE_ATTR(node, setting, sp_gp);
-        ERL_YAML_SAVE_ATTR(node, setting, min_distance);
-        ERL_YAML_SAVE_ATTR(node, setting, max_distance);
-        ERL_YAML_SAVE_ATTR(node, setting, free_points_per_meter);
-        ERL_YAML_SAVE_ATTR(node, setting, free_sampling_margin);
-        ERL_YAML_SAVE_ATTR(node, setting, parallel);
-        ERL_YAML_SAVE_ATTR(node, setting, logodd_free);
-        ERL_YAML_SAVE_ATTR(node, setting, logodd_occupied);
-        ERL_YAML_SAVE_ATTR(node, setting, logodd_variance);
-        return node;
-    }
-
-    template<typename Dtype, int Dim>
-    bool
-    SpGpOccupancyMap<Dtype, Dim>::Setting::YamlConvertImpl::decode(
-        const YAML::Node &node,
-        Setting &setting) {
-        if (!node.IsMap()) { return false; }
-        if (!ERL_YAML_LOAD_ATTR(node, setting, sp_gp)) { return false; }
-        ERL_YAML_LOAD_ATTR(node, setting, min_distance);
-        ERL_YAML_LOAD_ATTR(node, setting, max_distance);
-        ERL_YAML_LOAD_ATTR(node, setting, free_points_per_meter);
-        ERL_YAML_LOAD_ATTR(node, setting, free_sampling_margin);
-        ERL_YAML_LOAD_ATTR(node, setting, parallel);
-        ERL_YAML_LOAD_ATTR(node, setting, logodd_free);
-        ERL_YAML_LOAD_ATTR(node, setting, logodd_occupied);
-        ERL_YAML_LOAD_ATTR(node, setting, logodd_variance);
-        return true;
-    }
-
     template<typename Dtype, int Dim>
     SpGpOccupancyMap<Dtype, Dim>::SpGpOccupancyMap(
         std::shared_ptr<Setting> setting,
@@ -163,6 +128,7 @@ namespace erl::gaussian_process {
     bool
     SpGpOccupancyMap<Dtype, Dim>::Write(std::ostream &s) const {
         using namespace common;
+        using namespace common::serialization;
         static const TokenWriteFunctionPairs<SpGpOccupancyMap> token_function_pairs = {
             {
                 "setting",
@@ -204,6 +170,7 @@ namespace erl::gaussian_process {
     bool
     SpGpOccupancyMap<Dtype, Dim>::Read(std::istream &s) {
         using namespace common;
+        using namespace common::serialization;
         static const TokenReadFunctionPairs<SpGpOccupancyMap> token_function_pairs = {
             {
                 "setting",

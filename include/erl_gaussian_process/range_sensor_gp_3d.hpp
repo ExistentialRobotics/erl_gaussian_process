@@ -31,7 +31,7 @@ namespace erl::gaussian_process {
         struct Setting : public common::Yamlable<Setting> {
             // number of points in each group for each row, including the overlap ones
             long row_group_size = 24;
-            // number of points in the overlap region for each row
+            // number of points in the overlap area for each row
             long row_overlap_size = 6;
             long row_margin = 0;
             // number of elevation points in each group, including the overlap ones
@@ -64,13 +64,24 @@ namespace erl::gaussian_process {
                 return mapping_setting;
             }();
 
-            struct YamlConvertImpl {
-                static YAML::Node
-                encode(const Setting &setting);
-
-                static bool
-                decode(const YAML::Node &node, Setting &setting);
-            };
+            ERL_REFLECT_SCHEMA(
+                Setting,
+                ERL_REFLECT_MEMBER(Setting, row_group_size),
+                ERL_REFLECT_MEMBER(Setting, row_overlap_size),
+                ERL_REFLECT_MEMBER(Setting, row_margin),
+                ERL_REFLECT_MEMBER(Setting, col_group_size),
+                ERL_REFLECT_MEMBER(Setting, col_overlap_size),
+                ERL_REFLECT_MEMBER(Setting, col_margin),
+                ERL_REFLECT_MEMBER(Setting, min_num_samples_per_group),
+                ERL_REFLECT_MEMBER(Setting, init_variance),
+                ERL_REFLECT_MEMBER(Setting, sensor_range_var),
+                ERL_REFLECT_MEMBER(Setting, max_valid_range_var),
+                ERL_REFLECT_MEMBER(Setting, occ_test_temperature),
+                ERL_REFLECT_MEMBER(Setting, sensor_frame_type),
+                ERL_REFLECT_MEMBER(Setting, sensor_frame_setting_type),
+                ERL_REFLECT_MEMBER_POLY(Setting, sensor_frame, sensor_frame_setting_type),
+                ERL_REFLECT_MEMBER(Setting, gp),
+                ERL_REFLECT_MEMBER(Setting, mapping));
         };
 
         class TestResult {
@@ -187,11 +198,3 @@ namespace erl::gaussian_process {
     extern template class RangeSensorGaussianProcess3D<double>;
     extern template class RangeSensorGaussianProcess3D<float>;
 }  // namespace erl::gaussian_process
-
-template<>
-struct YAML::convert<erl::gaussian_process::RangeSensorGaussianProcess3Dd::Setting>
-    : erl::gaussian_process::RangeSensorGaussianProcess3Dd::Setting::YamlConvertImpl {};
-
-template<>
-struct YAML::convert<erl::gaussian_process::RangeSensorGaussianProcess3Df::Setting>
-    : erl::gaussian_process::RangeSensorGaussianProcess3Df::Setting::YamlConvertImpl {};

@@ -56,13 +56,15 @@ namespace erl::gaussian_process {
             // if true, assume Q_M is diagonal.
             bool diagonal_qm = false;
 
-            struct YamlConvertImpl {
-                static YAML::Node
-                encode(const Setting &setting);
-
-                static bool
-                decode(const YAML::Node &node, Setting &setting);
-            };
+            ERL_REFLECT_SCHEMA(
+                Setting,
+                ERL_REFLECT_MEMBER(Setting, kernel_type),
+                ERL_REFLECT_MEMBER(Setting, kernel_setting_type),
+                ERL_REFLECT_MEMBER_POLY(Setting, kernel, kernel_setting_type),
+                ERL_REFLECT_MEMBER(Setting, max_num_samples),
+                ERL_REFLECT_MEMBER(Setting, sparse_zero_threshold),
+                ERL_REFLECT_MEMBER(Setting, use_sparse),
+                ERL_REFLECT_MEMBER(Setting, diagonal_qm));
         };
 
         class TestResult {
@@ -235,11 +237,3 @@ namespace erl::gaussian_process {
     extern template class SparsePseudoInputGaussianProcess<double>;
     extern template class SparsePseudoInputGaussianProcess<float>;
 }  // namespace erl::gaussian_process
-
-template<>
-struct YAML::convert<erl::gaussian_process::SparsePseudoInputGaussianProcessD::Setting>
-    : erl::gaussian_process::SparsePseudoInputGaussianProcessD::Setting::YamlConvertImpl {};
-
-template<>
-struct YAML::convert<erl::gaussian_process::SparsePseudoInputGaussianProcessF::Setting>
-    : erl::gaussian_process::SparsePseudoInputGaussianProcessF::Setting::YamlConvertImpl {};

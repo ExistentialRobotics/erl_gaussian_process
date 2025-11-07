@@ -1,4 +1,5 @@
 #include "erl_common/pybind11.hpp"
+#include "erl_common/pybind11_yaml.hpp"
 #include "erl_gaussian_process/range_sensor_gp_3d.hpp"
 
 using namespace erl::common;
@@ -12,27 +13,9 @@ BindRangeSensorGaussianProcess3DImpl(const py::module &m, const char *name) {
     using Vector3 = Eigen::Vector3<Dtype>;
     using VectorX = Eigen::VectorX<Dtype>;
     auto py_range_sensor_gp_3d = py::class_<T, std::shared_ptr<T>>(m, name);
-
-    // Setting
-    py::class_<typename T::Setting, YamlableBase, std::shared_ptr<typename T::Setting>>(
+    BindYamlable<decltype(py_range_sensor_gp_3d), typename T::Setting>(
         py_range_sensor_gp_3d,
-        "Setting")
-        .def(py::init<>())
-        .def_readwrite("row_group_size", &T::Setting::row_group_size)
-        .def_readwrite("row_overlap_size", &T::Setting::row_overlap_size)
-        .def_readwrite("row_margin", &T::Setting::row_margin)
-        .def_readwrite("col_group_size", &T::Setting::col_group_size)
-        .def_readwrite("col_overlap_size", &T::Setting::col_overlap_size)
-        .def_readwrite("col_margin", &T::Setting::col_margin)
-        .def_readwrite("init_variance", &T::Setting::init_variance)
-        .def_readwrite("sensor_range_var", &T::Setting::sensor_range_var)
-        .def_readwrite("max_valid_range_var", &T::Setting::max_valid_range_var)
-        .def_readwrite("occ_test_temperature", &T::Setting::occ_test_temperature)
-        .def_readwrite("sensor_frame_type", &T::Setting::sensor_frame_type)
-        .def_readwrite("sensor_frame_setting_type", &T::Setting::sensor_frame_setting_type)
-        .def_readwrite("sensor_frame", &T::Setting::sensor_frame)
-        .def_readwrite("gp", &T::Setting::gp)
-        .def_readwrite("mapping", &T::Setting::mapping);
+        "Setting");
 
     py::class_<typename T::TestResult, std::shared_ptr<typename T::TestResult>>(
         py_range_sensor_gp_3d,

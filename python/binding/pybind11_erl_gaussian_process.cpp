@@ -1,9 +1,4 @@
 #include "erl_common/pybind11.hpp"
-#include "erl_gaussian_process/lidar_gp_2d.hpp"
-#include "erl_gaussian_process/noisy_input_gp.hpp"
-
-using namespace erl::common;
-using namespace erl::gaussian_process;
 
 void
 BindVanillaGaussianProcess(const py::module &m);

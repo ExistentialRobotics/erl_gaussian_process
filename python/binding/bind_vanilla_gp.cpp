@@ -1,4 +1,5 @@
 #include "erl_common/pybind11.hpp"
+#include "erl_common/pybind11_yaml.hpp"
 #include "erl_gaussian_process/vanilla_gp.hpp"
 
 using namespace erl::common;
@@ -10,16 +11,9 @@ BindVanillaGaussianProcessImpl(const py::module &m, const char *name) {
     using T = VanillaGaussianProcess<Dtype>;
     using MatrixX = Eigen::MatrixX<Dtype>;
     using VectorX = Eigen::VectorX<Dtype>;
-    auto py_vanilla_gp = py::class_<T>(m, name);
 
-    py::class_<typename T::Setting, YamlableBase, std::shared_ptr<typename T::Setting>>(
-        py_vanilla_gp,
-        "Setting")
-        .def(py::init<>())
-        .def_readwrite("kernel_type", &T::Setting::kernel_type)
-        .def_readwrite("kernel_setting_type", &T::Setting::kernel_setting_type)
-        .def_readwrite("kernel", &T::Setting::kernel)
-        .def_readwrite("max_num_samples", &T::Setting::max_num_samples);
+    auto py_vanilla_gp = py::class_<T>(m, name);
+    BindYamlable<decltype(py_vanilla_gp), typename T::Setting>(py_vanilla_gp, "Setting");
 
     py::class_<typename T::TestResult, std::shared_ptr<typename T::TestResult>>(
         py_vanilla_gp,

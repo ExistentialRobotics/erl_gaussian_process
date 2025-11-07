@@ -5,32 +5,6 @@
 #include "erl_common/yaml.hpp"
 
 namespace erl::gaussian_process {
-    template<typename Dtype>
-    YAML::Node
-    VanillaGaussianProcess<Dtype>::Setting::YamlConvertImpl::encode(const Setting &setting) {
-        YAML::Node node;
-        ERL_YAML_SAVE_ATTR(node, setting, kernel_type);
-        ERL_YAML_SAVE_ATTR(node, setting, kernel_setting_type);
-        ERL_YAML_SAVE_ATTR(node, setting, kernel);
-        ERL_YAML_SAVE_ATTR(node, setting, max_num_samples);
-        return node;
-    }
-
-    template<typename Dtype>
-    bool
-    VanillaGaussianProcess<Dtype>::Setting::YamlConvertImpl::decode(
-        const YAML::Node &node,
-        Setting &setting) {
-        if (!node.IsMap()) { return false; }
-        ERL_YAML_LOAD_ATTR(node, setting, kernel_type);
-        ERL_YAML_LOAD_ATTR(node, setting, kernel_setting_type);
-        using namespace common;
-        using CovarianceSetting = typename Covariance::Setting;
-        setting.kernel = YamlableBase::Create<CovarianceSetting>(setting.kernel_setting_type);
-        if (!ERL_YAML_LOAD_ATTR(node, setting, kernel)) { return false; }
-        ERL_YAML_LOAD_ATTR(node, setting, max_num_samples);
-        return true;
-    }
 
     template<typename Dtype>
     VanillaGaussianProcess<Dtype>::TestResult::TestResult(
@@ -151,10 +125,10 @@ namespace erl::gaussian_process {
 
     template<typename Dtype>
     void
-    VanillaGaussianProcess<Dtype>::TrainSet::Reset(long max_num_samples, long x_dim, long y_dim) {
-        this->x_dim = x_dim;
-        this->y_dim = y_dim;
-        if (x.rows() < x_dim || x.cols() < max_num_samples) { x.resize(x_dim, max_num_samples); }
+    VanillaGaussianProcess<Dtype>::TrainSet::Reset(long max_num_samples, long x_dim_, long y_dim_) {
+        x_dim = x_dim_;
+        y_dim = y_dim_;
+        if (x.rows() < x_dim_ || x.cols() < max_num_samples) { x.resize(x_dim_, max_num_samples); }
         if (y.rows() < max_num_samples || y.cols() < y_dim) { y.resize(max_num_samples, y_dim); }
         if (var.size() < max_num_samples) { var.resize(max_num_samples); }
         num_samples = 0;
@@ -190,6 +164,7 @@ namespace erl::gaussian_process {
     bool
     VanillaGaussianProcess<Dtype>::TrainSet::Write(std::ostream &s) const {
         using namespace common;
+        using namespace common::serialization;
         static const TokenWriteFunctionPairs<TrainSet> token_function_pairs = {
             {
                 "x_dim",
@@ -238,6 +213,7 @@ namespace erl::gaussian_process {
     bool
     VanillaGaussianProcess<Dtype>::TrainSet::Read(std::istream &s) {
         using namespace common;
+        using namespace common::serialization;
         static const TokenReadFunctionPairs<TrainSet> token_function_pairs = {
             {
                 "x_dim",
@@ -607,6 +583,7 @@ namespace erl::gaussian_process {
     bool
     VanillaGaussianProcess<Dtype>::Write(std::ostream &s) const {
         using namespace common;
+        using namespace common::serialization;
         static const TokenWriteFunctionPairs<VanillaGaussianProcess> token_function_pairs = {
             {
                 "setting",
@@ -697,6 +674,7 @@ namespace erl::gaussian_process {
     bool
     VanillaGaussianProcess<Dtype>::Read(std::istream &s) {
         using namespace common;
+        using namespace common::serialization;
         static const TokenReadFunctionPairs<VanillaGaussianProcess> token_function_pairs = {
             {
                 "setting",

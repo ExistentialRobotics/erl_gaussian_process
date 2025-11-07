@@ -1,4 +1,5 @@
 #include "erl_common/pybind11.hpp"
+#include "erl_common/pybind11_yaml.hpp"
 #include "erl_gaussian_process/noisy_input_gp.hpp"
 
 using namespace erl::common;
@@ -12,16 +13,7 @@ BindNoisyInputGaussianProcessImpl(const py::module &m, const char *name) {
     using VectorX = Eigen::VectorX<Dtype>;
 
     auto py_noisy_input_gp = py::class_<T, std::shared_ptr<T>>(m, name);
-
-    py::class_<typename T::Setting, YamlableBase, std::shared_ptr<typename T::Setting>>(
-        py_noisy_input_gp,
-        "Setting")
-        .def(py::init<>())
-        .def_readwrite("kernel_type", &T::Setting::kernel_type)
-        .def_readwrite("kernel_setting_type", &T::Setting::kernel_setting_type)
-        .def_readwrite("kernel", &T::Setting::kernel)
-        .def_readwrite("max_num_samples", &T::Setting::max_num_samples)
-        .def_readwrite("no_gradient_observation", &T::Setting::no_gradient_observation);
+    BindYamlable<decltype(py_noisy_input_gp), typename T::Setting>(py_noisy_input_gp, "Setting");
 
     py::class_<typename T::TestResult, std::shared_ptr<typename T::TestResult>>(
         py_noisy_input_gp,
@@ -51,12 +43,18 @@ BindNoisyInputGaussianProcessImpl(const py::module &m, const char *name) {
             "get_gradient",
             [](const typename T::TestResult &self, const long y_index, const bool parallel) {
                 MatrixX mat_grad_out(self.GetDimX(), self.GetNumTest());
-                self.GetGradient(y_index, mat_grad_out, parallel);
-                return mat_grad_out;
+                Eigen::VectorXb success;
+                {
+                    py::gil_scoped_release release;
+                    success = self.GetGradient(y_index, mat_grad_out, parallel);
+                }
+                py::dict result;
+                result["success"] = success;
+                result["mat_grad_out"] = mat_grad_out;
+                return result;
             },
             py::arg("y_index"),
-            py::arg("parallel"),
-            py::call_guard<py::gil_scoped_release>())
+            py::arg("parallel"))
         .def(
             "get_gradient",
             [](const typename T::TestResult &self, const long index, const long y_index) {

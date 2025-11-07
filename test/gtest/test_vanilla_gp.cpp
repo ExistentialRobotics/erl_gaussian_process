@@ -6,6 +6,7 @@
 #include "erl_gaussian_process/vanilla_gp.hpp"
 
 using namespace erl::common;
+using namespace erl::common::serialization;
 using namespace erl::gaussian_process;
 
 constexpr double kNoiseVar = 0.001;

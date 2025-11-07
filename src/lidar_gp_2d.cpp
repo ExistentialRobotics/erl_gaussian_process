@@ -4,54 +4,12 @@
 
 namespace erl::gaussian_process {
     template<typename Dtype>
-    YAML::Node
-    LidarGaussianProcess2D<Dtype>::Setting::YamlConvertImpl::encode(const Setting &setting) {
-        YAML::Node node;
-        ERL_YAML_SAVE_ATTR(node, setting, partition_on_hit_rays);
-        ERL_YAML_SAVE_ATTR(node, setting, symmetric_partitions);
-        ERL_YAML_SAVE_ATTR(node, setting, group_size);
-        ERL_YAML_SAVE_ATTR(node, setting, overlap_size);
-        ERL_YAML_SAVE_ATTR(node, setting, margin);
-        ERL_YAML_SAVE_ATTR(node, setting, init_variance);
-        ERL_YAML_SAVE_ATTR(node, setting, sensor_range_var);
-        ERL_YAML_SAVE_ATTR(node, setting, discontinuity_var);
-        ERL_YAML_SAVE_ATTR(node, setting, max_valid_range_var);
-        ERL_YAML_SAVE_ATTR(node, setting, occ_test_temperature);
-        ERL_YAML_SAVE_ATTR(node, setting, sensor_frame);
-        ERL_YAML_SAVE_ATTR(node, setting, gp);
-        ERL_YAML_SAVE_ATTR(node, setting, mapping);
-        return node;
-    }
-
-    template<typename Dtype>
-    bool
-    LidarGaussianProcess2D<Dtype>::Setting::YamlConvertImpl::decode(
-        const YAML::Node &node,
-        Setting &setting) {
-        if (!node.IsMap()) { return false; }
-        ERL_YAML_LOAD_ATTR(node, setting, partition_on_hit_rays);
-        ERL_YAML_LOAD_ATTR(node, setting, symmetric_partitions);
-        ERL_YAML_LOAD_ATTR(node, setting, group_size);
-        ERL_YAML_LOAD_ATTR(node, setting, overlap_size);
-        ERL_YAML_LOAD_ATTR(node, setting, margin);
-        ERL_YAML_LOAD_ATTR(node, setting, init_variance);
-        ERL_YAML_LOAD_ATTR(node, setting, sensor_range_var);
-        ERL_YAML_LOAD_ATTR(node, setting, discontinuity_var);
-        ERL_YAML_LOAD_ATTR(node, setting, max_valid_range_var);
-        ERL_YAML_LOAD_ATTR(node, setting, occ_test_temperature);
-        if (!ERL_YAML_LOAD_ATTR(node, setting, sensor_frame)) { return false; }
-        if (!ERL_YAML_LOAD_ATTR(node, setting, gp)) { return false; }
-        return ERL_YAML_LOAD_ATTR(node, setting, mapping);
-    }
-
-    template<typename Dtype>
     LidarGaussianProcess2D<Dtype>::TestResult::TestResult(
         const LidarGaussianProcess2D *gp,
         const Eigen::Ref<const VectorX> &angles,
         const bool angles_are_local,
         const std::shared_ptr<MappingDtype> &mapping)
-        : m_gp_(NotNull(gp, true, "gp = nullptr.")),
-          m_mapping_(mapping) {
+        : m_gp_(NotNull(gp, true, "gp = nullptr.")), m_mapping_(mapping) {
 
         ERL_DEBUG_ASSERT(m_gp_->IsTrained(), "The model has not been trained.");
 
@@ -496,6 +454,7 @@ namespace erl::gaussian_process {
     bool
     LidarGaussianProcess2D<Dtype>::Write(std::ostream &s) const {
         using namespace common;
+        using namespace common::serialization;
         static const TokenWriteFunctionPairs<LidarGaussianProcess2D> token_function_pairs = {
             {
                 "setting",
@@ -566,6 +525,7 @@ namespace erl::gaussian_process {
     bool
     LidarGaussianProcess2D<Dtype>::Read(std::istream &s) {
         using namespace common;
+        using namespace common::serialization;
         static const TokenReadFunctionPairs<LidarGaussianProcess2D> token_function_pairs = {
             {
                 "setting",

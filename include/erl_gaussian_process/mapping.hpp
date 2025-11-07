@@ -2,6 +2,7 @@
 
 #include "init.hpp"
 
+#include "erl_common/enum_parse.hpp"
 #include "erl_common/yaml.hpp"
 
 #include <functional>
@@ -20,14 +21,18 @@ namespace erl::gaussian_process {
     };
 }
 
-template<>
-struct YAML::convert<erl::gaussian_process::MappingType> {
-    static Node
-    encode(const erl::gaussian_process::MappingType &type);
-
-    static bool
-    decode(const Node &node, erl::gaussian_process::MappingType &type);
-};
+ERL_REFLECT_ENUM_SCHEMA(
+    erl::gaussian_process::MappingType,
+    8,
+    ERL_REFLECT_ENUM_MEMBER("identity", erl::gaussian_process::MappingType::kIdentity),
+    ERL_REFLECT_ENUM_MEMBER("inverse", erl::gaussian_process::MappingType::kInverse),
+    ERL_REFLECT_ENUM_MEMBER("inverse_sqrt", erl::gaussian_process::MappingType::kInverseSqrt),
+    ERL_REFLECT_ENUM_MEMBER("exp", erl::gaussian_process::MappingType::kExp),
+    ERL_REFLECT_ENUM_MEMBER("log", erl::gaussian_process::MappingType::kLog),
+    ERL_REFLECT_ENUM_MEMBER("tanh", erl::gaussian_process::MappingType::kTanh),
+    ERL_REFLECT_ENUM_MEMBER("sigmoid", erl::gaussian_process::MappingType::kSigmoid),
+    ERL_REFLECT_ENUM_MEMBER("unknown", erl::gaussian_process::MappingType::kUnknown))
+ERL_PARSE_ENUM(erl::gaussian_process::MappingType, 8);
 
 namespace erl::gaussian_process {
 
@@ -39,13 +44,10 @@ namespace erl::gaussian_process {
             MappingType type = MappingType::kUnknown;
             Dtype scale = 1.0;
 
-            struct YamlConvertImpl {
-                static YAML::Node
-                encode(const Setting &setting);
-
-                static bool
-                decode(const YAML::Node &node, Setting &setting);
-            };
+            ERL_REFLECT_SCHEMA(
+                Setting,
+                ERL_REFLECT_MEMBER(Setting, type),
+                ERL_REFLECT_MEMBER(Setting, scale));
         };
 
     protected:
@@ -78,11 +80,3 @@ namespace erl::gaussian_process {
     extern template class Mapping<double>;
     extern template class Mapping<float>;
 }  // namespace erl::gaussian_process
-
-template<>
-struct YAML::convert<erl::gaussian_process::MappingD::Setting>
-    : erl::gaussian_process::MappingD::Setting::YamlConvertImpl {};
-
-template<>
-struct YAML::convert<erl::gaussian_process::MappingF::Setting>
-    : erl::gaussian_process::MappingF::Setting::YamlConvertImpl {};

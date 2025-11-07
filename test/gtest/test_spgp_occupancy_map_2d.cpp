@@ -1,3 +1,4 @@
+#include "erl_common/block_timer.hpp"
 #include "erl_common/serialization.hpp"
 #include "erl_common/test_helper.hpp"
 #include "erl_covariance/radial_bias_function.hpp"
@@ -244,7 +245,7 @@ TestIo(
     GTEST_PREPARE_OUTPUT_DIR();
     std::string filename = fmt::format("test_bhm_2d_{}.bin", type_name<Dtype>());
     filename = test_output_dir / filename;
-    using Serializer = erl::common::Serialization<SpGpOccupancyMap<Dtype, 2>>;
+    using Serializer = erl::common::serialization::Serialization<SpGpOccupancyMap<Dtype, 2>>;
     ASSERT_TRUE(Serializer::Write(filename, &sp_gp_occupancy_map));
     auto setting = std::make_shared<typename SpGpOccupancyMap<Dtype, 2>::Setting>();
     setting->sp_gp->kernel->x_dim = 2;
@@ -272,14 +273,18 @@ TestImpl2D(const int hinged_grid_size, const int test_grid_size, const std::stri
     // setting->sp_gp->use_sparse = use_sparse;
     // setting->sp_gp->max_num_samples = max_dataset_size;
 
-    Aabb<Dtype, 2> map_boundary(Eigen::Vector2<Dtype>(-3.0, -3.0), Eigen::Vector2<Dtype>(3.0, 3.0));
-    Eigen::Matrix2X<Dtype> hinged_points =
-        GenerateGridPoints(hinged_grid_size, map_boundary).second;
+    using Vector2 = Eigen::Vector2<Dtype>;
+    using Vector3 = Eigen::Vector3<Dtype>;
+    using VectorX = Eigen::VectorX<Dtype>;
+    using Matrix2X = Eigen::Matrix2X<Dtype>;
+
+    Aabb<Dtype, 2> map_boundary(Vector2(-3.0, -3.0), Vector2(3.0, 3.0));
+    Matrix2X hinged_points = GenerateGridPoints(hinged_grid_size, map_boundary).second;
     SpGpOccupancyMap<Dtype, 2> sp_gp_occupancy_map(setting, hinged_points, map_boundary, 0);
 
     TestIo<Dtype>(sp_gp_occupancy_map, hinged_points, map_boundary);
 
-    std::vector<Eigen::Vector3<Dtype>> trajectory = GenerateTrajectory<Dtype>(50, 1);
+    std::vector<Vector3> trajectory = GenerateTrajectory<Dtype>(50, 1);
 
     const auto lidar_setting = std::make_shared<Lidar2D::Setting>();
     lidar_setting->max_angle = 135.0 / 180.0 * M_PI;   // 135 degrees
@@ -290,13 +295,13 @@ TestImpl2D(const int hinged_grid_size, const int test_grid_size, const std::stri
     const Eigen::Matrix2Xd ray_dirs_frame = lidar.GetRayDirectionsInFrame();
 
     const auto [test_grid, test_points] = GenerateGridPoints(test_grid_size, map_boundary);
-    const Eigen::Matrix2X<Dtype> surf_points = space->GetSurface()->vertices.cast<Dtype>();
-    Eigen::VectorX<Dtype> predicted_logodd(test_points.cols());
-    Eigen::Matrix2X<Dtype> predicted_gradient(2, test_points.cols());
-    Eigen::Matrix2X<Dtype> predicted_gradient_surf(2, surf_points.cols());
+    const Matrix2X surf_points = space->GetSurface()->vertices.cast<Dtype>();
+    VectorX predicted_logodd(test_points.cols());
+    Matrix2X predicted_gradient(2, test_points.cols());
+    Matrix2X predicted_gradient_surf(2, surf_points.cols());
 
-    std::vector<Eigen::Vector2<Dtype>> waypoints;
-    std::vector<Eigen::Matrix2X<Dtype>> scanned_points;
+    std::vector<Vector2> waypoints;
+    std::vector<Matrix2X> scanned_points;
     long cnt = 0;
     std::filesystem::path prob_occupied_dir = test_output_dir / "prob_occupied";
     std::filesystem::create_directories(prob_occupied_dir);
@@ -310,7 +315,7 @@ TestImpl2D(const int hinged_grid_size, const int test_grid_size, const std::stri
             pose.template head<2>().template cast<double>(),
             true);
         const Eigen::Matrix2<Dtype> rotation = Eigen::Rotation2D<Dtype>(pose[2]).toRotationMatrix();
-        Eigen::Matrix2X<Dtype> points(2, scan.size());
+        Matrix2X points(2, scan.size());
         for (long i = 0; i < scan.size(); ++i) {
             points.col(i) << scan[i] * (rotation * ray_dirs_frame.col(i).cast<Dtype>()) +
                                  pose.template head<2>();
@@ -318,28 +323,35 @@ TestImpl2D(const int hinged_grid_size, const int test_grid_size, const std::stri
         scanned_points.push_back(points);
         waypoints.push_back(pose.template head<2>());
 
-        long num_points = 0;
-        Eigen::Matrix2X<Dtype> dataset_points;
-        Eigen::VectorX<Dtype> dataset_labels;
-        std::vector<long> hit_indices;
+        {
+            ERL_BLOCK_TIMER_MSG("gp update");
 
-        sp_gp_occupancy_map.Update(
-            pose.template head<2>(),
-            points,
-            std::vector<long>{},
-            num_points,
-            dataset_points,
-            dataset_labels,
-            hit_indices);
+            long num_points = 0;
+            Matrix2X dataset_points;
+            VectorX dataset_labels;
+            std::vector<long> hit_indices;
+
+            sp_gp_occupancy_map.Update(
+                pose.template head<2>(),
+                points,
+                std::vector<long>{},
+                num_points,
+                dataset_points,
+                dataset_labels,
+                hit_indices);
+        }
 
         // predict and visualize
         constexpr bool parallel = true;
-        sp_gp_occupancy_map.Predict(
-            test_points,
-            true, /*compute_gradient*/
-            parallel,
-            predicted_logodd,
-            predicted_gradient);
+        {
+            ERL_BLOCK_TIMER_MSG("gp predict");
+            sp_gp_occupancy_map.Predict(
+                test_points,
+                true, /*compute_gradient*/
+                parallel,
+                predicted_logodd,
+                predicted_gradient);
+        }
         sp_gp_occupancy_map.PredictGradient(surf_points, parallel, predicted_gradient_surf);
         auto [img_prob_occupied_rgb, img_gradient_norm_rgb, img_bhm_weights] = VisualizeResult(
             sp_gp_occupancy_map,
@@ -371,10 +383,18 @@ struct Options {
 Options g_options;
 
 TEST(SpGpOccupancyMap, 2Dd) {
+    if (!std::filesystem::exists(g_options.config_file)) {
+        g_options.config_file =
+            ERL_GAUSSIAN_PROCESS_ROOT_DIR "/config/spgp_occupancy_map_2d_double.yaml";
+    }
     TestImpl2D<double>(g_options.hinged_grid_size, g_options.test_grid_size, g_options.config_file);
 }
 
 TEST(SpGpOccupancyMap, 2Df) {
+    if (!std::filesystem::exists(g_options.config_file)) {
+        g_options.config_file =
+            ERL_GAUSSIAN_PROCESS_ROOT_DIR "/config/spgp_occupancy_map_2d_float.yaml";
+    }
     TestImpl2D<float>(g_options.hinged_grid_size, g_options.test_grid_size, g_options.config_file);
 }
 

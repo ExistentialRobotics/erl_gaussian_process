@@ -1,4 +1,3 @@
-
 #ifdef ERL_USE_LIBTORCH
 
     #include "erl_common/block_timer.hpp"
@@ -44,19 +43,16 @@ TEST(BatchGpUpdateTorch, Basic) {
 
     gp.UpdateKtrain();
     {
+        ERL_BLOCK_TIMER_MSG("batch_update.LoadGpData");
+        batch_update.LoadGpData(0, gp.GetKtrainSize().first, gp.GetKtrain(), gp.GetAlpha());
+    }
+    {
         ERL_BLOCK_TIMER_MSG("batch_update.Solve");
-        {
-            ERL_BLOCK_TIMER_MSG("batch_update.LoadGpData");
-            batch_update.LoadGpData(0, gp.GetKtrainSize().first, gp.GetKtrain(), gp.GetAlpha());
-        }
-        {
-            ERL_BLOCK_TIMER_MSG("batch_update.Solve");
-            batch_update.Solve();
-        }
-        {
-            ERL_BLOCK_TIMER_MSG("batch_update.GetGpResult");
-            batch_update.GetGpResult(0, gp.GetCholeskyDecomposition(), gp.GetAlpha());
-        }
+        batch_update.Solve();
+    }
+    {
+        ERL_BLOCK_TIMER_MSG("batch_update.GetGpResult");
+        batch_update.GetGpResult(0, gp.GetCholeskyDecomposition(), gp.GetAlpha());
     }
 
     const Eigen::MatrixXf l_train_batch = gp.GetCholeskyDecomposition();
