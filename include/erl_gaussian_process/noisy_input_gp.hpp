@@ -179,6 +179,14 @@ namespace erl::gaussian_process {
             VectorX var_grad;  // gradient variance, assumed to be identical across dimensions.
             Eigen::VectorXl grad_flag;  // true if the corresponding training sample has a gradient.
 
+            TrainSet() = default;
+            TrainSet(const TrainSet &other) = default;
+            TrainSet(TrainSet &&other) = default;
+            TrainSet &
+            operator=(const TrainSet &other) = default;
+            TrainSet &
+            operator=(TrainSet &&other) = default;
+
             void
             Reset(long max_num_samples, long x_dim_, long y_dim_, bool no_gradient_observation);
 
@@ -196,22 +204,27 @@ namespace erl::gaussian_process {
         };
 
     protected:
-        std::shared_ptr<Setting> m_setting_ = nullptr;    // setting
-        bool m_trained_ = false;                          // true if the GP is trained
-        bool m_trained_once_ = false;                     // true if the GP is trained at least once
-        bool m_k_train_updated_ = false;                  // true if Ktrain is updated
-        long m_k_train_rows_ = 0;                         // number of rows of Ktrain
-        long m_k_train_cols_ = 0;                         // number of columns of Ktrain
-        Dtype m_three_over_scale_square_ = 0.0f;          // for computing normal variance
+        std::shared_ptr<Setting> m_setting_ = nullptr;  // setting
+        bool m_trained_ = false;                        // true if the GP is trained
+        bool m_trained_once_ = false;                   // true if the GP is trained at least once
+
         std::shared_ptr<Covariance> m_kernel_ = nullptr;  // kernel
         bool m_reduced_rank_kernel_ = false;  // whether the kernel is rank reduced or not
-        MatrixX m_mat_k_train_ = {};          // Ktrain, avoid reallocation
+
+        bool m_k_train_updated_ = false;  // true if Ktrain is updated
+        long m_max_num_samples_ = 0;      // maximum number of training samples in Ktrain
+        long m_k_train_rows_ = 0;         // number of rows of Ktrain
+        long m_k_train_cols_ = 0;         // number of columns of Ktrain
+        MatrixX m_mat_k_train_ = {};      // Ktrain, avoid reallocation
         MatrixX m_mat_l_ = {};  // lower triangular matrix of the Cholesky decomposition of Ktrain
 
         // col k: h_k(x1)..h_k(xn), dh_k(x1)/dx(1,1)..dh_k(xn)/dx(1,n) ..
         // dh_k(x1)/dx(d,1)..dh_k(xn)/dx(d,n)
         MatrixX m_mat_alpha_ = {};
-        TrainSet m_train_set_;  // the training set
+
+        std::mutex m_buf_mutex_;  // mutex for thread-safe access to training set
+        TrainSet m_buf_loading_;  // the training set loaded from outside
+        TrainSet m_buf_train_;    // the training set used for training
 
     public:
         explicit NoisyInputGaussianProcess(std::shared_ptr<Setting> setting);
@@ -237,23 +250,38 @@ namespace erl::gaussian_process {
         [[nodiscard]] bool
         UsingReducedRankKernel() const;
 
-        [[nodiscard]] VectorX
-        GetKernelCoordOrigin() const;
-
         void
         SetKernelCoordOrigin(const VectorX &coord_origin) const;
 
+        /**
+         * Reset the Gaussian process with new maximum number of training samples and input/output
+         * dimensions. The buffer for loading data will be reallocated if necessary.
+         * @param max_num_samples max number of training samples
+         * @param x_dim the dimension of input x
+         * @param y_dim the dimension of output y
+         */
         void
         Reset(long max_num_samples, long x_dim, long y_dim);
 
         [[nodiscard]] std::shared_ptr<Covariance>
         GetKernel() const;
 
+        [[nodiscard]] std::lock_guard<std::mutex>
+        GetBufferLock() {
+            return std::lock_guard<std::mutex>(m_buf_mutex_);
+        }
+
         [[nodiscard]] TrainSet &
-        GetTrainSet();
+        GetLoadingBuffer();
 
         [[nodiscard]] const TrainSet &
-        GetTrainSet() const;
+        GetLoadingBuffer() const;
+
+        [[nodiscard]] TrainSet &
+        GetTrainBuffer();
+
+        [[nodiscard]] const TrainSet &
+        GetTrainBuffer() const;
 
         [[nodiscard]] MatrixX &
         GetKtrain();
@@ -279,8 +307,11 @@ namespace erl::gaussian_process {
         [[nodiscard]] virtual std::size_t
         GetMemoryUsage() const;
 
-        bool
+        [[nodiscard]] bool
         UpdateKtrain();
+
+        [[nodiscard]] bool
+        ReTrain();
 
         virtual bool
         Train();
@@ -301,11 +332,24 @@ namespace erl::gaussian_process {
         Read(std::istream &s);
 
     protected:
+        /**
+         * Initialize the kernel and allocate memory for Ktrain, L, and alpha.
+         * @return true if memory allocation is successful, false otherwise.
+         */
         bool
-        AllocateMemory(long max_num_samples, long x_dim, long y_dim);
+        AllocateMemory();
 
+        // Initialize the kernel according to the setting.
         void
         InitKernel();
+
+        /**
+         * Swap the training sets used and loaded.
+         * @return true if swapped successfully (i.e., the loaded training set is different from the
+         * used one), false otherwise.
+         */
+        [[nodiscard]] bool
+        SwapTrainSets();
     };
 
     using NoisyInputGaussianProcessD = NoisyInputGaussianProcess<double>;

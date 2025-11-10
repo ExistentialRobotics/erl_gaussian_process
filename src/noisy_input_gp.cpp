@@ -16,8 +16,8 @@ namespace erl::gaussian_process {
           m_num_test_(mat_x_test.cols()),
           m_support_gradient_(will_predict_gradient),
           m_reduced_rank_kernel_(m_gp_->m_reduced_rank_kernel_),
-          m_x_dim_(m_gp_->m_train_set_.x_dim),
-          m_y_dim_(m_gp_->m_train_set_.y_dim) {
+          m_x_dim_(m_gp_->m_buf_train_.x_dim),
+          m_y_dim_(m_gp_->m_buf_train_.y_dim) {
 
         ERL_DEBUG_ASSERT(m_gp_->IsTrained(), "The model has not been trained.");
         ERL_DEBUG_ASSERT(m_num_test_ > 0, "m_num_test_ = {}, it should be > 0.", m_num_test_);
@@ -33,7 +33,7 @@ namespace erl::gaussian_process {
               var_x,
               var_y,
               var_grad,
-              grad_flag] = m_gp_->m_train_set_;
+              grad_flag] = m_gp_->m_buf_train_;
 
         // compute mean and gradient of the test queries
         const auto kernel = m_gp_->m_kernel_;
@@ -249,15 +249,15 @@ namespace erl::gaussian_process {
             m_support_gradient_,
             "m_support_gradient_ = false, it should be true to call GetGradient().");
         const_cast<TestResult *>(this)->PrepareAlphaTest(parallel);
-        const Dtype scale_square = m_gp_->m_three_over_scale_square_;
+        const Dtype hessian_s = m_gp_->GetKernel()->GetHessianScaleFactor();
         const long cols = m_mat_alpha_test_.cols();
-#pragma omp parallel for if (parallel) default(none) shared(mat_var_out, scale_square, cols)
+#pragma omp parallel for if (parallel) default(none) shared(mat_var_out, hessian_s, cols)
         for (long index = 0; index < m_num_test_; ++index) {
             Dtype *var = mat_var_out.col(index).data();
             for (long jj = index + m_num_test_; jj < cols; jj += m_num_test_, ++var) {
                 *var = m_mat_alpha_test_.col(jj).squaredNorm();
                 if (m_reduced_rank_kernel_) { continue; }
-                *var = scale_square - *var;
+                *var = hessian_s - *var;
             }
         }
     }
@@ -270,12 +270,12 @@ namespace erl::gaussian_process {
             m_support_gradient_,
             "m_support_gradient_ = false, it should be true to call GetGradient().");
         const_cast<TestResult *>(this)->PrepareAlphaTest(false);
-        const Dtype scale_square = m_gp_->m_three_over_scale_square_;
+        const Dtype hessian_s = m_gp_->GetKernel()->GetHessianScaleFactor();
         const long cols = m_mat_alpha_test_.cols();
         for (long jj = index + m_num_test_; jj < cols; jj += m_num_test_, ++var) {
             *var = m_mat_alpha_test_.col(jj).squaredNorm();
             if (m_reduced_rank_kernel_) { continue; }
-            *var = scale_square - *var;
+            *var = hessian_s - *var;
         }
     }
 
@@ -365,18 +365,18 @@ namespace erl::gaussian_process {
         const bool no_gradient_observation) {
         this->x_dim = x_dim_;
         this->y_dim = y_dim_;
-        if (x.rows() < x_dim_ || x.cols() < max_num_samples) { x.resize(x_dim_, max_num_samples); }
-        if (y.rows() < max_num_samples || y.cols() < y_dim_) { y.resize(max_num_samples, y_dim_); }
-        if (grad_flag.size() < max_num_samples) { grad_flag.resize(max_num_samples); }
-        if (var_x.size() < max_num_samples) { var_x.resize(max_num_samples); }
-        if (var_y.size() < max_num_samples) { var_y.resize(max_num_samples); }
+        if (x.rows() < x_dim_ || x.cols() < max_num_samples) { x.setZero(x_dim_, max_num_samples); }
+        if (y.rows() < max_num_samples || y.cols() < y_dim_) { y.setZero(max_num_samples, y_dim_); }
+        if (grad_flag.size() < max_num_samples) { grad_flag.setZero(max_num_samples); }
+        if (var_x.size() < max_num_samples) { var_x.setZero(max_num_samples); }
+        if (var_y.size() < max_num_samples) { var_y.setZero(max_num_samples); }
 
         if (!no_gradient_observation) {
             // grad, var_grad are used when no_gradient_observation is false.
             if (grad.rows() < x_dim_ * y_dim_ || grad.cols() < max_num_samples) {
-                grad.resize(x_dim_ * y_dim_, max_num_samples);
+                grad.setZero(x_dim_ * y_dim_, max_num_samples);
             }
-            if (var_grad.size() < max_num_samples) { var_grad.resize(max_num_samples); }
+            if (var_grad.size() < max_num_samples) { var_grad.setZero(max_num_samples); }
         }
         num_samples = 0;
         num_samples_with_grad = 0;
@@ -602,15 +602,16 @@ namespace erl::gaussian_process {
         : m_setting_(other.m_setting_),
           m_trained_(other.m_trained_),
           m_trained_once_(other.m_trained_once_),
+          m_reduced_rank_kernel_(other.m_reduced_rank_kernel_),
           m_k_train_updated_(other.m_k_train_updated_),
+          m_max_num_samples_(other.m_max_num_samples_),
           m_k_train_rows_(other.m_k_train_rows_),
           m_k_train_cols_(other.m_k_train_cols_),
-          m_three_over_scale_square_(other.m_three_over_scale_square_),
-          m_reduced_rank_kernel_(other.m_reduced_rank_kernel_),
           m_mat_k_train_(other.m_mat_k_train_),
           m_mat_l_(other.m_mat_l_),
           m_mat_alpha_(other.m_mat_alpha_),
-          m_train_set_(other.m_train_set_) {
+          m_buf_loading_(other.m_buf_loading_),
+          m_buf_train_(other.m_buf_train_) {
         if (other.m_kernel_ != nullptr) {
             m_kernel_ = Covariance::CreateCovariance(m_setting_->kernel_type, m_setting_->kernel);
             if (m_reduced_rank_kernel_) {
@@ -628,15 +629,16 @@ namespace erl::gaussian_process {
         m_setting_ = other.m_setting_;
         m_trained_ = other.m_trained_;
         m_trained_once_ = other.m_trained_once_;
+        m_reduced_rank_kernel_ = other.m_reduced_rank_kernel_;
         m_k_train_updated_ = other.m_k_train_updated_;
+        m_max_num_samples_ = other.m_max_num_samples_;
         m_k_train_rows_ = other.m_k_train_rows_;
         m_k_train_cols_ = other.m_k_train_cols_;
-        m_three_over_scale_square_ = other.m_three_over_scale_square_;
-        m_reduced_rank_kernel_ = other.m_reduced_rank_kernel_;
         m_mat_k_train_ = other.m_mat_k_train_;
         m_mat_l_ = other.m_mat_l_;
         m_mat_alpha_ = other.m_mat_alpha_;
-        m_train_set_ = other.m_train_set_;
+        m_buf_loading_ = other.m_buf_loading_;
+        m_buf_train_ = other.m_buf_train_;
         if (other.m_kernel_ != nullptr) {
             m_kernel_ = Covariance::CreateCovariance(m_setting_->kernel_type, m_setting_->kernel);
             if (m_reduced_rank_kernel_) {
@@ -661,17 +663,6 @@ namespace erl::gaussian_process {
     }
 
     template<typename Dtype>
-    typename NoisyInputGaussianProcess<Dtype>::VectorX
-    NoisyInputGaussianProcess<Dtype>::GetKernelCoordOrigin() const {
-        if (m_reduced_rank_kernel_) {
-            return std::reinterpret_pointer_cast<ReducedRankCovariance>(m_kernel_)
-                ->GetCoordOrigin();
-        }
-        ERL_DEBUG_ASSERT(m_train_set_.x_dim > 0, "train set should be initialized first.");
-        return VectorX::Zero(m_train_set_.x_dim);
-    }
-
-    template<typename Dtype>
     void
     NoisyInputGaussianProcess<Dtype>::SetKernelCoordOrigin(const VectorX &coord_origin) const {
         if (m_reduced_rank_kernel_) {
@@ -686,26 +677,17 @@ namespace erl::gaussian_process {
         const long max_num_samples,
         const long x_dim,
         const long y_dim) {
-        ERL_DEBUG_ASSERT(max_num_samples > 0, "max_num_samples should be > 0.");
-        ERL_DEBUG_ASSERT(x_dim > 0, "x_dim should be > 0.");
-        ERL_DEBUG_ASSERT(y_dim > 0, "y_dim should be > 0.");
-        ERL_DEBUG_ASSERT(
-            m_setting_->kernel->x_dim == -1 || m_setting_->kernel->x_dim == x_dim,
-            "x_dim should be {}.",
-            m_setting_->kernel->x_dim);
-        ERL_DEBUG_ASSERT(
-            m_setting_->max_num_samples < 0 || max_num_samples <= m_setting_->max_num_samples,
-            "max_num_samples should be <= {}.",
-            m_setting_->max_num_samples);
 
-        m_train_set_.Reset(max_num_samples, x_dim, y_dim, m_setting_->no_gradient_observation);
-        const bool success = AllocateMemory(max_num_samples, x_dim, y_dim);
-        ERL_ASSERTM(success, "Failed to allocate memory.");
-        m_trained_ = false;
-        m_k_train_updated_ = false;
-        m_k_train_rows_ = 0;
-        m_k_train_cols_ = 0;
-        m_three_over_scale_square_ = 3.0f / (m_setting_->kernel->scale * m_setting_->kernel->scale);
+        ERL_ASSERT_GT(max_num_samples, 0);
+        ERL_ASSERT_GT(x_dim, 0);
+        ERL_ASSERT_GT(y_dim, 0);
+        ERL_ASSERT_POS_EQ(m_setting_->kernel->x_dim, x_dim);
+        ERL_ASSERT_POS_LE(m_setting_->max_num_samples, max_num_samples);
+
+        // prepare the buffer for loading training data
+        m_buf_loading_.Reset(max_num_samples, x_dim, y_dim, m_setting_->no_gradient_observation);
+        // record the maximum number of samples for preparing the memory for K_train, L, alpha
+        m_max_num_samples_ = max_num_samples;
     }
 
     template<typename Dtype>
@@ -716,14 +698,26 @@ namespace erl::gaussian_process {
 
     template<typename Dtype>
     typename NoisyInputGaussianProcess<Dtype>::TrainSet &
-    NoisyInputGaussianProcess<Dtype>::GetTrainSet() {
-        return m_train_set_;
+    NoisyInputGaussianProcess<Dtype>::GetLoadingBuffer() {
+        return m_buf_loading_;
     }
 
     template<typename Dtype>
     const typename NoisyInputGaussianProcess<Dtype>::TrainSet &
-    NoisyInputGaussianProcess<Dtype>::GetTrainSet() const {
-        return m_train_set_;
+    NoisyInputGaussianProcess<Dtype>::GetLoadingBuffer() const {
+        return m_buf_loading_;
+    }
+
+    template<typename Dtype>
+    typename NoisyInputGaussianProcess<Dtype>::TrainSet &
+    NoisyInputGaussianProcess<Dtype>::GetTrainBuffer() {
+        return m_buf_train_;
+    }
+
+    template<typename Dtype>
+    const typename NoisyInputGaussianProcess<Dtype>::TrainSet &
+    NoisyInputGaussianProcess<Dtype>::GetTrainBuffer() const {
+        return m_buf_train_;
     }
 
     template<typename Dtype>
@@ -776,10 +770,15 @@ namespace erl::gaussian_process {
         std::size_t memory_usage = sizeof(NoisyInputGaussianProcess);
         if (m_setting_ != nullptr) { memory_usage += sizeof(Setting); }
         if (m_kernel_ != nullptr) { memory_usage += m_kernel_->GetMemoryUsage(); }
-        memory_usage += sizeof(TrainSet);
-        memory_usage += (m_train_set_.x.size() + m_train_set_.y.size() + m_train_set_.grad.size() +
-                         m_train_set_.var_x.size() + m_train_set_.var_y.size() +
-                         m_train_set_.var_grad.size() + m_train_set_.grad_flag.size()) *
+        memory_usage += sizeof(TrainSet) * 2;
+        memory_usage +=
+            (m_buf_loading_.x.size() + m_buf_loading_.y.size() + m_buf_loading_.grad.size() +
+             m_buf_loading_.var_x.size() + m_buf_loading_.var_y.size() +
+             m_buf_loading_.var_grad.size() + m_buf_loading_.grad_flag.size()) *
+            sizeof(Dtype);
+        memory_usage += (m_buf_train_.x.size() + m_buf_train_.y.size() + m_buf_train_.grad.size() +
+                         m_buf_train_.var_x.size() + m_buf_train_.var_y.size() +
+                         m_buf_train_.var_grad.size() + m_buf_train_.grad_flag.size()) *
                         sizeof(Dtype);
         memory_usage +=
             (m_mat_k_train_.size() + m_mat_l_.size() + m_mat_alpha_.size()) * sizeof(Dtype);
@@ -801,16 +800,14 @@ namespace erl::gaussian_process {
               var_x,
               var_y,
               var_grad,
-              grad_flag] = m_train_set_;
+              grad_flag] = m_buf_train_;
         if (num_samples <= 0) {
             ERL_WARN("num_samples = {}, it should be > 0.", num_samples);
+            m_k_train_rows_ = 0;
+            m_k_train_cols_ = 0;
             return false;
         }
-        ERL_DEBUG_ASSERT(
-            m_mat_alpha_.cols() == y_train.cols(),
-            "m_mat_alpha_.cols() ({}) != y_train.cols() ({}).",
-            m_mat_alpha_.cols(),
-            y_train.cols());
+        ERL_DEBUG_ASSERT_EQ(m_mat_alpha_.cols(), y_train.cols());
 
         if (m_setting_->no_gradient_observation) {
             grad_flag.head(num_samples).setZero();
@@ -822,19 +819,8 @@ namespace erl::gaussian_process {
                 m_mat_k_train_,
                 m_mat_alpha_);
         } else {
-            ERL_DEBUG_ASSERT(
-                grad_flag.head(num_samples).count() == num_samples_with_grad,
-                "grad_flag.head(num_samples).count() ({}) != num_samples_with_grad ({}).",
-                grad_flag.head(num_samples).count(),
-                num_samples_with_grad);
-#ifndef NDEBUG
-            const long m = num_samples + x_dim * num_samples_with_grad;
-#endif
-            ERL_DEBUG_ASSERT(
-                m_mat_alpha_.rows() >= m,
-                "m_mat_alpha_.rows() = {}, it should be >= {}.",
-                m_mat_alpha_.rows(),
-                m);
+            ERL_DEBUG_ASSERT_EQ(grad_flag.head(num_samples).count(), num_samples_with_grad);
+            ERL_DEBUG_ASSERT_GE(m_mat_alpha_.rows(), num_samples + x_dim * num_samples_with_grad);
 
             const long *grad_flag_ptr = grad_flag.data();
             for (long d = 0; d < y_dim; ++d) {
@@ -870,14 +856,26 @@ namespace erl::gaussian_process {
 
     template<typename Dtype>
     bool
+    NoisyInputGaussianProcess<Dtype>::ReTrain() {
+        m_trained_ = false;
+        return Train();
+    }
+
+    template<typename Dtype>
+    bool
     NoisyInputGaussianProcess<Dtype>::Train() {
 
-        if (m_trained_) {
-            ERL_WARN("The model has been trained. Please reset the model before training.");
-            return false;
-        }
+        if (m_trained_) { return true; }
+
         m_trained_ = m_trained_once_;
+        if (!SwapTrainSets()) { return m_trained_; }  // the train set remains the same
+        if (m_buf_train_.num_samples == 0) { return false; }  // nothing to train
+
+        ERL_ASSERTM(AllocateMemory(), "Failed to allocate memory.");
+        m_trained_ = false;
+        m_k_train_updated_ = false;
         if (!UpdateKtrain()) { return false; }
+
         // square matrix
         const auto mat_ktrain = m_mat_k_train_.topLeftCorner(m_k_train_rows_, m_k_train_cols_);
         // square lower triangular matrix
@@ -910,11 +908,11 @@ namespace erl::gaussian_process {
         }
         if (m_trained_ != other.m_trained_) { return false; }
         if (m_trained_once_ != other.m_trained_once_) { return false; }
+        if (m_reduced_rank_kernel_ != other.m_reduced_rank_kernel_) { return false; }
         if (m_k_train_updated_ != other.m_k_train_updated_) { return false; }
+        if (m_max_num_samples_ != other.m_max_num_samples_) { return false; }
         if (m_k_train_rows_ != other.m_k_train_rows_) { return false; }
         if (m_k_train_cols_ != other.m_k_train_cols_) { return false; }
-        if (m_three_over_scale_square_ != other.m_three_over_scale_square_) { return false; }
-        if (m_reduced_rank_kernel_ != other.m_reduced_rank_kernel_) { return false; }
         // kernel is not compared.
         if (other.m_mat_k_train_.rows() < m_k_train_rows_ ||
             other.m_mat_k_train_.cols() < m_k_train_cols_ ||
@@ -932,7 +930,8 @@ namespace erl::gaussian_process {
             m_mat_alpha_.topRows(m_k_train_cols_) != other.m_mat_alpha_.topRows(m_k_train_cols_)) {
             return false;
         }
-        if (m_train_set_ != other.m_train_set_) { return false; }
+        if (m_buf_loading_ != other.m_buf_loading_) { return false; }
+        if (m_buf_train_ != other.m_buf_train_) { return false; }
         return true;
     }
 
@@ -969,9 +968,25 @@ namespace erl::gaussian_process {
                 },
             },
             {
+                "kernel",
+                [](const NoisyInputGaussianProcess *gp, std::ostream &stream) -> bool {
+                    stream << (gp->m_kernel_ != nullptr) << '\n';
+                    if (gp->m_kernel_ != nullptr && !gp->m_kernel_->Write(stream)) { return false; }
+                    return stream.good();
+                },
+            },
+            // m_reduced_rank_kernel_ can be derived from m_kernel_, so no need to save it.
+            {
                 "k_train_updated",
                 [](const NoisyInputGaussianProcess *gp, std::ostream &stream) -> bool {
                     stream << gp->m_k_train_updated_;
+                    return stream.good();
+                },
+            },
+            {
+                "max_num_samples",
+                [](const NoisyInputGaussianProcess *gp, std::ostream &stream) -> bool {
+                    stream << gp->m_max_num_samples_;
                     return stream.good();
                 },
             },
@@ -989,23 +1004,7 @@ namespace erl::gaussian_process {
                     return stream.good();
                 },
             },
-            {
-                "three_over_scale_square",
-                [](const NoisyInputGaussianProcess *gp, std::ostream &stream) -> bool {
-                    stream.write(
-                        reinterpret_cast<const char *>(&gp->m_three_over_scale_square_),
-                        sizeof(Dtype));
-                    return stream.good();
-                },
-            },
-            {
-                "kernel",
-                [](const NoisyInputGaussianProcess *gp, std::ostream &stream) -> bool {
-                    stream << (gp->m_kernel_ != nullptr) << '\n';
-                    if (gp->m_kernel_ != nullptr && !gp->m_kernel_->Write(stream)) { return false; }
-                    return stream.good();
-                },
-            },
+
             {
                 "mat_k_train",
                 [](const NoisyInputGaussianProcess *gp, std::ostream &stream) -> bool {
@@ -1026,9 +1025,15 @@ namespace erl::gaussian_process {
                 },
             },
             {
-                "train_set",
+                "buf_loading",
                 [](const NoisyInputGaussianProcess *gp, std::ostream &stream) -> bool {
-                    return gp->m_train_set_.Write(stream) && stream.good();
+                    return gp->m_buf_loading_.Write(stream) && stream.good();
+                },
+            },
+            {
+                "buf_train",
+                [](const NoisyInputGaussianProcess *gp, std::ostream &stream) -> bool {
+                    return gp->m_buf_train_.Write(stream) && stream.good();
                 },
             },
         };
@@ -1062,36 +1067,6 @@ namespace erl::gaussian_process {
                 },
             },
             {
-                "k_train_updated",
-                [](NoisyInputGaussianProcess *gp, std::istream &stream) -> bool {
-                    stream >> gp->m_k_train_updated_;
-                    return stream.good();
-                },
-            },
-            {
-                "k_train_rows",
-                [](NoisyInputGaussianProcess *gp, std::istream &stream) -> bool {
-                    stream >> gp->m_k_train_rows_;
-                    return stream.good();
-                },
-            },
-            {
-                "k_train_cols",
-                [](NoisyInputGaussianProcess *gp, std::istream &stream) -> bool {
-                    stream >> gp->m_k_train_cols_;
-                    return stream.good();
-                },
-            },
-            {
-                "three_over_scale_square",
-                [](NoisyInputGaussianProcess *gp, std::istream &stream) -> bool {
-                    stream.read(
-                        reinterpret_cast<char *>(&gp->m_three_over_scale_square_),
-                        sizeof(Dtype));
-                    return stream.good();
-                },
-            },
-            {
                 "kernel",
                 [](NoisyInputGaussianProcess *gp, std::istream &stream) -> bool {
                     bool has_kernel;
@@ -1113,6 +1088,35 @@ namespace erl::gaussian_process {
                 },
             },
             {
+                "k_train_updated",
+                [](NoisyInputGaussianProcess *gp, std::istream &stream) -> bool {
+                    stream >> gp->m_k_train_updated_;
+                    return stream.good();
+                },
+            },
+            {
+                "max_num_samples",
+                [](NoisyInputGaussianProcess *gp, std::istream &stream) -> bool {
+                    stream >> gp->m_max_num_samples_;
+                    return stream.good();
+                },
+            },
+            {
+                "k_train_rows",
+                [](NoisyInputGaussianProcess *gp, std::istream &stream) -> bool {
+                    stream >> gp->m_k_train_rows_;
+                    return stream.good();
+                },
+            },
+            {
+                "k_train_cols",
+                [](NoisyInputGaussianProcess *gp, std::istream &stream) -> bool {
+                    stream >> gp->m_k_train_cols_;
+                    return stream.good();
+                },
+            },
+
+            {
                 "mat_k_train",
                 [](NoisyInputGaussianProcess *gp, std::istream &stream) -> bool {
                     return LoadEigenMatrixFromBinaryStream(stream, gp->m_mat_k_train_) &&
@@ -1133,9 +1137,15 @@ namespace erl::gaussian_process {
                 },
             },
             {
-                "train_set",
+                "buf_loading",
                 [](NoisyInputGaussianProcess *gp, std::istream &stream) -> bool {
-                    return gp->m_train_set_.Read(stream) && stream.good();
+                    return gp->m_buf_loading_.Read(stream) && stream.good();
+                },
+            },
+            {
+                "buf_train",
+                [](NoisyInputGaussianProcess *gp, std::istream &stream) -> bool {
+                    return gp->m_buf_train_.Read(stream) && stream.good();
                 },
             },
         };
@@ -1144,27 +1154,25 @@ namespace erl::gaussian_process {
 
     template<typename Dtype>
     bool
-    NoisyInputGaussianProcess<Dtype>::AllocateMemory(
-        const long max_num_samples,
-        const long x_dim,
-        const long y_dim) {
-        if (max_num_samples <= 0 || x_dim <= 0 || y_dim <= 0) { return false; }  // invalid input
-        if (m_setting_->max_num_samples > 0 && max_num_samples > m_setting_->max_num_samples) {
-            return false;
-        }
-        if (m_setting_->kernel->x_dim > 0 && x_dim != m_setting_->kernel->x_dim) { return false; }
+    NoisyInputGaussianProcess<Dtype>::AllocateMemory() {
+        // invalid settings
+        if (m_max_num_samples_ <= 0) { return false; }
+        const long x_dim = m_buf_train_.x_dim;
+        const long y_dim = m_buf_train_.y_dim;
+        if (x_dim <= 0 || y_dim <= 0) { return false; }
+
         InitKernel();
+
+        const bool &no_grad_obs = m_setting_->no_gradient_observation;
         const auto [rows, cols] = m_kernel_->GetMinimumKtrainSize(
-            max_num_samples,
-            m_setting_->no_gradient_observation ? 0 : max_num_samples,
+            m_max_num_samples_,
+            no_grad_obs ? 0 : m_max_num_samples_,
             x_dim);
         if (m_mat_k_train_.rows() < rows || m_mat_k_train_.cols() < cols) {
             m_mat_k_train_.resize(rows, cols);
         }
         if (m_mat_l_.rows() < rows || m_mat_l_.cols() < cols) { m_mat_l_.resize(rows, cols); }
-        if (const long alpha_rows = std::max(
-                max_num_samples * (m_setting_->no_gradient_observation ? 1 : x_dim + 1),
-                cols);
+        if (long alpha_rows = std::max(m_max_num_samples_ * (no_grad_obs ? 1 : x_dim + 1), cols);
             m_mat_alpha_.rows() < alpha_rows || m_mat_alpha_.cols() < y_dim) {
             m_mat_alpha_.resize(alpha_rows, y_dim);
         }
@@ -1179,6 +1187,26 @@ namespace erl::gaussian_process {
         auto rank_reduced_kernel = std::dynamic_pointer_cast<ReducedRankCovariance>(m_kernel_);
         m_reduced_rank_kernel_ = rank_reduced_kernel != nullptr;
         if (m_reduced_rank_kernel_) { rank_reduced_kernel->BuildSpectralDensities(); }
+    }
+
+    template<typename Dtype>
+    bool
+    NoisyInputGaussianProcess<Dtype>::SwapTrainSets() {
+        if (m_buf_mutex_.try_lock()) {
+            if (m_buf_loading_.num_samples == 0) {  // nothing to swap
+                m_buf_mutex_.unlock();
+                return false;
+            }
+            std::swap(m_buf_loading_, m_buf_train_);
+            // mark the buffer for loading as empty
+            m_buf_loading_.num_samples = 0;
+            m_buf_loading_.num_samples_with_grad = 0;
+            m_buf_mutex_.unlock();
+            return true;
+        }
+        // could not lock the mutex, somebody else is using the loading buffer.
+        // skip swapping.
+        return false;
     }
 
     template class NoisyInputGaussianProcess<double>;

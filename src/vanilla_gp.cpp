@@ -330,17 +330,6 @@ namespace erl::gaussian_process {
     }
 
     template<typename Dtype>
-    typename VanillaGaussianProcess<Dtype>::VectorX
-    VanillaGaussianProcess<Dtype>::GetKernelCoordOrigin() const {
-        if (m_reduced_rank_kernel_) {
-            return std::reinterpret_pointer_cast<ReducedRankCovariance>(m_kernel_)
-                ->GetCoordOrigin();
-        }
-        ERL_DEBUG_ASSERT(m_train_set_.x_dim > 0, "train set should be initialized first.");
-        return VectorX::Zero(m_train_set_.x_dim);
-    }
-
-    template<typename Dtype>
     void
     VanillaGaussianProcess<Dtype>::SetKernelCoordOrigin(const VectorX &coord_origin) const {
         if (m_reduced_rank_kernel_) {

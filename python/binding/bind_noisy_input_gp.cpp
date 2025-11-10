@@ -133,7 +133,6 @@ BindNoisyInputGaussianProcessImpl(const py::module &m, const char *name) {
         .def_property_readonly("setting", &T::template GetSetting<typename T::Setting>)
         .def_property_readonly("is_trained", &T::IsTrained)
         .def_property_readonly("using_reduced_rank_kernel", &T::UsingReducedRankKernel)
-        .def_property("kernel_origin", &T::GetKernelCoordOrigin, &T::SetKernelCoordOrigin)
         .def("reset", &T::Reset, py::arg("max_num_samples"), py::arg("x_dim"), py::arg("y_dim"))
         .def_property_readonly("kernel", &T::GetKernel)
         .def_property_readonly("train_set", [](const T &self) { return self.GetTrainSet(); })

@@ -163,9 +163,6 @@ namespace erl::gaussian_process {
         [[nodiscard]] bool
         UsingReducedRankKernel() const;
 
-        [[nodiscard]] VectorX
-        GetKernelCoordOrigin() const;
-
         void
         SetKernelCoordOrigin(const VectorX &coord_origin) const;
 

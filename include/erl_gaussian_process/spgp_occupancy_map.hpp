@@ -88,7 +88,8 @@ namespace erl::gaussian_process {
         GenerateDataset(
             const Eigen::Ref<const VectorD> &sensor_position,
             const Eigen::Ref<const MatrixDX> &points,
-            const std::vector<long> &point_indices,
+            std::vector<long> &point_indices,
+            std::size_t max_num_rays,
             long max_dataset_size,
             long &num_samples,
             MatrixDX &dataset_points,
@@ -99,7 +100,8 @@ namespace erl::gaussian_process {
         Update(
             const Eigen::Ref<const VectorD> &sensor_position,
             const Eigen::Ref<const MatrixDX> &points,
-            const std::vector<long> &point_indices,
+            std::vector<long> &point_indices,
+            std::size_t max_num_rays,
             long &num_samples,
             MatrixDX &dataset_points,
             VectorX &dataset_labels,
