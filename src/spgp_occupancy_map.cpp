@@ -76,16 +76,16 @@ namespace erl::gaussian_process {
             return false;
         }
         m_sp_gp_.Reset(num_samples, Dim, 1);
-        auto &train_set = m_sp_gp_.GetTrainSet();
-        train_set.x_dim = Dim;
-        train_set.y_dim = 1;
-        train_set.num_samples = num_samples;
-        train_set.x.topLeftCorner(Dim, num_samples) = dataset_points.leftCols(num_samples);
-        train_set.y.col(0).head(num_samples) =
+        auto &train_buf = m_sp_gp_.GetTrainBuffer();
+        train_buf.x_dim = Dim;
+        train_buf.y_dim = 1;
+        train_buf.num_samples = num_samples;
+        train_buf.x.topLeftCorner(Dim, num_samples) = dataset_points.leftCols(num_samples);
+        train_buf.y.col(0).head(num_samples) =
             dataset_labels.head(num_samples).unaryExpr([this](Dtype label) {
                 return label > 0 ? m_setting_->logodd_occupied : m_setting_->logodd_free;
             });
-        train_set.var.head(num_samples).setConstant(m_setting_->logodd_variance);
+        train_buf.var.head(num_samples).setConstant(m_setting_->logodd_variance);
         return m_sp_gp_.Update(m_setting_->parallel);
     }
 

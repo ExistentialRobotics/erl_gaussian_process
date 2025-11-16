@@ -35,16 +35,16 @@ TEST(NoisyInputGaussianProcess, SingleInputSingleOutputWithGradientObservation) 
     {
         ERL_BLOCK_TIMER_MSG("gp.Train()");
         gp.Reset(n, 1, 1);
-        auto &train_set = gp.GetTrainSet();
-        train_set.x.row(0).head(n) = x.transpose();
-        train_set.y.col(0).head(n) = y;
-        train_set.grad.row(0).head(n) = grad.transpose();
-        train_set.var_x.head(n).setConstant(kNoiseVar);
-        train_set.var_y.head(n).setConstant(kNoiseVar);
-        train_set.var_grad.head(n).setConstant(kNoiseVar);
-        train_set.grad_flag.head(n).setConstant(1);
-        train_set.num_samples = n;
-        train_set.num_samples_with_grad = n;
+        auto &train_buf = gp.GetTrainBuffer();
+        train_buf.x.row(0).head(n) = x.transpose();
+        train_buf.y.col(0).head(n) = y;
+        train_buf.grad.row(0).head(n) = grad.transpose();
+        train_buf.var_x.head(n).setConstant(kNoiseVar);
+        train_buf.var_y.head(n).setConstant(kNoiseVar);
+        train_buf.var_grad.head(n).setConstant(kNoiseVar);
+        train_buf.grad_flag.head(n).setConstant(1);
+        train_buf.num_samples = n;
+        train_buf.num_samples_with_grad = n;
         ASSERT_TRUE(gp.Train());
     }
 
@@ -210,16 +210,16 @@ TEST(NoisyInputGaussianProcess, SingleInputSingleOutputWithoutGradientObservatio
     {
         ERL_BLOCK_TIMER_MSG("gp.Train()");
         gp.Reset(n, 1, 1);
-        auto &train_set = gp.GetTrainSet();
-        train_set.x.row(0).head(n) = x.transpose();
-        train_set.y.col(0).head(n) = y;
-        // train_set.grad.row(0).head(n) = grad.transpose();
-        train_set.var_x.head(n).setConstant(kNoiseVar);
-        train_set.var_y.head(n).setConstant(kNoiseVar);
-        // train_set.var_grad.head(n).setConstant(kNoiseVar);
-        train_set.grad_flag.head(n).setConstant(0);
-        train_set.num_samples = n;
-        train_set.num_samples_with_grad = 0;
+        auto &train_buf = gp.GetTrainBuffer();
+        train_buf.x.row(0).head(n) = x.transpose();
+        train_buf.y.col(0).head(n) = y;
+        // train_buf.grad.row(0).head(n) = grad.transpose();
+        train_buf.var_x.head(n).setConstant(kNoiseVar);
+        train_buf.var_y.head(n).setConstant(kNoiseVar);
+        // train_buf.var_grad.head(n).setConstant(kNoiseVar);
+        train_buf.grad_flag.head(n).setConstant(0);
+        train_buf.num_samples = n;
+        train_buf.num_samples_with_grad = 0;
         ASSERT_TRUE(gp.Train());
     }
 
@@ -396,18 +396,18 @@ TEST(NoisyInputGaussianProcess, MultiInputSingleOutputWithGradientObservation) {
     {
         ERL_BLOCK_TIMER_MSG("gp.Train()");
         gp.Reset(pts.cols(), 2, 1);
-        auto &train_set = gp.GetTrainSet();
-        train_set.x.topLeftCorner(2, pts.cols()) = pts;
-        train_set.y.col(0).head(pts.cols()) = z;
-        train_set.grad.row(0).head(pts.cols()) = grad_x.transpose();
-        train_set.grad.row(1).head(pts.cols()) = grad_y.transpose();
+        auto &train_buf = gp.GetTrainBuffer();
+        train_buf.x.topLeftCorner(2, pts.cols()) = pts;
+        train_buf.y.col(0).head(pts.cols()) = z;
+        train_buf.grad.row(0).head(pts.cols()) = grad_x.transpose();
+        train_buf.grad.row(1).head(pts.cols()) = grad_y.transpose();
         const long n_pts = pts.cols();
-        train_set.var_x.head(n_pts).setConstant(kNoiseVar);
-        train_set.var_y.head(n_pts).setConstant(kNoiseVar);
-        train_set.var_grad.head(n_pts).setConstant(kNoiseVar);
-        train_set.grad_flag.head(n_pts).setConstant(1);
-        train_set.num_samples = n_pts;
-        train_set.num_samples_with_grad = n_pts;
+        train_buf.var_x.head(n_pts).setConstant(kNoiseVar);
+        train_buf.var_y.head(n_pts).setConstant(kNoiseVar);
+        train_buf.var_grad.head(n_pts).setConstant(kNoiseVar);
+        train_buf.grad_flag.head(n_pts).setConstant(1);
+        train_buf.num_samples = n_pts;
+        train_buf.num_samples_with_grad = n_pts;
         ASSERT_TRUE(gp.Train());
     }
 
@@ -603,15 +603,15 @@ TEST(NoisyInputGaussianProcess, MultiInputSingleOutputWithoutGradientObservation
     {
         ERL_BLOCK_TIMER_MSG("gp.Train()");
         gp.Reset(pts.cols(), 2, 1);
-        auto &train_set = gp.GetTrainSet();
-        train_set.x.topLeftCorner(2, pts.cols()) = pts;
-        train_set.y.col(0).head(pts.cols()) = z;
+        auto &train_buf = gp.GetTrainBuffer();
+        train_buf.x.topLeftCorner(2, pts.cols()) = pts;
+        train_buf.y.col(0).head(pts.cols()) = z;
         const long n_pts = pts.cols();
-        train_set.var_x.head(n_pts).setConstant(kNoiseVar);
-        train_set.var_y.head(n_pts).setConstant(kNoiseVar);
-        train_set.grad_flag.head(n_pts).setConstant(0);
-        train_set.num_samples = n_pts;
-        train_set.num_samples_with_grad = 0;
+        train_buf.var_x.head(n_pts).setConstant(kNoiseVar);
+        train_buf.var_y.head(n_pts).setConstant(kNoiseVar);
+        train_buf.grad_flag.head(n_pts).setConstant(0);
+        train_buf.num_samples = n_pts;
+        train_buf.num_samples_with_grad = 0;
         ASSERT_TRUE(gp.Train());
     }
 
@@ -814,21 +814,21 @@ TEST(NoisyInputGaussianProcess, MultiInputMultiOutputWithGradientObservation) {
     {
         ERL_BLOCK_TIMER_MSG("gp.Train()");
         gp.Reset(pts.cols(), 2, 2);
-        auto &train_set = gp.GetTrainSet();
-        train_set.x.topLeftCorner(2, pts.cols()) = pts;
-        train_set.y.col(0).head(pts.cols()) = z1;
-        train_set.y.col(1).head(pts.cols()) = z2;
-        train_set.grad.row(0).head(pts.cols()) = grad1_x.transpose();
-        train_set.grad.row(1).head(pts.cols()) = grad1_y.transpose();
-        train_set.grad.row(2).head(pts.cols()) = grad2_x.transpose();
-        train_set.grad.row(3).head(pts.cols()) = grad2_y.transpose();
+        auto &train_buf = gp.GetTrainBuffer();
+        train_buf.x.topLeftCorner(2, pts.cols()) = pts;
+        train_buf.y.col(0).head(pts.cols()) = z1;
+        train_buf.y.col(1).head(pts.cols()) = z2;
+        train_buf.grad.row(0).head(pts.cols()) = grad1_x.transpose();
+        train_buf.grad.row(1).head(pts.cols()) = grad1_y.transpose();
+        train_buf.grad.row(2).head(pts.cols()) = grad2_x.transpose();
+        train_buf.grad.row(3).head(pts.cols()) = grad2_y.transpose();
         const long n_pts = pts.cols();
-        train_set.var_x.head(n_pts).setConstant(kNoiseVar);
-        train_set.var_y.head(n_pts).setConstant(kNoiseVar);
-        train_set.var_grad.head(n_pts).setConstant(kNoiseVar);
-        train_set.grad_flag.head(n_pts).setConstant(1);
-        train_set.num_samples = n_pts;
-        train_set.num_samples_with_grad = n_pts;
+        train_buf.var_x.head(n_pts).setConstant(kNoiseVar);
+        train_buf.var_y.head(n_pts).setConstant(kNoiseVar);
+        train_buf.var_grad.head(n_pts).setConstant(kNoiseVar);
+        train_buf.grad_flag.head(n_pts).setConstant(1);
+        train_buf.num_samples = n_pts;
+        train_buf.num_samples_with_grad = n_pts;
         ASSERT_TRUE(gp.Train());
     }
 
@@ -1055,16 +1055,16 @@ TEST(NoisyInputGaussianProcess, MultiInputMultiOutputWithoutGradientObservation)
     {
         ERL_BLOCK_TIMER_MSG("gp.Train()");
         gp.Reset(pts.cols(), 2, 2);
-        auto &train_set = gp.GetTrainSet();
-        train_set.x.topLeftCorner(2, pts.cols()) = pts;
-        train_set.y.col(0).head(pts.cols()) = z1;
-        train_set.y.col(1).head(pts.cols()) = z2;
+        auto &train_buf = gp.GetTrainBuffer();
+        train_buf.x.topLeftCorner(2, pts.cols()) = pts;
+        train_buf.y.col(0).head(pts.cols()) = z1;
+        train_buf.y.col(1).head(pts.cols()) = z2;
         const long n_pts = pts.cols();
-        train_set.var_x.head(n_pts).setConstant(kNoiseVar);
-        train_set.var_y.head(n_pts).setConstant(kNoiseVar);
-        train_set.grad_flag.head(n_pts).setConstant(0);
-        train_set.num_samples = n_pts;
-        train_set.num_samples_with_grad = 0;
+        train_buf.var_x.head(n_pts).setConstant(kNoiseVar);
+        train_buf.var_y.head(n_pts).setConstant(kNoiseVar);
+        train_buf.grad_flag.head(n_pts).setConstant(0);
+        train_buf.num_samples = n_pts;
+        train_buf.num_samples_with_grad = 0;
     }
     ASSERT_TRUE(gp.Train());
 

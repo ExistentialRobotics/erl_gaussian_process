@@ -57,13 +57,13 @@ BindVanillaGaussianProcessImpl(const py::module &m, const char *name) {
             },
             py::arg("index"));
 
-    py::class_<typename T::TrainSet>(py_vanilla_gp, "TrainSet")
-        .def_readwrite("x_dim", &T::TrainSet::x_dim)
-        .def_readwrite("y_dim", &T::TrainSet::y_dim)
-        .def_readwrite("num_samples", &T::TrainSet::num_samples)
-        .def_readwrite("x", &T::TrainSet::x)
-        .def_readwrite("y", &T::TrainSet::y)
-        .def_readwrite("var", &T::TrainSet::var);
+    py::class_<typename T::TrainBuf>(py_vanilla_gp, "TrainBuf")
+        .def_readwrite("x_dim", &T::TrainBuf::x_dim)
+        .def_readwrite("y_dim", &T::TrainBuf::y_dim)
+        .def_readwrite("num_samples", &T::TrainBuf::num_samples)
+        .def_readwrite("x", &T::TrainBuf::x)
+        .def_readwrite("y", &T::TrainBuf::y)
+        .def_readwrite("var", &T::TrainBuf::var);
 
     py_vanilla_gp
         .def(py::init<std::shared_ptr<typename T::Setting>>(), py::arg("setting").none(false))
@@ -80,13 +80,13 @@ BindVanillaGaussianProcessImpl(const py::module &m, const char *name) {
                 const long x_dim = mat_x_train.rows();
                 const long y_dim = mat_y_train.cols();
                 self.Reset(n, x_dim, y_dim);
-                auto &train_set = self.GetTrainSet();
-                train_set.x.topLeftCorner(x_dim, n) = mat_x_train;
-                train_set.y.topLeftCorner(n, y_dim) = mat_y_train;
-                train_set.var.head(n) = vec_var_y;
-                train_set.x_dim = x_dim;
-                train_set.y_dim = y_dim;
-                train_set.num_samples = n;
+                auto &train_buf = self.GetTrainBuffer();
+                train_buf.x.topLeftCorner(x_dim, n) = mat_x_train;
+                train_buf.y.topLeftCorner(n, y_dim) = mat_y_train;
+                train_buf.var.head(n) = vec_var_y;
+                train_buf.x_dim = x_dim;
+                train_buf.y_dim = y_dim;
+                train_buf.num_samples = n;
                 return self.Train();
             },
             py::arg("mat_x_train"),

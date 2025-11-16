@@ -73,7 +73,7 @@ namespace erl::gaussian_process {
             PrepareForVariance(bool parallel);
         };
 
-        struct TrainSet {
+        struct TrainBuf {
             long x_dim = 0;        // dimension of x
             long y_dim = 0;        // dimension of y
             long num_samples = 0;  // number of training samples
@@ -85,10 +85,10 @@ namespace erl::gaussian_process {
             Reset(long max_num_samples, long x_dim_, long y_dim_);
 
             [[nodiscard]] bool
-            operator==(const TrainSet &other) const;
+            operator==(const TrainBuf &other) const;
 
             [[nodiscard]] bool
-            operator!=(const TrainSet &other) const;
+            operator!=(const TrainBuf &other) const;
 
             [[nodiscard]] bool
             Write(std::ostream &s) const;
@@ -109,7 +109,7 @@ namespace erl::gaussian_process {
         MatrixX m_mat_k_train_ = {};          // Ktrain, avoid reallocation
         MatrixX m_mat_l_ = {};  // lower triangular matrix of the Cholesky decomposition of Ktrain
         MatrixX m_mat_alpha_ = {};  // h(x1)..h(xn), dh(x1)/dx_1..dh(xn)/dx_n, ..dh(xn)/dx_dim
-        TrainSet m_train_set_;      // the training set
+        TrainBuf m_train_buf_;      // the training set
 
     public:
         explicit VanillaGaussianProcess(std::shared_ptr<Setting> setting);
@@ -148,11 +148,11 @@ namespace erl::gaussian_process {
         [[nodiscard]] std::shared_ptr<Covariance>
         GetKernel() const;
 
-        [[nodiscard]] TrainSet &
-        GetTrainSet();
+        [[nodiscard]] TrainBuf &
+        GetTrainBuffer();
 
-        [[nodiscard]] const TrainSet &
-        GetTrainSet() const;
+        [[nodiscard]] const TrainBuf &
+        GetTrainBuffer() const;
 
         [[nodiscard]] const MatrixX &
         GetKtrain() const;

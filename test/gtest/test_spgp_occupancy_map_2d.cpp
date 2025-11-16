@@ -329,12 +329,14 @@ TestImpl2D(const int hinged_grid_size, const int test_grid_size, const std::stri
             long num_points = 0;
             Matrix2X dataset_points;
             VectorX dataset_labels;
+            std::vector<long> point_indices;
             std::vector<long> hit_indices;
 
             sp_gp_occupancy_map.Update(
                 pose.template head<2>(),
                 points,
-                std::vector<long>{},
+                point_indices,
+                0,
                 num_points,
                 dataset_points,
                 dataset_labels,

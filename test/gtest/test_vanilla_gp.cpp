@@ -27,11 +27,11 @@ TEST(VanillaGaussianProcess, SingleInputSingleOutput) {
     {
         ERL_BLOCK_TIMER_MSG("gp.Train");
         gp.Reset(n, 1, 1);
-        auto &train_set = gp.GetTrainSet();
-        train_set.x.row(0).head(n) = x.transpose();
-        train_set.y.col(0).head(n) = y;
-        train_set.var.head(n).setConstant(kNoiseVar);
-        train_set.num_samples = n;
+        auto &train_buf = gp.GetTrainBuffer();
+        train_buf.x.row(0).head(n) = x.transpose();
+        train_buf.y.col(0).head(n) = y;
+        train_buf.var.head(n).setConstant(kNoiseVar);
+        train_buf.num_samples = n;
         ASSERT_TRUE(gp.Train());
     }
 
@@ -147,11 +147,11 @@ TEST(VanillaGaussianProcess, MultiInputSingleOutput) {
     {
         ERL_BLOCK_TIMER_MSG("gp.Train");
         gp.Reset(pts.cols(), 2, 1);
-        auto &train_set = gp.GetTrainSet();
-        train_set.x.topLeftCorner(2, pts.cols()) = pts;
-        train_set.y.col(0).head(pts.cols()) = z;
-        train_set.var.head(pts.cols()).setConstant(kNoiseVar);
-        train_set.num_samples = pts.cols();
+        auto &train_buf = gp.GetTrainBuffer();
+        train_buf.x.topLeftCorner(2, pts.cols()) = pts;
+        train_buf.y.col(0).head(pts.cols()) = z;
+        train_buf.var.head(pts.cols()).setConstant(kNoiseVar);
+        train_buf.num_samples = pts.cols();
         ASSERT_TRUE(gp.Train());
     }
 
@@ -261,12 +261,12 @@ TEST(VanillaGaussianProcess, MultiInputMultiOutput) {
     {
         ERL_BLOCK_TIMER_MSG("gp.Train");
         gp.Reset(pts.cols(), 2, 2);
-        auto &train_set = gp.GetTrainSet();
-        train_set.x.topLeftCorner(2, pts.cols()) = pts;
-        train_set.y.col(0).head(pts.cols()) = z1;
-        train_set.y.col(1).head(pts.cols()) = z2;
-        train_set.var.head(pts.cols()).setConstant(kNoiseVar);
-        train_set.num_samples = pts.cols();
+        auto &train_buf = gp.GetTrainBuffer();
+        train_buf.x.topLeftCorner(2, pts.cols()) = pts;
+        train_buf.y.col(0).head(pts.cols()) = z1;
+        train_buf.y.col(1).head(pts.cols()) = z2;
+        train_buf.var.head(pts.cols()).setConstant(kNoiseVar);
+        train_buf.num_samples = pts.cols();
         ASSERT_TRUE(gp.Train());
     }
 

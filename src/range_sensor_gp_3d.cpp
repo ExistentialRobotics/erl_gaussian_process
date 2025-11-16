@@ -291,19 +291,19 @@ namespace erl::gaussian_process {
                 if (gp == nullptr) { gp = std::make_shared<Gp>(m_setting_->gp); }
                 gp->Reset(m_setting_->gp->max_num_samples, 2, 1);
                 long cnt = 0;
-                typename Gp::TrainSet &train_set = gp->GetTrainSet();
+                typename Gp::TrainBuf &train_buf = gp->GetTrainBuffer();
                 const Eigen::MatrixXb &mask_hit = m_sensor_frame_->GetHitMask();
                 const Eigen::MatrixX<Vector2> &frame_coords = m_sensor_frame_->GetFrameCoords();
                 for (long c = col_index_left; c < col_index_right; ++c) {
                     for (long r = row_index_left; r < row_index_right; ++r) {
                         if (!mask_hit(r, c)) { continue; }
-                        train_set.x.col(cnt) = frame_coords(r, c);
-                        train_set.y.col(0)[cnt] = m_mapped_distances_(r, c);
-                        train_set.var[cnt] = m_setting_->sensor_range_var;
+                        train_buf.x.col(cnt) = frame_coords(r, c);
+                        train_buf.y.col(0)[cnt] = m_mapped_distances_(r, c);
+                        train_buf.var[cnt] = m_setting_->sensor_range_var;
                         ++cnt;
                     }
                 }
-                train_set.num_samples = cnt;
+                train_buf.num_samples = cnt;
                 if (cnt > m_setting_->min_num_samples_per_group) { (void) gp->Train(); }
             }
         }

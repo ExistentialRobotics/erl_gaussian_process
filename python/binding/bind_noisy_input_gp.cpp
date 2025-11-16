@@ -115,18 +115,18 @@ BindNoisyInputGaussianProcessImpl(const py::module &m, const char *name) {
             return vec_cov_out;
         });
 
-    py::class_<typename T::TrainSet>(py_noisy_input_gp, "TrainSet")
-        .def_readwrite("x_dim", &T::TrainSet::x_dim)
-        .def_readwrite("y_dim", &T::TrainSet::y_dim)
-        .def_readwrite("num_samples", &T::TrainSet::num_samples)
-        .def_readwrite("num_samples_with_grad", &T::TrainSet::num_samples_with_grad)
-        .def_readwrite("x", &T::TrainSet::x)
-        .def_readwrite("y", &T::TrainSet::y)
-        .def_readwrite("grad", &T::TrainSet::grad)
-        .def_readwrite("var_x", &T::TrainSet::var_x)
-        .def_readwrite("var_y", &T::TrainSet::var_y)
-        .def_readwrite("var_grad", &T::TrainSet::var_grad)
-        .def_readwrite("grad_flag", &T::TrainSet::grad_flag);
+    py::class_<typename T::TrainBuf>(py_noisy_input_gp, "TrainBuf")
+        .def_readwrite("x_dim", &T::TrainBuf::x_dim)
+        .def_readwrite("y_dim", &T::TrainBuf::y_dim)
+        .def_readwrite("num_samples", &T::TrainBuf::num_samples)
+        .def_readwrite("num_samples_with_grad", &T::TrainBuf::num_samples_with_grad)
+        .def_readwrite("x", &T::TrainBuf::x)
+        .def_readwrite("y", &T::TrainBuf::y)
+        .def_readwrite("grad", &T::TrainBuf::grad)
+        .def_readwrite("var_x", &T::TrainBuf::var_x)
+        .def_readwrite("var_y", &T::TrainBuf::var_y)
+        .def_readwrite("var_grad", &T::TrainBuf::var_grad)
+        .def_readwrite("grad_flag", &T::TrainBuf::grad_flag);
 
     py_noisy_input_gp
         .def(py::init<std::shared_ptr<typename T::Setting>>(), py::arg("setting").none(false))
@@ -135,7 +135,8 @@ BindNoisyInputGaussianProcessImpl(const py::module &m, const char *name) {
         .def_property_readonly("using_reduced_rank_kernel", &T::UsingReducedRankKernel)
         .def("reset", &T::Reset, py::arg("max_num_samples"), py::arg("x_dim"), py::arg("y_dim"))
         .def_property_readonly("kernel", &T::GetKernel)
-        .def_property_readonly("train_set", [](const T &self) { return self.GetTrainSet(); })
+        .def_property_readonly("buf_loading", py::overload_cast<>(&T::GetLoadingBuffer))
+        .def_property_readonly("buf_train", py::overload_cast<>(&T::GetTrainBuffer))
         .def_property_readonly("k_train", py::overload_cast<>(&T::GetKtrain, py::const_))
         .def_property_readonly("alpha", py::overload_cast<>(&T::GetAlpha, py::const_))
         .def_property_readonly("cholesky_k_train", &T::GetCholeskyDecomposition)
@@ -155,18 +156,18 @@ BindNoisyInputGaussianProcessImpl(const py::module &m, const char *name) {
                 const long y_dim = mat_y_train.cols();
                 const long num_train_samples = mat_x_train.cols();
                 self.Reset(num_train_samples, x_dim, y_dim);
-                typename T::TrainSet &train_set = self.GetTrainSet();
-                train_set.x.topLeftCorner(x_dim, num_train_samples) = mat_x_train;
-                train_set.y.topLeftCorner(num_train_samples, y_dim) = mat_y_train;
-                train_set.grad.topLeftCorner(x_dim * y_dim, num_train_samples) = mat_grad_train;
-                train_set.var_x.head(num_train_samples) = vec_var_x;
-                train_set.var_y.head(num_train_samples) = vec_var_y;
-                train_set.var_grad.head(num_train_samples) = vec_var_grad;
-                train_set.grad_flag.head(num_train_samples) = vec_grad_flag;
-                train_set.x_dim = x_dim;
-                train_set.y_dim = y_dim;
-                train_set.num_samples = num_train_samples;
-                train_set.num_samples_with_grad = vec_grad_flag.count();
+                typename T::TrainBuf &train_buf = self.GetLoadingBuffer();
+                train_buf.x.topLeftCorner(x_dim, num_train_samples) = mat_x_train;
+                train_buf.y.topLeftCorner(num_train_samples, y_dim) = mat_y_train;
+                train_buf.grad.topLeftCorner(x_dim * y_dim, num_train_samples) = mat_grad_train;
+                train_buf.var_x.head(num_train_samples) = vec_var_x;
+                train_buf.var_y.head(num_train_samples) = vec_var_y;
+                train_buf.var_grad.head(num_train_samples) = vec_var_grad;
+                train_buf.grad_flag.head(num_train_samples) = vec_grad_flag;
+                train_buf.x_dim = x_dim;
+                train_buf.y_dim = y_dim;
+                train_buf.num_samples = num_train_samples;
+                train_buf.num_samples_with_grad = vec_grad_flag.count();
                 return self.Train();
             },
             py::arg("mat_x_train"),

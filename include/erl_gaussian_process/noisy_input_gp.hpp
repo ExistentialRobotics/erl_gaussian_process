@@ -163,7 +163,7 @@ namespace erl::gaussian_process {
             PrepareAlphaTest(bool parallel);
         };
 
-        struct TrainSet {
+        struct TrainBuf {
             long x_dim = 0;                  // m = dimension of x
             long y_dim = 0;                  // n = dimension of y
             long num_samples = 0;            // N = number of training samples
@@ -179,22 +179,22 @@ namespace erl::gaussian_process {
             VectorX var_grad;  // gradient variance, assumed to be identical across dimensions.
             Eigen::VectorXl grad_flag;  // true if the corresponding training sample has a gradient.
 
-            TrainSet() = default;
-            TrainSet(const TrainSet &other) = default;
-            TrainSet(TrainSet &&other) = default;
-            TrainSet &
-            operator=(const TrainSet &other) = default;
-            TrainSet &
-            operator=(TrainSet &&other) = default;
+            TrainBuf() = default;
+            TrainBuf(const TrainBuf &other) = default;
+            TrainBuf(TrainBuf &&other) = default;
+            TrainBuf &
+            operator=(const TrainBuf &other) = default;
+            TrainBuf &
+            operator=(TrainBuf &&other) = default;
 
             void
             Reset(long max_num_samples, long x_dim_, long y_dim_, bool no_gradient_observation);
 
             [[nodiscard]] bool
-            operator==(const TrainSet &other) const;
+            operator==(const TrainBuf &other) const;
 
             [[nodiscard]] bool
-            operator!=(const TrainSet &other) const;
+            operator!=(const TrainBuf &other) const;
 
             [[nodiscard]] bool
             Write(std::ostream &s) const;
@@ -223,8 +223,8 @@ namespace erl::gaussian_process {
         MatrixX m_mat_alpha_ = {};
 
         std::mutex m_buf_mutex_;  // mutex for thread-safe access to training set
-        TrainSet m_buf_loading_;  // the training set loaded from outside
-        TrainSet m_buf_train_;    // the training set used for training
+        TrainBuf m_buf_loading_;  // the training set loaded from outside
+        TrainBuf m_buf_train_;    // the training set used for training
 
     public:
         explicit NoisyInputGaussianProcess(std::shared_ptr<Setting> setting);
@@ -271,16 +271,16 @@ namespace erl::gaussian_process {
             return std::lock_guard<std::mutex>(m_buf_mutex_);
         }
 
-        [[nodiscard]] TrainSet &
+        [[nodiscard]] TrainBuf &
         GetLoadingBuffer();
 
-        [[nodiscard]] const TrainSet &
+        [[nodiscard]] const TrainBuf &
         GetLoadingBuffer() const;
 
-        [[nodiscard]] TrainSet &
+        [[nodiscard]] TrainBuf &
         GetTrainBuffer();
 
-        [[nodiscard]] const TrainSet &
+        [[nodiscard]] const TrainBuf &
         GetTrainBuffer() const;
 
         [[nodiscard]] MatrixX &
@@ -349,7 +349,7 @@ namespace erl::gaussian_process {
          * used one), false otherwise.
          */
         [[nodiscard]] bool
-        SwapTrainSets();
+        SwapTrainBufs();
     };
 
     using NoisyInputGaussianProcessD = NoisyInputGaussianProcess<double>;

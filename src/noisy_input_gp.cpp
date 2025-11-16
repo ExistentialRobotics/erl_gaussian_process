@@ -20,7 +20,7 @@ namespace erl::gaussian_process {
           m_y_dim_(m_gp_->m_buf_train_.y_dim) {
 
         ERL_DEBUG_ASSERT(m_gp_->IsTrained(), "The model has not been trained.");
-        ERL_DEBUG_ASSERT(m_num_test_ > 0, "m_num_test_ = {}, it should be > 0.", m_num_test_);
+        ERL_DEBUG_ASSERT_GT(m_num_test_, 0);
 
         auto
             &[x_dim,
@@ -59,23 +59,10 @@ namespace erl::gaussian_process {
 #else
         (void) rows2, (void) cols2;
 #endif
-        ERL_DEBUG_ASSERT(
-            rows1 == rows2 && cols1 == cols2,
-            "output_size = ({}, {}), it should be ({}, {}).",
-            rows2,
-            cols2,
-            rows1,
-            cols1);
-        ERL_DEBUG_ASSERT(
-            m_mat_k_test_.rows() == k_train_cols,
-            "ktest.rows() = {}, it should be {}.",
-            m_mat_k_test_.rows(),
-            k_train_cols);
-        ERL_DEBUG_ASSERT(
-            m_mat_k_test_.cols() >= k_test_cols,
-            "ktest.cols() = {}, it should be {}.",
-            m_mat_k_test_.cols(),
-            k_test_cols);
+        ERL_DEBUG_ASSERT_EQ(rows1, rows2);
+        ERL_DEBUG_ASSERT_EQ(cols1, cols2);
+        ERL_DEBUG_ASSERT_EQ(m_mat_k_test_.rows(), k_train_cols);
+        ERL_DEBUG_ASSERT_EQ(m_mat_k_test_.cols(), k_test_cols);
     }
 
     template<typename Dtype>
@@ -109,16 +96,9 @@ namespace erl::gaussian_process {
         Eigen::Ref<VectorX> vec_f_out,
         const bool parallel) const {
         (void) parallel;
-        ERL_DEBUG_ASSERT(
-            y_index >= 0 && y_index < m_y_dim_,
-            "y_index = {}, it should be in [0, {}).",
-            y_index,
-            m_y_dim_);
-        ERL_DEBUG_ASSERT(
-            vec_f_out.size() >= m_num_test_,
-            "vec_f_out.size() = {}, it should be >= {}.",
-            vec_f_out.size(),
-            m_num_test_);
+        ERL_DEBUG_ASSERT_GE(y_index, 0);
+        ERL_DEBUG_ASSERT_LT(y_index, m_y_dim_);
+        ERL_DEBUG_ASSERT_GE(vec_f_out.size(), m_num_test_);
         const auto alpha = m_gp_->m_mat_alpha_.col(y_index).head(m_gp_->m_k_train_cols_);
         Dtype *f = vec_f_out.data();
 #pragma omp parallel for if (parallel) default(none) shared(alpha, f)
@@ -131,16 +111,10 @@ namespace erl::gaussian_process {
         const long index,
         const long y_index,
         Dtype &f) const {
-        ERL_DEBUG_ASSERT(
-            index >= 0 && index < m_num_test_,
-            "index = {}, it should be in [0, {}).",
-            index,
-            m_num_test_);
-        ERL_DEBUG_ASSERT(
-            y_index >= 0 && y_index < m_y_dim_,
-            "y_index = {}, it should be in [0, {}).",
-            y_index,
-            m_y_dim_);
+        ERL_DEBUG_ASSERT_GE(index, 0);
+        ERL_DEBUG_ASSERT_LT(index, m_num_test_);
+        ERL_DEBUG_ASSERT_GE(y_index, 0);
+        ERL_DEBUG_ASSERT_LT(y_index, m_y_dim_);
         const auto alpha = m_gp_->m_mat_alpha_.col(y_index).head(m_gp_->m_k_train_cols_);
         f = m_mat_k_test_.col(index).dot(alpha);  // h_{y_index}(x_{index})
     }
@@ -152,24 +126,11 @@ namespace erl::gaussian_process {
         Eigen::Ref<MatrixX> mat_grad_out,
         const bool parallel) const {
         (void) parallel;
-        ERL_DEBUG_ASSERT(
-            m_support_gradient_,
-            "m_support_gradient_ = false, it should be true to call GetGradient().");
-        ERL_DEBUG_ASSERT(
-            y_index >= 0 && y_index < m_y_dim_,
-            "y_index = {}, it should be in [0, {}).",
-            y_index,
-            m_y_dim_);
-        ERL_DEBUG_ASSERT(
-            mat_grad_out.rows() >= m_x_dim_,
-            "mat_grad_out.rows() = {}, it should be >= {}.",
-            mat_grad_out.rows(),
-            m_x_dim_);
-        ERL_DEBUG_ASSERT(
-            mat_grad_out.cols() >= m_num_test_,
-            "mat_grad_out.cols() = {}, it should be >= {}.",
-            mat_grad_out.cols(),
-            m_num_test_);
+        ERL_DEBUG_ASSERT(m_support_gradient_, "gradient not supported");
+        ERL_DEBUG_ASSERT_GE(y_index, 0);
+        ERL_DEBUG_ASSERT_LT(y_index, m_y_dim_);
+        ERL_DEBUG_ASSERT_GE(mat_grad_out.rows(), m_x_dim_);
+        ERL_DEBUG_ASSERT_GE(mat_grad_out.cols(), m_num_test_);
         const auto alpha = m_gp_->m_mat_alpha_.col(y_index).head(m_gp_->m_k_train_cols_);
         Eigen::VectorXb valid_gradients(m_num_test_);
 #pragma omp parallel for if (parallel) default(none) shared(alpha, mat_grad_out, valid_gradients)
@@ -193,19 +154,11 @@ namespace erl::gaussian_process {
         const long index,
         const long y_index,
         Dtype *grad) const {
-        ERL_DEBUG_ASSERT(
-            m_support_gradient_,
-            "m_support_gradient_ = false, it should be true to call GetGradient().");
-        ERL_DEBUG_ASSERT(
-            index >= 0 && index < m_num_test_,
-            "index = {}, it should be in [0, {}).",
-            index,
-            m_num_test_);
-        ERL_DEBUG_ASSERT(
-            y_index >= 0 && y_index < m_y_dim_,
-            "y_index = {}, it should be in [0, {}).",
-            y_index,
-            m_y_dim_);
+        ERL_DEBUG_ASSERT(m_support_gradient_, "gradient not supported");
+        ERL_DEBUG_ASSERT_GE(index, 0);
+        ERL_DEBUG_ASSERT_LT(index, m_num_test_);
+        ERL_DEBUG_ASSERT_GE(y_index, 0);
+        ERL_DEBUG_ASSERT_LT(y_index, m_y_dim_);
         const auto alpha = m_gp_->m_mat_alpha_.col(y_index).head(m_gp_->m_k_train_cols_);
         for (long j = 0, jj = index + m_num_test_; j < m_x_dim_; ++j, jj += m_num_test_) {
             *grad = m_mat_k_test_.col(jj).dot(alpha);
@@ -245,9 +198,7 @@ namespace erl::gaussian_process {
     NoisyInputGaussianProcess<Dtype>::TestResult::GetGradientVariance(
         Eigen::Ref<MatrixX> mat_var_out,
         const bool parallel) const {
-        ERL_DEBUG_ASSERT(
-            m_support_gradient_,
-            "m_support_gradient_ = false, it should be true to call GetGradient().");
+        ERL_DEBUG_ASSERT(m_support_gradient_, "gradient not supported");
         const_cast<TestResult *>(this)->PrepareAlphaTest(parallel);
         const Dtype hessian_s = m_gp_->GetKernel()->GetHessianScaleFactor();
         const long cols = m_mat_alpha_test_.cols();
@@ -266,9 +217,7 @@ namespace erl::gaussian_process {
     void
     NoisyInputGaussianProcess<Dtype>::TestResult::GetGradientVariance(const long index, Dtype *var)
         const {
-        ERL_DEBUG_ASSERT(
-            m_support_gradient_,
-            "m_support_gradient_ = false, it should be true to call GetGradient().");
+        ERL_DEBUG_ASSERT(m_support_gradient_, "gradient not supported");
         const_cast<TestResult *>(this)->PrepareAlphaTest(false);
         const Dtype hessian_s = m_gp_->GetKernel()->GetHessianScaleFactor();
         const long cols = m_mat_alpha_test_.cols();
@@ -319,15 +268,10 @@ namespace erl::gaussian_process {
         const {
         // compute covariance only when TestResult is created with will_predict_gradient = true.
         // when will_predict_gradient = true, m_mat_k_test_.cols() = m_num_test_ * (x_dim + 1).
-        ERL_DEBUG_ASSERT(
-            m_support_gradient_,
-            "m_support_gradient_ = false, it should be true to call GetGradient().");
-        ERL_DEBUG_ASSERT(
-            index >= 0 && index < m_num_test_,
-            "index = {}, it should be in [0, {}).",
-            index,
-            m_num_test_);
-        ERL_DEBUG_ASSERT(cov != nullptr, "cov should not be nullptr.");
+        ERL_DEBUG_ASSERT(m_support_gradient_, "gradient not supported");
+        ERL_DEBUG_ASSERT_GE(index, 0);
+        ERL_DEBUG_ASSERT_LT(index, m_num_test_);
+        ERL_DEBUG_ASSERT_PTR(cov);
 
         const_cast<TestResult *>(this)->PrepareAlphaTest(false);
         for (long j = 0, jj = index + m_num_test_; j < m_x_dim_; ++j, jj += m_num_test_) {
@@ -358,7 +302,7 @@ namespace erl::gaussian_process {
 
     template<typename Dtype>
     void
-    NoisyInputGaussianProcess<Dtype>::TrainSet::Reset(
+    NoisyInputGaussianProcess<Dtype>::TrainBuf::Reset(
         long max_num_samples,
         long x_dim_,
         long y_dim_,
@@ -384,7 +328,7 @@ namespace erl::gaussian_process {
 
     template<typename Dtype>
     bool
-    NoisyInputGaussianProcess<Dtype>::TrainSet::operator==(const TrainSet &other) const {
+    NoisyInputGaussianProcess<Dtype>::TrainBuf::operator==(const TrainBuf &other) const {
         if (x_dim != other.x_dim) { return false; }
         if (y_dim != other.y_dim) { return false; }
         if (num_samples != other.num_samples) { return false; }
@@ -418,79 +362,79 @@ namespace erl::gaussian_process {
 
     template<typename Dtype>
     bool
-    NoisyInputGaussianProcess<Dtype>::TrainSet::Write(std::ostream &s) const {
+    NoisyInputGaussianProcess<Dtype>::TrainBuf::Write(std::ostream &s) const {
         using namespace common;
         using namespace common::serialization;
-        static const TokenWriteFunctionPairs<TrainSet> token_function_pairs = {
+        static const TokenWriteFunctionPairs<TrainBuf> token_function_pairs = {
             {
                 "x_dim",
-                [](const TrainSet *train_set, std::ostream &stream) -> bool {
-                    stream << train_set->x_dim;
+                [](const TrainBuf *train_buf, std::ostream &stream) -> bool {
+                    stream << train_buf->x_dim;
                     return stream.good();
                 },
             },
             {
                 "y_dim",
-                [](const TrainSet *train_set, std::ostream &stream) -> bool {
-                    stream << train_set->y_dim;
+                [](const TrainBuf *train_buf, std::ostream &stream) -> bool {
+                    stream << train_buf->y_dim;
                     return stream.good();
                 },
             },
             {
                 "num_samples",
-                [](const TrainSet *train_set, std::ostream &stream) -> bool {
-                    stream << train_set->num_samples;
+                [](const TrainBuf *train_buf, std::ostream &stream) -> bool {
+                    stream << train_buf->num_samples;
                     return stream.good();
                 },
             },
             {
                 "num_samples_with_grad",
-                [](const TrainSet *train_set, std::ostream &stream) -> bool {
-                    stream << train_set->num_samples_with_grad;
+                [](const TrainBuf *train_buf, std::ostream &stream) -> bool {
+                    stream << train_buf->num_samples_with_grad;
                     return stream.good();
                 },
             },
             {
                 "x",
-                [](const TrainSet *train_set, std::ostream &stream) -> bool {
-                    return SaveEigenMatrixToBinaryStream(stream, train_set->x) && stream.good();
+                [](const TrainBuf *train_buf, std::ostream &stream) -> bool {
+                    return SaveEigenMatrixToBinaryStream(stream, train_buf->x) && stream.good();
                 },
             },
             {
                 "y",
-                [](const TrainSet *train_set, std::ostream &stream) -> bool {
-                    return SaveEigenMatrixToBinaryStream(stream, train_set->y) && stream.good();
+                [](const TrainBuf *train_buf, std::ostream &stream) -> bool {
+                    return SaveEigenMatrixToBinaryStream(stream, train_buf->y) && stream.good();
                 },
             },
             {
                 "grad",
-                [](const TrainSet *train_set, std::ostream &stream) -> bool {
-                    return SaveEigenMatrixToBinaryStream(stream, train_set->grad) && stream.good();
+                [](const TrainBuf *train_buf, std::ostream &stream) -> bool {
+                    return SaveEigenMatrixToBinaryStream(stream, train_buf->grad) && stream.good();
                 },
             },
             {
                 "var_x",
-                [](const TrainSet *train_set, std::ostream &stream) -> bool {
-                    return SaveEigenMatrixToBinaryStream(stream, train_set->var_x) && stream.good();
+                [](const TrainBuf *train_buf, std::ostream &stream) -> bool {
+                    return SaveEigenMatrixToBinaryStream(stream, train_buf->var_x) && stream.good();
                 },
             },
             {
                 "var_y",
-                [](const TrainSet *train_set, std::ostream &stream) -> bool {
-                    return SaveEigenMatrixToBinaryStream(stream, train_set->var_y) && stream.good();
+                [](const TrainBuf *train_buf, std::ostream &stream) -> bool {
+                    return SaveEigenMatrixToBinaryStream(stream, train_buf->var_y) && stream.good();
                 },
             },
             {
                 "var_grad",
-                [](const TrainSet *train_set, std::ostream &stream) -> bool {
-                    return SaveEigenMatrixToBinaryStream(stream, train_set->var_grad) &&
+                [](const TrainBuf *train_buf, std::ostream &stream) -> bool {
+                    return SaveEigenMatrixToBinaryStream(stream, train_buf->var_grad) &&
                            stream.good();
                 },
             },
             {
                 "grad_flag",
-                [](const TrainSet *train_set, std::ostream &stream) -> bool {
-                    return SaveEigenMatrixToBinaryStream(stream, train_set->grad_flag) &&
+                [](const TrainBuf *train_buf, std::ostream &stream) -> bool {
+                    return SaveEigenMatrixToBinaryStream(stream, train_buf->grad_flag) &&
                            stream.good();
                 },
             },
@@ -500,82 +444,82 @@ namespace erl::gaussian_process {
 
     template<typename Dtype>
     bool
-    NoisyInputGaussianProcess<Dtype>::TrainSet::Read(std::istream &s) {
+    NoisyInputGaussianProcess<Dtype>::TrainBuf::Read(std::istream &s) {
         using namespace common;
         using namespace common::serialization;
-        static const TokenReadFunctionPairs<TrainSet> token_function_pairs = {
+        static const TokenReadFunctionPairs<TrainBuf> token_function_pairs = {
             {
                 "x_dim",
-                [](TrainSet *train_set, std::istream &stream) -> bool {
-                    stream >> train_set->x_dim;
+                [](TrainBuf *train_buf, std::istream &stream) -> bool {
+                    stream >> train_buf->x_dim;
                     return stream.good();
                 },
             },
             {
                 "y_dim",
-                [](TrainSet *train_set, std::istream &stream) -> bool {
-                    stream >> train_set->y_dim;
+                [](TrainBuf *train_buf, std::istream &stream) -> bool {
+                    stream >> train_buf->y_dim;
                     return stream.good();
                 },
             },
             {
                 "num_samples",
-                [](TrainSet *train_set, std::istream &stream) -> bool {
-                    stream >> train_set->num_samples;
+                [](TrainBuf *train_buf, std::istream &stream) -> bool {
+                    stream >> train_buf->num_samples;
                     return stream.good();
                 },
             },
             {
                 "num_samples_with_grad",
-                [](TrainSet *train_set, std::istream &stream) -> bool {
-                    stream >> train_set->num_samples_with_grad;
+                [](TrainBuf *train_buf, std::istream &stream) -> bool {
+                    stream >> train_buf->num_samples_with_grad;
                     return stream.good();
                 },
             },
             {
                 "x",
-                [](TrainSet *train_set, std::istream &stream) -> bool {
-                    return LoadEigenMatrixFromBinaryStream(stream, train_set->x) && stream.good();
+                [](TrainBuf *train_buf, std::istream &stream) -> bool {
+                    return LoadEigenMatrixFromBinaryStream(stream, train_buf->x) && stream.good();
                 },
             },
             {
                 "y",
-                [](TrainSet *train_set, std::istream &stream) -> bool {
-                    return LoadEigenMatrixFromBinaryStream(stream, train_set->y) && stream.good();
+                [](TrainBuf *train_buf, std::istream &stream) -> bool {
+                    return LoadEigenMatrixFromBinaryStream(stream, train_buf->y) && stream.good();
                 },
             },
             {
                 "grad",
-                [](TrainSet *train_set, std::istream &stream) -> bool {
-                    return LoadEigenMatrixFromBinaryStream(stream, train_set->grad) &&
+                [](TrainBuf *train_buf, std::istream &stream) -> bool {
+                    return LoadEigenMatrixFromBinaryStream(stream, train_buf->grad) &&
                            stream.good();
                 },
             },
             {
                 "var_x",
-                [](TrainSet *train_set, std::istream &stream) -> bool {
-                    return LoadEigenMatrixFromBinaryStream(stream, train_set->var_x) &&
+                [](TrainBuf *train_buf, std::istream &stream) -> bool {
+                    return LoadEigenMatrixFromBinaryStream(stream, train_buf->var_x) &&
                            stream.good();
                 },
             },
             {
                 "var_y",
-                [](TrainSet *train_set, std::istream &stream) -> bool {
-                    return LoadEigenMatrixFromBinaryStream(stream, train_set->var_y) &&
+                [](TrainBuf *train_buf, std::istream &stream) -> bool {
+                    return LoadEigenMatrixFromBinaryStream(stream, train_buf->var_y) &&
                            stream.good();
                 },
             },
             {
                 "var_grad",
-                [](TrainSet *train_set, std::istream &stream) -> bool {
-                    return LoadEigenMatrixFromBinaryStream(stream, train_set->var_grad) &&
+                [](TrainBuf *train_buf, std::istream &stream) -> bool {
+                    return LoadEigenMatrixFromBinaryStream(stream, train_buf->var_grad) &&
                            stream.good();
                 },
             },
             {
                 "grad_flag",
-                [](TrainSet *train_set, std::istream &stream) -> bool {
-                    return LoadEigenMatrixFromBinaryStream(stream, train_set->grad_flag) &&
+                [](TrainBuf *train_buf, std::istream &stream) -> bool {
+                    return LoadEigenMatrixFromBinaryStream(stream, train_buf->grad_flag) &&
                            stream.good();
                 },
             },
@@ -585,7 +529,7 @@ namespace erl::gaussian_process {
 
     template<typename Dtype>
     bool
-    NoisyInputGaussianProcess<Dtype>::TrainSet::operator!=(const TrainSet &other) const {
+    NoisyInputGaussianProcess<Dtype>::TrainBuf::operator!=(const TrainBuf &other) const {
         return !(*this == other);
     }
 
@@ -697,25 +641,25 @@ namespace erl::gaussian_process {
     }
 
     template<typename Dtype>
-    typename NoisyInputGaussianProcess<Dtype>::TrainSet &
+    typename NoisyInputGaussianProcess<Dtype>::TrainBuf &
     NoisyInputGaussianProcess<Dtype>::GetLoadingBuffer() {
         return m_buf_loading_;
     }
 
     template<typename Dtype>
-    const typename NoisyInputGaussianProcess<Dtype>::TrainSet &
+    const typename NoisyInputGaussianProcess<Dtype>::TrainBuf &
     NoisyInputGaussianProcess<Dtype>::GetLoadingBuffer() const {
         return m_buf_loading_;
     }
 
     template<typename Dtype>
-    typename NoisyInputGaussianProcess<Dtype>::TrainSet &
+    typename NoisyInputGaussianProcess<Dtype>::TrainBuf &
     NoisyInputGaussianProcess<Dtype>::GetTrainBuffer() {
         return m_buf_train_;
     }
 
     template<typename Dtype>
-    const typename NoisyInputGaussianProcess<Dtype>::TrainSet &
+    const typename NoisyInputGaussianProcess<Dtype>::TrainBuf &
     NoisyInputGaussianProcess<Dtype>::GetTrainBuffer() const {
         return m_buf_train_;
     }
@@ -770,7 +714,7 @@ namespace erl::gaussian_process {
         std::size_t memory_usage = sizeof(NoisyInputGaussianProcess);
         if (m_setting_ != nullptr) { memory_usage += sizeof(Setting); }
         if (m_kernel_ != nullptr) { memory_usage += m_kernel_->GetMemoryUsage(); }
-        memory_usage += sizeof(TrainSet) * 2;
+        memory_usage += sizeof(TrainBuf) * 2;
         memory_usage +=
             (m_buf_loading_.x.size() + m_buf_loading_.y.size() + m_buf_loading_.grad.size() +
              m_buf_loading_.var_x.size() + m_buf_loading_.var_y.size() +
@@ -868,7 +812,7 @@ namespace erl::gaussian_process {
         if (m_trained_) { return true; }
 
         m_trained_ = m_trained_once_;
-        if (!SwapTrainSets()) { return m_trained_; }  // the train set remains the same
+        if (!SwapTrainBufs()) { return m_trained_; }          // the train set remains the same
         if (m_buf_train_.num_samples == 0) { return false; }  // nothing to train
 
         ERL_ASSERTM(AllocateMemory(), "Failed to allocate memory.");
@@ -1191,7 +1135,7 @@ namespace erl::gaussian_process {
 
     template<typename Dtype>
     bool
-    NoisyInputGaussianProcess<Dtype>::SwapTrainSets() {
+    NoisyInputGaussianProcess<Dtype>::SwapTrainBufs() {
         if (m_buf_mutex_.try_lock()) {
             if (m_buf_loading_.num_samples == 0) {  // nothing to swap
                 m_buf_mutex_.unlock();

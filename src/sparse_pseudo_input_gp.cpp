@@ -15,8 +15,8 @@ namespace erl::gaussian_process {
           m_num_test_(mat_x_test.cols()),
           m_support_gradient_(will_predict_gradient),
           m_use_sparse_(m_gp_->m_setting_->use_sparse),
-          m_x_dim_(m_gp_->m_train_set_.x_dim),
-          m_y_dim_(m_gp_->m_train_set_.y_dim) {
+          m_x_dim_(m_gp_->m_train_buf_.x_dim),
+          m_y_dim_(m_gp_->m_train_buf_.y_dim) {
 
         auto &pseudo_points = m_gp_->m_pseudo_points_;
         const long n = m_num_test_ * (m_support_gradient_ ? m_x_dim_ + 1 : 1);
@@ -372,7 +372,7 @@ namespace erl::gaussian_process {
         m_mat_l_qm_updated_ = false;
         m_trained_ = false;
         const long m = m_pseudo_points_.cols();
-        m_train_set_.Reset(max_num_samples, x_dim, y_dim);
+        m_train_buf_.Reset(max_num_samples, x_dim, y_dim);
         if (m_mat_alpha_.size() == 0) { m_mat_alpha_.setConstant(m, y_dim, 0); }
         ERL_ASSERTM(
             m_mat_alpha_.cols() == y_dim,
@@ -424,15 +424,15 @@ namespace erl::gaussian_process {
     }
 
     template<typename Dtype>
-    typename SparsePseudoInputGaussianProcess<Dtype>::TrainSet &
-    SparsePseudoInputGaussianProcess<Dtype>::GetTrainSet() {
-        return m_train_set_;
+    typename SparsePseudoInputGaussianProcess<Dtype>::TrainBuf &
+    SparsePseudoInputGaussianProcess<Dtype>::GetTrainBuffer() {
+        return m_train_buf_;
     }
 
     template<typename Dtype>
-    const typename SparsePseudoInputGaussianProcess<Dtype>::TrainSet &
-    SparsePseudoInputGaussianProcess<Dtype>::GetTrainSet() const {
-        return m_train_set_;
+    const typename SparsePseudoInputGaussianProcess<Dtype>::TrainBuf &
+    SparsePseudoInputGaussianProcess<Dtype>::GetTrainBuffer() const {
+        return m_train_buf_;
     }
 
     template<typename Dtype>
@@ -478,7 +478,7 @@ namespace erl::gaussian_process {
         if (!SafeEigenMatrixEqual(m_mat_qm_, other.m_mat_qm_)) { return false; }
         if (!SafeEigenMatrixEqual(m_mat_l_qm_, other.m_mat_l_qm_)) { return false; }
         if (!SafeEigenMatrixEqual(m_mat_alpha_, other.m_mat_alpha_)) { return false; }
-        if (m_train_set_ != other.m_train_set_) { return false; }
+        if (m_train_buf_ != other.m_train_buf_) { return false; }
         return true;
     }
 
@@ -583,9 +583,9 @@ namespace erl::gaussian_process {
                 },
             },
             {
-                "train_set",
+                "train_buf",
                 [](const Self *gp, std::ostream &stream) -> bool {
-                    return gp->m_train_set_.Write(stream) && stream.good();
+                    return gp->m_train_buf_.Write(stream) && stream.good();
                 },
             },
         };
@@ -696,9 +696,9 @@ namespace erl::gaussian_process {
                 },
             },
             {
-                "train_set",
+                "train_buf",
                 [](Self *self, std::istream &stream) -> bool {
-                    return self->m_train_set_.Read(stream) && stream.good();
+                    return self->m_train_buf_.Read(stream) && stream.good();
                 },
             },
         };
@@ -710,20 +710,20 @@ namespace erl::gaussian_process {
     SparsePseudoInputGaussianProcess<Dtype>::UpdateDense(const bool parallel) {
         (void) parallel;
         m_trained_ = m_trained_once_;
-        if (!m_train_set_.num_samples) { return false; }  // no training samples
+        if (!m_train_buf_.num_samples) { return false; }  // no training samples
 
         // compute K_MN
         const long m = m_pseudo_points_.cols();
-        MatrixX mat_kmn(m, m_train_set_.num_samples);
+        MatrixX mat_kmn(m, m_train_buf_.num_samples);
         (void) m_kernel_
-            ->ComputeKtest(m_pseudo_points_, m, m_train_set_.x, m_train_set_.num_samples, mat_kmn);
+            ->ComputeKtest(m_pseudo_points_, m, m_train_buf_.x, m_train_buf_.num_samples, mat_kmn);
 
         // update Q_M and alpha
         MatrixX mat_kmn_scaled = mat_kmn;
         auto mat_l_km = m_mat_l_km_.template triangularView<Eigen::Lower>();
-        const Dtype *var = m_train_set_.var.data();
+        const Dtype *var = m_train_buf_.var.data();
 #pragma omp parallel for if (parallel) default(none) shared(mat_kmn, mat_l_km, var, mat_kmn_scaled)
-        for (long i = 0; i < m_train_set_.num_samples; ++i) {
+        for (long i = 0; i < m_train_buf_.num_samples; ++i) {
             VectorX beta = mat_kmn.col(i);
             mat_l_km.solveInPlace(beta);
             Dtype lambda = 1.0f - beta.squaredNorm();
@@ -734,7 +734,7 @@ namespace erl::gaussian_process {
         } else {
             m_mat_qm_ += mat_kmn_scaled * mat_kmn.transpose();
         }
-        m_mat_alpha_ += mat_kmn_scaled * m_train_set_.y.topRows(m_train_set_.num_samples);  // alpha
+        m_mat_alpha_ += mat_kmn_scaled * m_train_buf_.y.topRows(m_train_buf_.num_samples);  // alpha
 
         m_trained_once_ = true;
         m_trained_ = true;
@@ -752,37 +752,37 @@ namespace erl::gaussian_process {
     SparsePseudoInputGaussianProcess<Dtype>::UpdateSparse(const bool parallel) {
         (void) parallel;
         m_trained_ = m_trained_once_;
-        if (!m_train_set_.num_samples) { return false; }  // no training samples
+        if (!m_train_buf_.num_samples) { return false; }  // no training samples
         const long m = m_pseudo_points_.cols();
-        SparseMatrix mat_kmn(m, m_train_set_.num_samples);
+        SparseMatrix mat_kmn(m, m_train_buf_.num_samples);
         // compute K_MN
         (void) m_kernel_->ComputeKtestSparse(
             m_pseudo_points_,
             m,
-            m_train_set_.x,
-            m_train_set_.num_samples,
+            m_train_buf_.x,
+            m_train_buf_.num_samples,
             m_setting_->sparse_zero_threshold,
             mat_kmn);
 
         // update Q_M
         SparseMatrix mat_kmn_scaled = mat_kmn;
         auto mat_l_km = m_mat_l_km_.template triangularView<Eigen::Lower>();
-        const Dtype *var = m_train_set_.var.data();
+        const Dtype *var = m_train_buf_.var.data();
 #pragma omp parallel for if (parallel) default(none) shared(mat_kmn, mat_l_km, var, mat_kmn_scaled)
-        for (long i = 0; i < m_train_set_.num_samples; ++i) {
+        for (long i = 0; i < m_train_buf_.num_samples; ++i) {
             VectorX beta = mat_kmn.col(i).toDense();
             mat_l_km.solveInPlace(beta);
             Dtype lambda = 1.0f - beta.squaredNorm();
             mat_kmn_scaled.col(i) *= 1.0f / (lambda + var[i]);
         }
         if (m_setting_->diagonal_qm) {
-            for (long i = 0; i < m_train_set_.num_samples; ++i) {
+            for (long i = 0; i < m_train_buf_.num_samples; ++i) {
                 m_mat_qm_ += mat_kmn_scaled.col(i).cwiseProduct(mat_kmn.col(i));
             }
         } else {
             m_mat_qm_ += mat_kmn_scaled * mat_kmn.transpose();
         }
-        m_mat_alpha_ += mat_kmn_scaled * m_train_set_.y.topRows(m_train_set_.num_samples);  // alpha
+        m_mat_alpha_ += mat_kmn_scaled * m_train_buf_.y.topRows(m_train_buf_.num_samples);  // alpha
         m_trained_once_ = true;
         m_trained_ = true;
         return true;

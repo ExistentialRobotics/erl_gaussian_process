@@ -23,11 +23,11 @@ TEST(BatchGpUpdateTorch, Basic) {
     Eigen::VectorXf y = x.unaryExpr([](const float a) { return std::sin(a); });
     constexpr float kNoiseVar = 0.001;
     gp.Reset(n, 1, 1);
-    auto &train_set = gp.GetTrainSet();
-    train_set.x.row(0).head(n) = x.transpose();
-    train_set.y.col(0).head(n) = y;
-    train_set.var.head(n).setConstant(kNoiseVar);
-    train_set.num_samples = n;
+    auto &train_buf = gp.GetTrainBuffer();
+    train_buf.x.row(0).head(n) = x.transpose();
+    train_buf.y.col(0).head(n) = y;
+    train_buf.var.head(n).setConstant(kNoiseVar);
+    train_buf.num_samples = n;
     gp.UpdateKtrain();
 
     BatchGpUpdateTorch batch_update;
@@ -80,11 +80,11 @@ Profiling(const long num_gps) {
     Eigen::VectorXf y = x.unaryExpr([](const float a) { return std::sin(a); });
     constexpr float kNoiseVar = 0.001;
     gp.Reset(n, 1, 1);
-    auto &train_set = gp.GetTrainSet();
-    train_set.x.row(0).head(n) = x.transpose();
-    train_set.y.col(0).head(n) = y;
-    train_set.var.head(n).setConstant(kNoiseVar);
-    train_set.num_samples = n;
+    auto &train_buf = gp.GetTrainBuffer();
+    train_buf.x.row(0).head(n) = x.transpose();
+    train_buf.y.col(0).head(n) = y;
+    train_buf.var.head(n).setConstant(kNoiseVar);
+    train_buf.num_samples = n;
     gp.UpdateKtrain();
 
     std::vector<VanillaGaussianProcessF> gps(num_gps, gp);

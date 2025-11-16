@@ -40,7 +40,7 @@ namespace erl::gaussian_process {
         using MatrixX = Eigen::MatrixX<Dtype>;
         using VectorX = Eigen::VectorX<Dtype>;
         using SparseMatrix = Eigen::SparseMatrix<Dtype>;
-        using TrainSet = typename VanillaGaussianProcess<Dtype>::TrainSet;
+        using TrainBuf = typename VanillaGaussianProcess<Dtype>::TrainBuf;
 
         struct Setting : public common::Yamlable<Setting> {
             std::string kernel_type = type_name<Covariance>();
@@ -145,7 +145,7 @@ namespace erl::gaussian_process {
         // [M, DimY] alpha vector for the pseudo points
         MatrixX m_mat_alpha_{};
         // the training set
-        TrainSet m_train_set_;
+        TrainBuf m_train_buf_;
 
     public:
         SparsePseudoInputGaussianProcess() = delete;
@@ -193,11 +193,11 @@ namespace erl::gaussian_process {
         [[nodiscard]] const MatrixX &
         GetMatAlpha() const;
 
-        [[nodiscard]] TrainSet &
-        GetTrainSet();
+        [[nodiscard]] TrainBuf &
+        GetTrainBuffer();
 
-        [[nodiscard]] const TrainSet &
-        GetTrainSet() const;
+        [[nodiscard]] const TrainBuf &
+        GetTrainBuffer() const;
 
         [[nodiscard]] bool
         Update(bool parallel);

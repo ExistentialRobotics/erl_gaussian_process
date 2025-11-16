@@ -328,7 +328,7 @@ namespace erl::gaussian_process {
             if (gp == nullptr) { gp = std::make_shared<Gp>(m_setting_->gp); }
             gp->Reset(m_setting_->gp->max_num_samples, 1, 1);
             long cnt = 0;
-            auto &train_set = gp->GetTrainSet();
+            auto &train_buf = gp->GetTrainBuffer();
             const Eigen::VectorXb &mask_hit = m_sensor_frame_->GetHitMask();
             const Eigen::VectorXb &mask_con = m_sensor_frame_->GetContinuityMask();
             const bool discon_detection = m_setting_->sensor_frame->discontinuity_detection;
@@ -336,16 +336,16 @@ namespace erl::gaussian_process {
             const VectorX &angles = m_sensor_frame_->GetAnglesInFrame();
             for (long j = index_left; j < index_right; ++j) {
                 if (!mask_hit[j]) { continue; }
-                train_set.x(0, cnt) = angles[j];
-                train_set.y.col(0)[cnt] = m_mapped_distances_[j];
+                train_buf.x(0, cnt) = angles[j];
+                train_buf.y.col(0)[cnt] = m_mapped_distances_[j];
                 if (discon_detection && !mask_con[j]) {
-                    train_set.var[cnt] = discon_var;
+                    train_buf.var[cnt] = discon_var;
                 } else {
-                    train_set.var[cnt] = m_setting_->sensor_range_var;
+                    train_buf.var[cnt] = m_setting_->sensor_range_var;
                 }
                 ++cnt;
             }
-            train_set.num_samples = cnt;
+            train_buf.num_samples = cnt;
             if (cnt > 0) { (void) gp->Train(); }
         }
 
