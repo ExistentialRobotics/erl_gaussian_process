@@ -397,36 +397,42 @@ namespace erl::gaussian_process {
             {
                 "x",
                 [](const TrainBuf *train_buf, std::ostream &stream) -> bool {
+                    if (train_buf->num_samples == 0) { return stream.good(); }
                     return SaveEigenMatrixToBinaryStream(stream, train_buf->x) && stream.good();
                 },
             },
             {
                 "y",
                 [](const TrainBuf *train_buf, std::ostream &stream) -> bool {
+                    if (train_buf->num_samples == 0) { return stream.good(); }
                     return SaveEigenMatrixToBinaryStream(stream, train_buf->y) && stream.good();
                 },
             },
             {
                 "grad",
                 [](const TrainBuf *train_buf, std::ostream &stream) -> bool {
+                    if (train_buf->num_samples == 0) { return stream.good(); }
                     return SaveEigenMatrixToBinaryStream(stream, train_buf->grad) && stream.good();
                 },
             },
             {
                 "var_x",
                 [](const TrainBuf *train_buf, std::ostream &stream) -> bool {
+                    if (train_buf->num_samples == 0) { return stream.good(); }
                     return SaveEigenMatrixToBinaryStream(stream, train_buf->var_x) && stream.good();
                 },
             },
             {
                 "var_y",
                 [](const TrainBuf *train_buf, std::ostream &stream) -> bool {
+                    if (train_buf->num_samples == 0) { return stream.good(); }
                     return SaveEigenMatrixToBinaryStream(stream, train_buf->var_y) && stream.good();
                 },
             },
             {
                 "var_grad",
                 [](const TrainBuf *train_buf, std::ostream &stream) -> bool {
+                    if (train_buf->num_samples == 0) { return stream.good(); }
                     return SaveEigenMatrixToBinaryStream(stream, train_buf->var_grad) &&
                            stream.good();
                 },
@@ -434,6 +440,7 @@ namespace erl::gaussian_process {
             {
                 "grad_flag",
                 [](const TrainBuf *train_buf, std::ostream &stream) -> bool {
+                    if (train_buf->num_samples == 0) { return stream.good(); }
                     return SaveEigenMatrixToBinaryStream(stream, train_buf->grad_flag) &&
                            stream.good();
                 },
@@ -479,18 +486,21 @@ namespace erl::gaussian_process {
             {
                 "x",
                 [](TrainBuf *train_buf, std::istream &stream) -> bool {
+                    if (train_buf->num_samples == 0) { return stream.good(); }
                     return LoadEigenMatrixFromBinaryStream(stream, train_buf->x) && stream.good();
                 },
             },
             {
                 "y",
                 [](TrainBuf *train_buf, std::istream &stream) -> bool {
+                    if (train_buf->num_samples == 0) { return stream.good(); }
                     return LoadEigenMatrixFromBinaryStream(stream, train_buf->y) && stream.good();
                 },
             },
             {
                 "grad",
                 [](TrainBuf *train_buf, std::istream &stream) -> bool {
+                    if (train_buf->num_samples == 0) { return stream.good(); }
                     return LoadEigenMatrixFromBinaryStream(stream, train_buf->grad) &&
                            stream.good();
                 },
@@ -498,6 +508,7 @@ namespace erl::gaussian_process {
             {
                 "var_x",
                 [](TrainBuf *train_buf, std::istream &stream) -> bool {
+                    if (train_buf->num_samples == 0) { return stream.good(); }
                     return LoadEigenMatrixFromBinaryStream(stream, train_buf->var_x) &&
                            stream.good();
                 },
@@ -505,6 +516,7 @@ namespace erl::gaussian_process {
             {
                 "var_y",
                 [](TrainBuf *train_buf, std::istream &stream) -> bool {
+                    if (train_buf->num_samples == 0) { return stream.good(); }
                     return LoadEigenMatrixFromBinaryStream(stream, train_buf->var_y) &&
                            stream.good();
                 },
@@ -512,6 +524,7 @@ namespace erl::gaussian_process {
             {
                 "var_grad",
                 [](TrainBuf *train_buf, std::istream &stream) -> bool {
+                    if (train_buf->num_samples == 0) { return stream.good(); }
                     return LoadEigenMatrixFromBinaryStream(stream, train_buf->var_grad) &&
                            stream.good();
                 },
@@ -519,6 +532,7 @@ namespace erl::gaussian_process {
             {
                 "grad_flag",
                 [](TrainBuf *train_buf, std::istream &stream) -> bool {
+                    if (train_buf->num_samples == 0) { return stream.good(); }
                     return LoadEigenMatrixFromBinaryStream(stream, train_buf->grad_flag) &&
                            stream.good();
                 },
@@ -626,7 +640,7 @@ namespace erl::gaussian_process {
         ERL_ASSERT_GT(x_dim, 0);
         ERL_ASSERT_GT(y_dim, 0);
         ERL_ASSERT_POS_EQ(m_setting_->kernel->x_dim, x_dim);
-        ERL_ASSERT_POS_LE(m_setting_->max_num_samples, max_num_samples);
+        ERL_ASSERT_POS_GE(m_setting_->max_num_samples, max_num_samples);
 
         // prepare the buffer for loading training data
         m_buf_loading_.Reset(max_num_samples, x_dim, y_dim, m_setting_->no_gradient_observation);

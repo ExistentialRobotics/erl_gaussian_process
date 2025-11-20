@@ -190,18 +190,21 @@ namespace erl::gaussian_process {
             {
                 "x",
                 [](const TrainBuf *train_buf, std::ostream &stream) -> bool {
+                    if (train_buf->num_samples == 0) { return stream.good(); }
                     return SaveEigenMatrixToBinaryStream(stream, train_buf->x) && stream.good();
                 },
             },
             {
                 "y",
                 [](const TrainBuf *train_buf, std::ostream &stream) -> bool {
+                    if (train_buf->num_samples == 0) { return stream.good(); }
                     return SaveEigenMatrixToBinaryStream(stream, train_buf->y) && stream.good();
                 },
             },
             {
                 "var",
                 [](const TrainBuf *train_buf, std::ostream &stream) -> bool {
+                    if (train_buf->num_samples == 0) { return stream.good(); }
                     return SaveEigenMatrixToBinaryStream(stream, train_buf->var) && stream.good();
                 },
             },
@@ -239,18 +242,21 @@ namespace erl::gaussian_process {
             {
                 "x",
                 [](TrainBuf *train_buf, std::istream &stream) -> bool {
+                    if (train_buf->num_samples == 0) { return stream.good(); }
                     return LoadEigenMatrixFromBinaryStream(stream, train_buf->x) && stream.good();
                 },
             },
             {
                 "y",
                 [](TrainBuf *train_buf, std::istream &stream) -> bool {
+                    if (train_buf->num_samples == 0) { return stream.good(); }
                     return LoadEigenMatrixFromBinaryStream(stream, train_buf->y) && stream.good();
                 },
             },
             {
                 "var",
                 [](TrainBuf *train_buf, std::istream &stream) -> bool {
+                    if (train_buf->num_samples == 0) { return stream.good(); }
                     return LoadEigenMatrixFromBinaryStream(stream, train_buf->var) && stream.good();
                 },
             }};
