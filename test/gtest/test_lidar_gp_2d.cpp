@@ -121,8 +121,8 @@ constexpr long OBSGP_OVERLAP_SZ = 6;
 constexpr long OBSGP_GROUP_SZ = 20;
 constexpr long OBSGP_MARGIN = 1;
 constexpr double GPISMAP_OBS_VAR_THRE = 0.1;
-constexpr double ANGLE_MIN = -135.0 / 180.0 * M_PI;
-constexpr double ANGLE_MAX = 2.33874;  // double(135.0 / 180.0 * M_PI)
+// constexpr double ANGLE_MIN = -135.0 / 180.0 * M_PI;
+// constexpr double ANGLE_MAX = 2.33874;  // double(135.0 / 180.0 * M_PI)
 constexpr double RANGE_MIN = 0.1;
 constexpr double RANGE_MAX = 30.0;
 
