@@ -250,7 +250,7 @@ namespace erl::gaussian_process {
         Eigen::Ref<VectorX> vec_var_out,
         const bool parallel) const {
         (void) parallel;
-        const_cast<TestResult *>(this)->PrepareForVariance();
+        PrepareForVariance();
         Dtype *var = vec_var_out.data();
 #pragma omp parallel for if (parallel) default(none) shared(var)
         for (long index = 0; index < m_num_test_; ++index) {
@@ -262,13 +262,13 @@ namespace erl::gaussian_process {
     template<typename Dtype>
     void
     SparsePseudoInputGaussianProcess<Dtype>::TestResult::GetVariance(long index, Dtype &var) const {
-        const_cast<TestResult *>(this)->PrepareForVariance();
+        PrepareForVariance();
         var = 1.0f - m_mat_beta_.col(index).squaredNorm() + m_mat_gamma_.col(index).squaredNorm();
     }
 
     template<typename Dtype>
     void
-    SparsePseudoInputGaussianProcess<Dtype>::TestResult::PrepareForVariance() {
+    SparsePseudoInputGaussianProcess<Dtype>::TestResult::PrepareForVariance() const {
         if (m_mat_beta_.size() > 0) { return; }
         m_mat_beta_ =
             m_gp_->m_mat_l_km_.template triangularView<Eigen::Lower>().solve(m_mat_k_test_);
@@ -448,7 +448,7 @@ namespace erl::gaussian_process {
     SparsePseudoInputGaussianProcess<Dtype>::Test(
         const Eigen::Ref<const MatrixX> &mat_x_test,
         const bool predict_gradient) const {
-        const_cast<SparsePseudoInputGaussianProcess *>(this)->PrepareLqm();
+        PrepareLqm();
         return std::make_shared<TestResult>(this, mat_x_test, predict_gradient);
     }
 
@@ -790,7 +790,7 @@ namespace erl::gaussian_process {
 
     template<typename Dtype>
     void
-    SparsePseudoInputGaussianProcess<Dtype>::PrepareLqm() {
+    SparsePseudoInputGaussianProcess<Dtype>::PrepareLqm() const {
         std::lock_guard<std::mutex> lock(m_mutex_);
         if (!m_mat_l_qm_updated_) {
             if (!m_setting_->diagonal_qm) { m_mat_l_qm_ = m_mat_qm_.llt().matrixL(); }

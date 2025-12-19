@@ -90,7 +90,7 @@ namespace erl::gaussian_process {
             std::vector<const Gp *> m_gps_;
             std::vector<VectorX> m_k_test_vec_;
             std::vector<std::pair<const Dtype *, long>> m_alpha_vec_;
-            std::vector<VectorX> m_alpha_test_vec_;
+            mutable std::vector<VectorX> m_alpha_test_vec_;
             std::shared_ptr<MappingDtype> m_mapping_ = nullptr;
             bool m_reduced_rank_kernel_ = false;
 
@@ -121,7 +121,7 @@ namespace erl::gaussian_process {
 
         protected:
             void
-            PrepareAlphaTest(long index);
+            PrepareAlphaTest(long index) const;
         };
 
     protected:

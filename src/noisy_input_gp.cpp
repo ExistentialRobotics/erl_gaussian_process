@@ -173,7 +173,7 @@ namespace erl::gaussian_process {
     NoisyInputGaussianProcess<Dtype>::TestResult::GetMeanVariance(
         Eigen::Ref<VectorX> vec_var_out,
         const bool parallel) const {
-        const_cast<TestResult *>(this)->PrepareAlphaTest(parallel);
+        PrepareAlphaTest(parallel);
         Dtype *var = vec_var_out.data();
 #pragma omp parallel for if (parallel) default(none) shared(var) schedule(static)
         for (long i = 0; i < m_num_test_; ++i) {
@@ -187,7 +187,7 @@ namespace erl::gaussian_process {
     template<typename Dtype>
     void
     NoisyInputGaussianProcess<Dtype>::TestResult::GetMeanVariance(long index, Dtype &var) const {
-        const_cast<TestResult *>(this)->PrepareAlphaTest(false);
+        PrepareAlphaTest(false);
         var = m_mat_alpha_test_.col(index).squaredNorm();  // variance of h(x)
         if (m_reduced_rank_kernel_) { return; }
         var = 1.0f - var;  // variance of h(x)
@@ -199,7 +199,7 @@ namespace erl::gaussian_process {
         Eigen::Ref<MatrixX> mat_var_out,
         const bool parallel) const {
         ERL_DEBUG_ASSERT(m_support_gradient_, "gradient not supported");
-        const_cast<TestResult *>(this)->PrepareAlphaTest(parallel);
+        PrepareAlphaTest(parallel);
         const Dtype hessian_s = m_gp_->GetKernel()->GetHessianScaleFactor();
         const long cols = m_mat_alpha_test_.cols();
 #pragma omp parallel for if (parallel) default(none) shared(mat_var_out, hessian_s, cols)
@@ -218,7 +218,7 @@ namespace erl::gaussian_process {
     NoisyInputGaussianProcess<Dtype>::TestResult::GetGradientVariance(const long index, Dtype *var)
         const {
         ERL_DEBUG_ASSERT(m_support_gradient_, "gradient not supported");
-        const_cast<TestResult *>(this)->PrepareAlphaTest(false);
+        PrepareAlphaTest(false);
         const Dtype hessian_s = m_gp_->GetKernel()->GetHessianScaleFactor();
         const long cols = m_mat_alpha_test_.cols();
         for (long jj = index + m_num_test_; jj < cols; jj += m_num_test_, ++var) {
@@ -247,7 +247,7 @@ namespace erl::gaussian_process {
             mat_cov_out.cols(),
             m_num_test_);
 
-        const_cast<TestResult *>(this)->PrepareAlphaTest(parallel);
+        PrepareAlphaTest(parallel);
 #pragma omp parallel for if (parallel) default(none) shared(mat_cov_out)
         for (long index = 0; index < m_num_test_; ++index) {
             Dtype *cov = mat_cov_out.col(index).data();
@@ -273,7 +273,7 @@ namespace erl::gaussian_process {
         ERL_DEBUG_ASSERT_LT(index, m_num_test_);
         ERL_DEBUG_ASSERT_PTR(cov);
 
-        const_cast<TestResult *>(this)->PrepareAlphaTest(false);
+        PrepareAlphaTest(false);
         for (long j = 0, jj = index + m_num_test_; j < m_x_dim_; ++j, jj += m_num_test_) {
             VectorX col_jj = m_mat_alpha_test_.col(jj);
             if (!m_reduced_rank_kernel_) { col_jj = -col_jj; }
@@ -286,7 +286,7 @@ namespace erl::gaussian_process {
 
     template<typename Dtype>
     void
-    NoisyInputGaussianProcess<Dtype>::TestResult::PrepareAlphaTest(const bool parallel) {
+    NoisyInputGaussianProcess<Dtype>::TestResult::PrepareAlphaTest(const bool parallel) const {
         (void) parallel;
         if (m_mat_alpha_test_.size() > 0) { return; }
         const long rows = m_mat_k_test_.rows();

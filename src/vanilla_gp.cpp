@@ -85,7 +85,7 @@ namespace erl::gaussian_process {
         (void) parallel;
         // var = ktest(xt, xt) - ktest(xt, X) @ (ktest(X, X) + sigma * I).m_inv_() @ ktest(X, xt)
         //     = ktest(xt, xt) - ktest(xt, X) @ (m_l_ @ m_l_.T).m_inv_() @ ktest(X, xt)
-        const_cast<TestResult *>(this)->PrepareForVariance(parallel);
+        PrepareForVariance(parallel);
         Dtype *var = vec_var_out.data();
 #pragma omp parallel for if (parallel) default(none) shared(var)
         for (long i = 0; i < m_num_test_; ++i) {
@@ -99,7 +99,7 @@ namespace erl::gaussian_process {
     template<typename Dtype>
     void
     VanillaGaussianProcess<Dtype>::TestResult::GetVariance(long index, Dtype &var) const {
-        const_cast<TestResult *>(this)->PrepareForVariance(true);
+        PrepareForVariance(true);
         var = m_mat_alpha_test_.col(index).squaredNorm();
         if (m_reduced_rank_kernel_) { return; }
         var = 1.0f - var;  // variance of h(x)
@@ -107,7 +107,7 @@ namespace erl::gaussian_process {
 
     template<typename Dtype>
     void
-    VanillaGaussianProcess<Dtype>::TestResult::PrepareForVariance(const bool parallel) {
+    VanillaGaussianProcess<Dtype>::TestResult::PrepareForVariance(const bool parallel) const {
         if (m_mat_alpha_test_.size() > 0) { return; }
         const long rows = m_mat_k_test_.rows();
         auto mat_l =

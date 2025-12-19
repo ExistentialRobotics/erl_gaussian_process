@@ -44,8 +44,8 @@ namespace erl::gaussian_process {
             const bool m_reduced_rank_kernel_;       // whether the kernel is rank reduced or not
             const long m_x_dim_;                     // dimension of x
             const long m_y_dim_;                     // dimension of y
-            MatrixX m_mat_k_test_;      // Ktest, where Ktest(i,j) = k(x_test_i, x_train_j)
-            MatrixX m_mat_alpha_test_;  // L.inv() @ Ktest, where Ktrain = L @ L.T
+            MatrixX m_mat_k_test_;              // Ktest, where Ktest(i,j) = k(x_test_i, x_train_j)
+            mutable MatrixX m_mat_alpha_test_;  // L.inv() @ Ktest, where Ktrain = L @ L.T
 
         public:
             TestResult(
@@ -160,7 +160,7 @@ namespace erl::gaussian_process {
 
         protected:
             void
-            PrepareAlphaTest(bool parallel);
+            PrepareAlphaTest(bool parallel) const;
         };
 
         struct TrainBuf {

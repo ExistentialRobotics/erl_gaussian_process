@@ -100,7 +100,7 @@ namespace erl::gaussian_process {
     template<typename Dtype>
     bool
     LidarGaussianProcess2D<Dtype>::TestResult::GetVariance(const long index, Dtype &var) const {
-        const_cast<TestResult *>(this)->PrepareAlphaTest(index);
+        PrepareAlphaTest(index);
         auto &alpha_test = m_alpha_test_vec_[index];
         if (alpha_test.size() == 0) { return false; }  // no valid test result
         var = alpha_test.squaredNorm();
@@ -111,7 +111,7 @@ namespace erl::gaussian_process {
 
     template<typename Dtype>
     void
-    LidarGaussianProcess2D<Dtype>::TestResult::PrepareAlphaTest(const long index) {
+    LidarGaussianProcess2D<Dtype>::TestResult::PrepareAlphaTest(const long index) const {
         const Gp *gp = m_gps_[index];
         if (gp == nullptr) { return; }
 

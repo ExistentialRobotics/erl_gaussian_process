@@ -78,8 +78,8 @@ namespace erl::gaussian_process {
             MatrixX m_mat_k_test_;
             SparseMatrix m_sparse_mat_k_test_;  // for sparse kernel
             MatrixX m_mat_alpha_;               // Q_M^{-1} alpha
-            MatrixX m_mat_beta_;                // L_KM^{-1} k_*
-            MatrixX m_mat_gamma_;               // L_QM^{-1} k_*
+            mutable MatrixX m_mat_beta_;        // L_KM^{-1} k_*
+            mutable MatrixX m_mat_gamma_;       // L_QM^{-1} k_*
 
         public:
             TestResult(
@@ -116,18 +116,18 @@ namespace erl::gaussian_process {
 
         protected:
             void
-            PrepareForVariance();
+            PrepareForVariance() const;
         };
 
     protected:
         std::shared_ptr<Setting> m_setting_ = nullptr;
-        std::mutex m_mutex_;
+        mutable std::mutex m_mutex_;
         // true if the GP is trained
         bool m_trained_ = false;
         // true if the GP is trained at least once
         bool m_trained_once_ = false;
         // if m_mat_l_qm_ is updated
-        bool m_mat_l_qm_updated_ = false;
+        mutable bool m_mat_l_qm_updated_ = false;
         std::shared_ptr<Covariance> m_kernel_ = nullptr;
         // whether the kernel is rank reduced or not
         bool m_reduced_rank_kernel_ = false;
@@ -141,7 +141,7 @@ namespace erl::gaussian_process {
         // [M, M] Q_M
         MatrixX m_mat_qm_{};
         // [M, M] Cholesky decomposition of m_mat_qm_
-        MatrixX m_mat_l_qm_{};
+        mutable MatrixX m_mat_l_qm_{};
         // [M, DimY] alpha vector for the pseudo points
         MatrixX m_mat_alpha_{};
         // the training set
@@ -225,7 +225,7 @@ namespace erl::gaussian_process {
         UpdateSparse(bool parallel);
 
         void
-        PrepareLqm();
+        PrepareLqm() const;
     };
 
     using SparsePseudoInputGaussianProcessD = SparsePseudoInputGaussianProcess<double>;

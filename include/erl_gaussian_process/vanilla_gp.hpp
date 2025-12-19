@@ -43,7 +43,7 @@ namespace erl::gaussian_process {
             const long m_x_dim_;
             const long m_y_dim_;
             MatrixX m_mat_k_test_;
-            MatrixX m_mat_alpha_test_;
+            mutable MatrixX m_mat_alpha_test_;
 
         public:
             TestResult(
@@ -70,7 +70,7 @@ namespace erl::gaussian_process {
 
         protected:
             void
-            PrepareForVariance(bool parallel);
+            PrepareForVariance(bool parallel) const;
         };
 
         struct TrainBuf {
