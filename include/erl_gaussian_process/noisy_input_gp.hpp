@@ -44,14 +44,22 @@ namespace erl::gaussian_process {
             const bool m_reduced_rank_kernel_;       // whether the kernel is rank reduced or not
             const long m_x_dim_;                     // dimension of x
             const long m_y_dim_;                     // dimension of y
-            MatrixX m_mat_k_test_;              // Ktest, where Ktest(i,j) = k(x_test_i, x_train_j)
-            mutable MatrixX m_mat_alpha_test_;  // L.inv() @ Ktest, where Ktrain = L @ L.T
+            MatrixX m_mat_k_test_;                   // Ktest(i,j) = k(x_train_i, x_test_j)
+            mutable MatrixX m_mat_alpha_test_;       // L.inv() @ Ktest, where Ktrain = L @ L.T
 
         public:
             TestResult(
                 const NoisyInputGaussianProcess *gp,
                 const Eigen::Ref<const MatrixX> &mat_x_test,
+                Dtype exp_bias,
                 bool will_predict_gradient);
+
+            TestResult(const TestResult &other) = default;
+            TestResult(TestResult &&other) = default;
+            TestResult &
+            operator=(const TestResult &other) = default;
+            TestResult &
+            operator=(TestResult &&other) = default;
 
             virtual ~TestResult() = default;
 
@@ -181,11 +189,13 @@ namespace erl::gaussian_process {
 
             TrainBuf() = default;
             TrainBuf(const TrainBuf &other) = default;
-            TrainBuf(TrainBuf &&other) = default;
+            TrainBuf(TrainBuf &&other) noexcept = default;
             TrainBuf &
             operator=(const TrainBuf &other) = default;
             TrainBuf &
-            operator=(TrainBuf &&other) = default;
+            operator=(TrainBuf &&other) noexcept = default;
+
+            ~TrainBuf() = default;
 
             void
             Reset(long max_num_samples, long x_dim_, long y_dim_, bool no_gradient_observation);

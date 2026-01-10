@@ -11,6 +11,7 @@ namespace erl::gaussian_process {
     NoisyInputGaussianProcess<Dtype>::TestResult::TestResult(
         const NoisyInputGaussianProcess *gp,
         const Eigen::Ref<const MatrixX> &mat_x_test,
+        const Dtype exp_bias,
         const bool will_predict_gradient)
         : m_gp_(NotNull(gp, true, "gp = nullptr.")),
           m_num_test_(mat_x_test.cols()),
@@ -44,14 +45,29 @@ namespace erl::gaussian_process {
             m_num_test_,
             m_support_gradient_);
         m_mat_k_test_.resize(rows1, cols1);
-        auto [rows2, cols2] = kernel->ComputeKtestWithGradient(
-            x_train,
-            n_samples,
-            grad_flag,
-            mat_x_test,
-            m_num_test_,
-            m_support_gradient_,
-            m_mat_k_test_);
+
+        long rows2 = 0;
+        long cols2 = 0;
+        if (exp_bias == 0.0f) {
+            std::tie(rows2, cols2) = kernel->ComputeKtestWithGradient(
+                x_train,
+                n_samples,
+                grad_flag,
+                mat_x_test,
+                m_num_test_,
+                m_support_gradient_,
+                m_mat_k_test_);
+        } else {
+            std::tie(rows2, cols2) = kernel->ComputeKtestWithGradient(
+                x_train,
+                n_samples,
+                grad_flag,
+                mat_x_test,
+                m_num_test_,
+                m_support_gradient_,
+                exp_bias,
+                m_mat_k_test_);
+        }
 
 #ifndef NDEBUG
         const long k_train_cols = m_gp_->m_k_train_cols_;
@@ -853,7 +869,7 @@ namespace erl::gaussian_process {
         const Eigen::Ref<const MatrixX> &mat_x_test,
         const bool predict_gradient) const {
         if (!m_trained_) { return nullptr; }
-        return std::make_shared<TestResult>(this, mat_x_test, predict_gradient);
+        return std::make_shared<TestResult>(this, mat_x_test, 0.0, predict_gradient);
     }
 
     template<typename Dtype>

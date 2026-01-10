@@ -77,6 +77,9 @@ namespace erl::gaussian_process {
          * @param points point cloud in the world frame of the sensor measurement.
          * @param point_indices indices of the points in the point cloud that are valid for dataset.
          * If empty, all points will be used.
+         * @param max_num_rays maximum number of rays to collect. If positive and the number of
+         * points in the point cloud or the size of point_indices exceeds this value, will sample
+         * this number of rays randomly from the point cloud.
          * @param max_dataset_size maximum number of points in the dataset. -1 means no limit.
          * @param num_samples number of points in the dataset.
          * @param dataset_points points in the dataset.
