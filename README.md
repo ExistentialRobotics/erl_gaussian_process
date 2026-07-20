@@ -34,7 +34,7 @@
 ```bash
 cd <your_workspace>
 mkdir -p src
-vcs import --input https://raw.githubusercontent.com/ExistentialRobotics/erl_gaussian_process/refs/head/main/erl_gaussian_process.repos src
+vcs import --input https://raw.githubusercontent.com/ExistentialRobotics/erl_gaussian_process/refs/heads/main/erl_gaussian_process.repos src
 ```
 
 ### Dependencies
