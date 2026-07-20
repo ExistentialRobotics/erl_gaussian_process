@@ -1,4 +1,5 @@
 #include "erl_common/pybind11.hpp"
+#include "erl_common/pybind11_yaml.hpp"
 
 void
 BindVanillaGaussianProcess(const py::module &m);
@@ -17,7 +18,7 @@ BindRangeSensorGaussianProcess3D(const py::module &m);
 
 PYBIND11_MODULE(PYBIND_MODULE_NAME, m) {
     m.doc() = "Python 3 Interface of erl_gaussian_process";
-
+    BindYamlableBase(m);
     BindVanillaGaussianProcess(m);
     BindMapping(m);
     BindLidarGaussianProcess2D(m);
